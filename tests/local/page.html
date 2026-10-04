@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Page de test KBLocal</title>
+</head>
+<body>
+<!-- Page de test de kblocal.js : aucune dépendance, aucun réseau.
+     Paramètre d'adresse : ?db=<nom> (nom de la base IndexedDB de ce test). -->
+<script>
+  window.__clesAvant = Object.keys(window);
+</script>
+<script src="../../kblocal.js"></script>
+<script>
+  window.__clesApres = Object.keys(window);
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.get('db')) KBLocal.configure({ dbName: q.get('db') });
+  })();
+  /* Générateur déterministe d'un « match » d'environ <taille> octets JSON :
+     chaque événement porte before et details, comme S.history dans l'app. */
+  window.mkMatch = function (id, taille) {
+    var m = { id: id, authorId: 'u_test-auteur-0001', format: '9_11', deleted: false, scores: { Bleu: 3, Gris: 2, Noir: 1 }, history: [] };
+    function ev(i) {
+      return {
+        n: i, type: 'lancer', by: 'u_test-auteur-0001', t: 1700000000000 + i * 997,
+        team: ['Bleu', 'Gris', 'Noir'][i % 3], caught: i % 2 === 0, note: 'é à ç « » ' + i,
+        before: { scores: { Bleu: i % 5, Gris: i % 7, Noir: i % 3 }, possession: 'Bleu', period: 1, roster: [1, 2, 3, 4] },
+        details: { from: [i / 100, 1 - i / 100], to: [0.5, 0.5], zone: 'Z' + (i % 9), target: null, extra: { a: [1, 2, { b: i }] } }
+      };
+    }
+    var n = Math.ceil(taille / JSON.stringify(ev(500)).length);
+    for (var i = 0; i < n; i++) m.history.push(ev(i));
+    return m;
+  };
+</script>
+</body>
+</html>
