@@ -1,0 +1,5 @@
+# Ressources tierces embarquées (sha256, taille en octets, fichier)
+# xlsx.full.min.js : SheetJS/sheetjs, étiquette v0.18.5 (commit 0400a87e622887ec83f6bcde9d0ad3ce99ee13f8), chemin dist/xlsx.full.min.js, XLSX.version = 0.18.5. Identité avec la copie de cdnjs non prouvable depuis cet environnement.
+# LICENCE-xlsx.txt : LICENSE du même commit (Apache-2.0).
+c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99  881727  xlsx.full.min.js
+4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64  11355  LICENCE-xlsx.txt
