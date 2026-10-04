@@ -4,6 +4,8 @@
    façade locale KBLocal est présente et si l'app ne tourne pas dans claude.ai).
    M04 : service worker, mise à jour sur accord, ligne de version, incitation à
    installer (espace de noms window.KBSite).
+   M05 : feuille « FICHIER PRÊT » (second geste du partage de fichiers, voir
+   KBLocal.downloads.surSecondGeste dans kblocal.js).
    N'écrit jamais dans S, TEAMS_DB, MATCHES_DB et ne redéfinit aucune fonction de
    l'app. Script classique, sans dépendance réseau. */
 (function (global) {
@@ -85,7 +87,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-04.2';
+  var VERSION_SITE = '2026-10-04.3';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -303,6 +305,78 @@
     majInstallation();
   });
   global.addEventListener('appinstalled', function () { invite = null; retirerCarte('kbCarteInstall'); });
+
+  /* ================= M05 : feuille « FICHIER PRÊT » ================= */
+  /* La façade (kblocal.js) appelle fn({filename, relancer}) quand iOS a refusé le
+     partage faute de geste récent. On ouvre la feuille de l'app (NON fermable par
+     un appui à côté : la promesse doit toujours aboutir) ; l'appui sur le bouton
+     est le nouveau geste, dans lequel relancer() refait le partage.
+     Promesse rendue : résolue = fichier remis ; rejetée {code:'declined'} = ANNULER ;
+     rejetée autrement = la façade passe au lien de téléchargement. */
+  var fichierPret = null;      // {ctx, resolve, reject, enCours, veille}
+  function echapper(t) {
+    if (typeof global.escapeHtml === 'function') return global.escapeHtml(t);
+    return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function finFichierPret() {
+    var f = fichierPret;
+    fichierPret = null;
+    if (f && f.veille) { try { f.veille.disconnect(); } catch (e) {} }
+    return f;
+  }
+  KBSite.fichierPartager = function () {
+    var f = fichierPret;
+    if (!f || f.enCours) return;
+    f.enCours = true;
+    var b = document.getElementById('kbFichierPartager');
+    if (b) b.disabled = true;
+    var p;
+    /* relancer() est appelé ICI, de façon synchrone : c'est le geste de la personne. */
+    try { p = f.ctx.relancer(); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(function () {
+      finFichierPret(); try { closeSheet(); } catch (e) {} f.resolve();
+    }, function (e) {
+      finFichierPret(); try { closeSheet(); } catch (e2) {} f.reject(e);
+    });
+  };
+  KBSite.fichierAnnuler = function () {
+    var f = fichierPret;
+    if (!f || f.enCours) return;
+    finFichierPret();
+    try { closeSheet(); } catch (e) {}
+    var e = new Error('Enregistrement annulé');
+    e.code = 'declined';
+    f.reject(e);
+  };
+  function feuilleFichierPret(ctx) {
+    if (typeof global.openSheet !== 'function') return Promise.reject(new Error('feuille indisponible'));
+    if (fichierPret) return Promise.reject(new Error('feuille déjà ouverte'));
+    return new Promise(function (resolve, reject) {
+      var f = fichierPret = { ctx: ctx, resolve: resolve, reject: reject, enCours: false, veille: null };
+      global.openSheet(
+        '<div id="kbFichierPret">' +
+        '<div class="sheet-title">FICHIER PRÊT</div>' +
+        '<div class="msg-center" style="font-size:15px; padding:6px 0 14px; word-break:break-word">' + echapper(ctx.filename) + '</div>' +
+        '<button id="kbFichierPartager" class="choice-btn" style="background:var(--bleu); font-size:15px; width:100%" onclick="KBSite.fichierPartager()">ENREGISTRER / PARTAGER</button>' +
+        '<button class="ghost-btn" style="width:100%; margin-top:8px" onclick="KBSite.fichierAnnuler()">ANNULER</button>' +
+        '</div>', false);
+      /* Si un autre code remplace la feuille, on ne laisse pas l'export en suspens :
+         issue autre que « declined » -> la façade livre le fichier par téléchargement. */
+      var feuille = document.getElementById('sheet');
+      if (feuille && global.MutationObserver) {
+        f.veille = new MutationObserver(function () {
+          if (fichierPret === f && !document.getElementById('kbFichierPret')) {
+            finFichierPret();
+            reject(new Error('feuille remplacée'));
+          }
+        });
+        f.veille.observe(feuille, { childList: true });
+      }
+    });
+  }
+  if (KB && KB.downloads && typeof KB.downloads.surSecondGeste === 'function' && !global.claude) {
+    KB.downloads.surSecondGeste(feuilleFichierPret);
+  }
 
   /* ---------- Suivi de l'écran (sans rien envelopper dans l'app) ---------- */
   var ecranPrecedent = null;

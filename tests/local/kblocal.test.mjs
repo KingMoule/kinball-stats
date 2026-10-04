@@ -859,6 +859,151 @@ test('source', 'S2', 'kblocal.js : aucun appel réseau ni module ; aucune syntax
     assert(!re.test(sansCommentaires), 'motif interdit : ' + re);
   }
 });
+/* ============================================================
+   GROUPE 6 — M05 : feuille de partage (doublures de navigator.share / canShare)
+   Groupe « partage » : contexte tactile (isMobile + hasTouch) ; groupe « partage-ordi » : sans tactile.
+   ============================================================ */
+const DOUBLURE = () => {
+  window.__partages = []; window.__evts = []; window.__mode = 'ok'; window.__canShare = true;
+  window.addEventListener('kb:fichier', e => window.__evts.push(e.detail));
+  navigator.canShare = () => window.__canShare;
+  navigator.share = function (d) {
+    window.__partages.push({ cles: Object.keys(d), nb: (d.files || []).length, nom: d.files[0].name, type: d.files[0].type, taille: d.files[0].size });
+    const m = Array.isArray(window.__mode) ? (window.__mode.length > 1 ? window.__mode.shift() : window.__mode[0]) : window.__mode;
+    if (m === 'ok') return Promise.resolve();
+    const e = new Error('x'); e.name = m; return Promise.reject(e);
+  };
+};
+const ouvrirPartage = (env) => env.open({ init: DOUBLURE });
+const sauver = (p, nom, contenu = 'a;b\n1;2\n') => p.evaluate(async ([n, c]) => {
+  const d = await KBLocal.use('downloads');
+  try { await d.save({ filename: n, data: new Blob([c]) }); return 'résolu'; } catch (e) { return e && e.code === 'declined' ? 'declined' : 'rejet'; }
+}, [nom, contenu]);
+const bilan = (p) => p.evaluate(() => ({ partages: window.__partages, evts: window.__evts }));
+
+test('partage', 'PT1', 'partage : un File par appel, nom nettoyé et type déduit de l\'extension, sans title ni text', 'M05 A.1-A.3', async (env) => {
+  const p = await ouvrirPartage(env);
+  const cas = [
+    ['A/B : finale ?.xlsx', 'A_B _ finale _.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['  ..match.csv ', 'match.csv', 'text/csv'],
+    ['a\\b*c"d<e>f|g\u0001h.json', 'a_b_c_d_e_f_g_h.json', 'application/json'],
+    ['', null, null],
+    ['???', '___', 'application/octet-stream'],
+    ['x'.repeat(300) + '.csv', 'x'.repeat(116) + '.csv', 'text/csv'],
+    ['....', 'kinball', 'application/octet-stream'],
+  ];
+  for (const [entree, nom, type] of cas) {
+    if (entree === '') { eq(await sauver(p, entree), 'rejet', 'nom vide rejeté'); continue; }
+    eq(await sauver(p, entree), 'résolu', entree);
+    const b = await bilan(p);
+    const dernier = b.partages[b.partages.length - 1];
+    eq(dernier.nom, nom, 'nom de ' + JSON.stringify(entree));
+    eq(dernier.type, type, 'type de ' + JSON.stringify(entree));
+    eq(dernier.cles, ['files']);
+    eq(dernier.nb, 1);
+  }
+});
+test('partage', 'PT2', 'partage accepté : une seule fois, événement kb:fichier {partage}, aucun téléchargement', 'M05 A.3, A.6', async (env) => {
+  const p = await ouvrirPartage(env);
+  let dl = 0; p.on('download', () => dl++);
+  eq(await sauver(p, 'm.json', '{"a":1}'), 'résolu');
+  await attendre(300);
+  const b = await bilan(p);
+  eq(b.partages.length, 1); eq(b.partages[0].taille, 7);
+  eq(b.evts, [{ filename: 'm.json', moyen: 'partage' }]);
+  eq(dl, 0, 'téléchargements');
+});
+test('partage', 'PT3', 'AbortError : rejet {code:\'declined\'}, aucun événement, aucun téléchargement', 'M05 A.3', async (env) => {
+  const p = await ouvrirPartage(env);
+  let dl = 0; p.on('download', () => dl++);
+  await p.evaluate(() => { window.__mode = 'AbortError'; });
+  eq(await sauver(p, 'm.csv'), 'declined');
+  await attendre(300);
+  const b = await bilan(p);
+  eq(b.evts, []); eq(b.partages.length, 1); eq(dl, 0);
+});
+test('partage', 'PT4', 'NotAllowedError sans fonction de second geste : lien de téléchargement', 'M05 A.5', async (env) => {
+  const p = await ouvrirPartage(env);
+  await p.evaluate(() => { window.__mode = 'NotAllowedError'; });
+  const [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'n.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'n.csv');
+  eq((await bilan(p)).evts, [{ filename: 'n.csv', moyen: 'telechargement' }]);
+});
+test('partage', 'PT5', 'second geste : surSecondGeste({filename, relancer}) ; relancer() refait le partage avec le même fichier', 'M05 A.4', async (env) => {
+  const p = await ouvrirPartage(env);
+  const r = await p.evaluate(async () => {
+    window.__mode = ['NotAllowedError', 'ok'];
+    let recu = null, fin = null;
+    KBLocal.downloads.surSecondGeste(ctx => { recu = ctx; return new Promise((res, rej) => { fin = { res, rej }; }); });
+    const d = await KBLocal.use('downloads');
+    let settled = false;
+    const sv = d.save({ filename: 'G:1.csv', data: new Blob(['x']) }).then(() => { settled = true; return 'résolu'; }, e => { settled = true; return e.code || 'rejet'; });
+    await new Promise(r => setTimeout(r, 200));
+    const avant = { settled, cles: Object.keys(recu).sort(), nom: recu.filename, partages: window.__partages.length, evts: window.__evts.length };
+    const issue = await recu.relancer();
+    const encore = recu.relancer() === recu.relancer();   // idempotent
+    fin.res();
+    return { avant, issue, encore, fin: await sv, partages: window.__partages.map(x => x.nom), evts: window.__evts };
+  });
+  eq(r.avant, { settled: false, cles: ['filename', 'relancer'], nom: 'G_1.csv', partages: 1, evts: 0 });
+  eq(r.issue, 'partage'); eq(r.encore, true); eq(r.fin, 'résolu');
+  eq(r.partages, ['G_1.csv', 'G_1.csv']);
+  eq(r.evts, [{ filename: 'G_1.csv', moyen: 'partage' }]);
+});
+test('partage', 'PT6', 'second geste : second NotAllowedError -> téléchargement ; AbortError au second essai -> declined', 'M05 A.4', async (env) => {
+  const p = await ouvrirPartage(env);
+  await p.evaluate(() => { KBLocal.downloads.surSecondGeste(ctx => ctx.relancer()); });
+  await p.evaluate(() => { window.__mode = ['NotAllowedError']; });
+  const [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'u.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'u.csv');
+  eq((await bilan(p)).evts, [{ filename: 'u.csv', moyen: 'telechargement' }]);
+  await p.evaluate(() => { window.__mode = ['NotAllowedError', 'AbortError']; window.__evts.length = 0; });
+  eq(await sauver(p, 'v.csv'), 'declined');
+  eq((await bilan(p)).evts, []);
+});
+test('partage', 'PT7', 'second geste : la fonction du site rejette {declined} -> declined ; rejette autre chose ou lève -> téléchargement', 'M05 A.4', async (env) => {
+  const p = await ouvrirPartage(env);
+  await p.evaluate(() => { window.__mode = 'NotAllowedError'; KBLocal.downloads.surSecondGeste(() => Promise.reject(Object.assign(new Error('non'), { code: 'declined' }))); });
+  eq(await sauver(p, 'w.csv'), 'declined');
+  await p.evaluate(() => KBLocal.downloads.surSecondGeste(() => Promise.reject(new Error('panne'))));
+  let [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'x.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'x.csv');
+  await p.evaluate(() => KBLocal.downloads.surSecondGeste(() => { throw new Error('lève'); }));
+  [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'y.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'y.csv');
+});
+test('partage', 'PT8', 'canShare faux, ou autre erreur de share : lien de téléchargement, kb:fichier {telechargement}', 'M05 A.3, A.5', async (env) => {
+  const p = await ouvrirPartage(env);
+  await p.evaluate(() => { window.__canShare = false; });
+  let [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'c1.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'c1.csv');
+  eq((await bilan(p)).partages.length, 0, 'share jamais appelé si canShare est faux');
+  await p.evaluate(() => { window.__canShare = true; window.__mode = 'DataError'; });
+  [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'c2.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'c2.csv');
+  eq((await bilan(p)).evts, [{ filename: 'c1.csv', moyen: 'telechargement' }, { filename: 'c2.csv', moyen: 'telechargement' }]);
+});
+test('partage-ordi', 'PT9', 'appareil sans tactile : téléchargement, share jamais appelé, même avec une doublure qui accepte', 'M05 A.3', async (env) => {
+  const p = await ouvrirPartage(env);
+  const [dl, r] = await Promise.all([p.waitForEvent('download'), sauver(p, 'o.csv')]);
+  eq(r, 'résolu'); eq(dl.suggestedFilename(), 'o.csv');
+  const b = await bilan(p);
+  eq(b.partages.length, 0); eq(b.evts, [{ filename: 'o.csv', moyen: 'telechargement' }]);
+});
+test('partage', 'PT10', 'adresse d\'objet libérée après un téléchargement de repli ; KBLocal.downloads exposé', 'M05 A.5', async (env) => {
+  const p = await ouvrirPartage(env);
+  const r = await p.evaluate(async () => {
+    window.__canShare = false; KBLocal.configure({ revokeDelay: 50 });
+    const cree = [], libere = [];
+    const oc = URL.createObjectURL, orv = URL.revokeObjectURL;
+    URL.createObjectURL = function (b) { const u = oc.call(URL, b); cree.push(u); return u; };
+    URL.revokeObjectURL = function (u) { libere.push(u); return orv.call(URL, u); };
+    await (await KBLocal.use('downloads')).save({ filename: 'l.txt', data: new Blob(['z']) });
+    await new Promise(r => setTimeout(r, 300));
+    return { cree: cree.length, libere: libere.length, meme: KBLocal.downloads === (await KBLocal.use('downloads')) };
+  });
+  eq(r, { cree: 1, libere: 1, meme: true });
+});
 test('source', 'S3', 'kblocal.js : syntaxe valide (script classique, node --check)', 'Script classique', async () => {
   const { execFileSync } = await import('node:child_process');
   execFileSync(process.execPath, ['--check', path.join(DEPOT, 'kblocal.js')]);
@@ -875,7 +1020,7 @@ let nPass = 0, nFail = 0;
 const groupes = [...new Set(TESTS.map(t => t.groupe))];
 const t0 = Date.now();
 for (const g of groupes) {
-  const ctx = await navigateur.newContext({ acceptDownloads: true });
+  const ctx = await navigateur.newContext(g === 'partage' ? { acceptDownloads: true, isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } } : { acceptDownloads: true });
   const env = envDe(ctx);
   for (const t of TESTS.filter(t => t.groupe === g)) {
     if (filtre && !filtre.includes(t.id) && t.id !== 'Z1') continue;

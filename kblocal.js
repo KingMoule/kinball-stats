@@ -8,7 +8,9 @@
                et sur une référence : set, delete, get
      user      id, canEdit, isOwner, profiles (+ getName, setName,
                exportIdentity, importIdentity)
-     downloads save({filename, data})
+     downloads save({filename, data})  (M05 : sur appareil tactile, feuille de
+               partage du système ; sinon lien de téléchargement ;
+               surSecondGeste(fn) = rappel fourni par le site, voir kbsite.js)
 
    Script classique, un seul global (KBLocal), aucune dépendance, aucun
    réseau. Syntaxe volontairement prudente (Safari 15) : pas de champs de
@@ -442,30 +444,135 @@
     }
   };
 
-  /* ---------- Téléchargements ---------- */
+  /* ---------- Téléchargements et feuille de partage (M05) ---------- */
+  var TYPES_FICHIER = {
+    '.csv': 'text/csv',
+    '.json': 'application/json',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  };
+  /* Nom sûr : caractères interdits et de contrôle -> « _ », espaces de bord et points
+     de tête retirés, 120 caractères au plus (extension conservée), vide -> « kinball ». */
+  function nettoyerNom(nom) {
+    var n = String(nom).replace(/[\\\/:*?"<>|\u0000-\u001f\u007f]/g, '_').trim();
+    var m = /\.[A-Za-z0-9]{1,8}$/.exec(n);
+    var ext = m ? m[0] : '';
+    var base = n.slice(0, n.length - ext.length).replace(/^[\s.]+/, '').trim();
+    if (!base) base = 'kinball';
+    if (base.length + ext.length > 120) base = base.slice(0, 120 - ext.length).trim() || 'kinball';
+    return base + ext;
+  }
+  function typeDe(nom, parDefaut) {
+    var m = /\.[A-Za-z0-9]{1,8}$/.exec(nom);
+    var t = m ? TYPES_FICHIER[m[0].toLowerCase()] : null;
+    return t || parDefaut || 'application/octet-stream';
+  }
+  /* Partage possible : API présente ET appareil tactile (sur ordinateur : téléchargement). */
+  function partagePossible(fichier) {
+    try {
+      var nav = global.navigator;
+      if (!nav || typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false;
+      if (typeof global.File !== 'function') return false;
+      var tactile = ('standalone' in nav) ||
+        (nav.maxTouchPoints > 0 && typeof global.matchMedia === 'function' && global.matchMedia('(pointer: coarse)').matches);
+      if (!tactile) return false;
+      return nav.canShare({ files: [fichier] }) === true;
+    } catch (e) { return false; }
+  }
+  /* Une tentative de partage -> 'ok' | 'abandon' (AbortError) | 'geste' (NotAllowedError) | 'autre'.
+     Ni title ni text : sur iOS ils ajoutent un second fichier texte. */
+  function tenterPartage(fichier) {
+    return new Promise(function (resolve) {
+      var p;
+      try { p = global.navigator.share({ files: [fichier] }); } catch (e) { resolve(issueDe(e)); return; }
+      Promise.resolve(p).then(function () { resolve('ok'); }, function (e) { resolve(issueDe(e)); });
+    });
+  }
+  function issueDe(e) {
+    var n = e && e.name;
+    if (n === 'AbortError') return 'abandon';
+    if (n === 'NotAllowedError') return 'geste';
+    return 'autre';
+  }
+  function annule() {
+    var e = new Error('Enregistrement annulé');
+    e.code = 'declined';
+    return e;
+  }
+  var secondGeste = null;
+
   var downloadsApi = {
+    /* Fournie par le site (kbsite.js) : fn({filename, relancer}) -> promesse réglée à
+       l'issue finale (résolue = fichier remis ; rejetée {code:'declined'} = annulé). */
+    surSecondGeste: function (fn) { secondGeste = (typeof fn === 'function') ? fn : null; },
     save: function (opts) {
+      if (!opts || typeof opts.filename !== 'string' || !opts.filename) return Promise.reject(new TypeError('save : filename attendu'));
+      if (opts.data === undefined || opts.data === null) return Promise.reject(new TypeError('save : data attendu'));
       return new Promise(function (resolve, reject) {
-        var url = null;
+        var nom, blob, fichier = null, fini = false;
         try {
-          if (!opts || typeof opts.filename !== 'string' || !opts.filename) throw new TypeError('save : filename attendu');
-          if (opts.data === undefined || opts.data === null) throw new TypeError('save : data attendu');
-          var blob = (typeof Blob !== 'undefined' && opts.data instanceof Blob) ? opts.data : new Blob([opts.data]);
-          url = global.URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = opts.filename; a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          var u = url;
-          setTimeout(function () { try { global.URL.revokeObjectURL(u); } catch (e) {} }, config.revokeDelay);
+          nom = nettoyerNom(opts.filename);
+          blob = (typeof Blob !== 'undefined' && opts.data instanceof Blob) ? opts.data : new Blob([opts.data]);
+          if (typeof global.File === 'function') fichier = new global.File([blob], nom, { type: typeDe(nom, blob.type) });
+        } catch (e) { reject(e); return; }
+
+        function succes(moyen) {
+          fini = true;
+          try { global.dispatchEvent(new CustomEvent('kb:fichier', { detail: { filename: nom, moyen: moyen } })); } catch (e) {}
           resolve();
-        } catch (e) {
-          if (url) { try { global.URL.revokeObjectURL(url); } catch (e2) {} }
-          /* Jamais de code « declined » : avec un lien de téléchargement
-             classique, l'annulation par la personne n'est jamais certaine. */
-          reject(e);
         }
+        /* Lien de téléchargement classique (comportement de M01). */
+        function lien() {
+          if (fini) return;
+          var url = null;
+          try {
+            url = global.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = nom; a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            var u = url;
+            setTimeout(function () { try { global.URL.revokeObjectURL(u); } catch (e) {} }, config.revokeDelay);
+            succes('telechargement');
+          } catch (e) {
+            if (url) { try { global.URL.revokeObjectURL(url); } catch (e2) {} }
+            fini = true;
+            /* Jamais « declined » ici : l'annulation n'est jamais certaine avec un lien. */
+            reject(e);
+          }
+        }
+
+        if (!fichier || !partagePossible(fichier)) { lien(); return; }
+
+        tenterPartage(fichier).then(function (issue) {
+          if (issue === 'ok') { succes('partage'); return; }
+          if (issue === 'abandon') { fini = true; reject(annule()); return; }
+          if (issue === 'geste' && secondGeste) {
+            /* Geste expiré : le site demande un nouvel appui ; relancer() refait le partage
+               DANS ce geste. Un second refus de geste mène au lien de téléchargement. */
+            var enCours = null;
+            var relancer = function () {
+              if (enCours) return enCours;
+              enCours = tenterPartage(fichier).then(function (i2) {
+                if (i2 === 'ok') { succes('partage'); return 'partage'; }
+                if (i2 === 'abandon') { fini = true; reject(annule()); throw annule(); }
+                lien();
+                return 'telechargement';
+              });
+              return enCours;
+            };
+            var retour;
+            try { retour = Promise.resolve(secondGeste({ filename: nom, relancer: relancer })); }
+            catch (e) { retour = Promise.reject(e); }
+            retour.then(function () { if (!fini) lien(); },
+              function (e) {
+                if (e && e.code === 'declined') { if (!fini) { fini = true; reject(e); } return; }
+                if (!fini) lien();
+              });
+            return;
+          }
+          lien();
+        });
       });
     }
   };
@@ -524,6 +631,7 @@
       }
     },
     meta: meta,
-    storage: storage
+    storage: storage,
+    downloads: downloadsApi
   };
 })(typeof self !== 'undefined' ? self : this);
