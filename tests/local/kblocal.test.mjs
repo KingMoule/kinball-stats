@@ -6,6 +6,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
@@ -14,7 +15,7 @@ const DEPOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '
 let playwright;
 try { playwright = require('playwright'); }
 catch (e) {
-  const essais = [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), '/home/claude/.npm-global/lib/node_modules'];
+  const essais = [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.npm-global', 'lib', 'node_modules')];
   for (const d of essais) { try { playwright = createRequire(path.join(d, '/'))('playwright'); break; } catch {} }
   if (!playwright) throw new Error('Playwright introuvable (NODE_PATH ou chemin global)');
 }

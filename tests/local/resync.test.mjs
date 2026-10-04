@@ -195,7 +195,7 @@ await cas('8 · le résultat du cas 2 se charge dans Chromium sans erreur consol
   let playwright;
   try { playwright = require('playwright'); }
   catch (e) {
-    for (const d of [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), '/home/claude/.npm-global/lib/node_modules']) {
+    for (const d of [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.npm-global', 'lib', 'node_modules')]) {
       try { playwright = createRequire(path.join(d, '/'))('playwright'); break; } catch {}
     }
     if (!playwright) throw new Error('Playwright introuvable (NODE_PATH)');
@@ -231,7 +231,18 @@ await cas('8 · le résultat du cas 2 se charge dans Chromium sans erreur consol
 await cas('9 · MIGRATION.md : commandes existantes, lancées telles qu\'écrites ; ni chemin local ni nom de personne', async () => {
   const md = lire(path.join(DEPOT, 'MIGRATION.md')).toString('utf8');
   ok(!/\/home\//.test(md) && !/C:\\/.test(md), 'chemin local dans MIGRATION.md');
-  for (const mot of ['Gagnon', 'Arnaud', 'Moule', 'gstarnaud', '@gmail', '/Users/']) ok(!md.includes(mot), 'nom ou adresse personnelle : ' + mot);
+  /* Aucun nom ni début d'adresse personnels, sans les écrire en clair : empreintes sha256 de fragments, comparées à toutes les fenêtres du texte. */
+  const EMPREINTES = new Set([
+    'a4e15950d767a2d32613ecc63a22b5775375f36442d3949bd7628076791122c3',
+    '6b0a294535855c042b04f4406c43c58375947787e8ac1bcc868ec87b8b3169b1',
+    '8cac0e0ddee696a40e517fdae63f0bdaa752ca76cfb22589e2ef29c56ae77660',
+    '553a1133a892d862929f617aad234107d8fb34f654dd5804e1111b2a3f9ff1cd',
+  ]);
+  const LONGUEURS = [5, 6, 9];
+  const trouves = [];
+  for (const n of LONGUEURS) for (let i = 0; i + n <= md.length; i++) if (EMPREINTES.has(crypto.createHash('sha256').update(md.slice(i, i + n)).digest('hex'))) trouves.push(i);
+  ok(trouves.length === 0, 'nom ou fragment d\'adresse personnel dans MIGRATION.md (positions ' + trouves.join(', ') + ')');
+  ok(!/@gmail|\/Users\//.test(md), 'adresse de messagerie ou chemin personnel');
   /* tout fichier cité après « node » existe */
   const cites = [...md.matchAll(/node\s+((?:outils|tests|sim)\/[\w./-]+)/g)].map(x => x[1]);
   ok(cites.length >= 5, 'trop peu de commandes citées : ' + cites.length);

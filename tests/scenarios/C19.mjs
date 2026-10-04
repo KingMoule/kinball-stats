@@ -3,7 +3,7 @@
 import { launch, assert, eq, HTML, exigerAvant, KNOWN_AVANT } from '../lib.mjs';
 
 export const gabarits = ['tablette', 'telephone'];
-const AVANT_NOM = 'kinball.C19.avant.html';   /* dossier : KINBALL_AVANT (défaut /home/claude/work/backups) ; absent = KNOWN */
+const AVANT_NOM = 'kinball.C19.avant.html';   /* dossier : KINBALL_AVANT (défaut : dossier temporaire du système) ; absent = KNOWN */
 const KEYS = ['team', 'player_out_id', 'player_out_name', 'player_in_id', 'player_in_name'];
 
 /* Match avec effectifs ; `bench` = nombre de joueurs au banc de Bleu (4 sur le terrain). */

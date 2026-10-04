@@ -6,6 +6,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 /* Racine du dépôt, résolue par rapport à l'emplacement de ce fichier (tests/lib.mjs). */
@@ -14,7 +15,7 @@ let playwright;
 try { playwright = require('playwright'); }
 catch (e) {
   /* Playwright : d'abord NODE_PATH, puis le chemin d'installation global actuel. */
-  const essais = [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), '/home/claude/.npm-global/lib/node_modules'];
+  const essais = [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.npm-global', 'lib', 'node_modules')];
   for (const d of essais) {
     try { playwright = createRequire(path.join(d, '/'))('playwright'); break; } catch {}
   }
@@ -24,10 +25,10 @@ const { chromium } = playwright;
 
 /* Fichier testé : index.html du dépôt, sauf si KINBALL_HTML est donné. */
 export const HTML = process.env.KINBALL_HTML || path.join(DEPOT, 'index.html');
-/* Mesures et captures : jamais dans le dépôt (KINBALL_SORTIE, défaut /home/claude/work/audit). */
-export const SORTIE = process.env.KINBALL_SORTIE || '/home/claude/work/audit';
-/* Sauvegardes « d'avant » des chantiers (KINBALL_AVANT, défaut /home/claude/work/backups). */
-export const AVANT_DIR = process.env.KINBALL_AVANT || '/home/claude/work/backups';
+/* Mesures et captures : jamais dans le dépôt (KINBALL_SORTIE, défaut : dossier « kinball-sortie » du dossier temporaire du système). */
+export const SORTIE = process.env.KINBALL_SORTIE || path.join(os.tmpdir(), 'kinball-sortie');
+/* Sauvegardes « d'avant » des chantiers (KINBALL_AVANT, défaut : dossier « kinball-avant » du dossier temporaire du système). */
+export const AVANT_DIR = process.env.KINBALL_AVANT || path.join(os.tmpdir(), 'kinball-avant');
 /* Moteur de simulation embarqué, dans le dépôt. */
 export const SIMCORE = path.join(DEPOT, 'sim', 'simcore.js');
 /* Chemin d'une sauvegarde d'avant, ou null si le fichier est absent. */

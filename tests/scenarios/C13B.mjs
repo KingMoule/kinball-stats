@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { launch, assert, eq, rng, diff, HTML, SORTIE, SIMCORE, exigerAvant, KNOWN_AVANT } from '../lib.mjs';
 
 export const gabarits = ['tablette', 'telephone'];
-const AVANT_NOM = 'kinball.C13B.avant.html';   /* dossier : KINBALL_AVANT (défaut /home/claude/work/backups) ; absent = KNOWN */
+const AVANT_NOM = 'kinball.C13B.avant.html';   /* dossier : KINBALL_AVANT (défaut : dossier temporaire du système) ; absent = KNOWN */
 const wait = app => app.page.waitForFunction(() => !WP.inFlight && !WP.dirty, null, { timeout: 15000, polling: 20 });
 const wp = app => app.ev(() => ({
   mode: WP.mode, stats: { ...WP.stats }, inFlight: WP.inFlight, dirty: WP.dirty, err: WP.lastError, hasResult: !!WP.result,

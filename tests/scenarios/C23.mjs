@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import { launch, assert, eq, rng, diff, SORTIE, SIMCORE, exigerAvant, KNOWN_AVANT } from '../lib.mjs';
 
 export const gabarits = ['tablette', 'telephone'];
-const AVANT_NOM = 'kinball.C23.avant.html';   /* dossier : KINBALL_AVANT (défaut /home/claude/work/backups) ; absent = KNOWN */
+const AVANT_NOM = 'kinball.C23.avant.html';   /* dossier : KINBALL_AVANT (défaut : dossier temporaire du système) ; absent = KNOWN */
 const SIMCORE_SHA = '262fa0598ab61cbc3689deaadbb849f5ddfea2519a5f7f6d3ab5684f23345a15';
 
 /* ---------- aides ---------- */
