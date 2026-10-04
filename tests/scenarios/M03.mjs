@@ -5,21 +5,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import http from 'node:http';
 import { launch, assert, eq, diff, rng, DEPOT, SORTIE } from '../lib.mjs';
 import { Model, pickAction, play } from '../model.mjs';
-
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
-function serveur() {
-  const srv = http.createServer((req, res) => {
-    const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    const f = path.join(DEPOT, u === '/' ? 'index.html' : u);
-    if (!f.startsWith(DEPOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
-    res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' });
-    fs.createReadStream(f).pipe(res);
-  });
-  return new Promise(r => srv.listen(0, '127.0.0.1', () => r(srv)));
-}
+import { serveur } from '../serveur.mjs';   // M04 : serveur http partagé (déplacé depuis ce scénario)
 
 /* Lecture directe de la base IndexedDB (indépendante de l'app) : enregistrements {path, parent, data}. */
 const lireBase = (p) => p.evaluate(() => new Promise((res, rej) => {
