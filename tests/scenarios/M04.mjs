@@ -327,7 +327,7 @@ export default async function ({ gabarit, check }) {
         await p.evaluate(() => { const e = new Event('beforeinstallprompt', { cancelable: true }); e.prompt = () => { window.__prompted = 1; }; window.dispatchEvent(e); });
         await p.waitForFunction(() => { const c = document.getElementById('kbCarteInstall'); return c && c.offsetHeight > 0; }, null, { timeout: 5000 });
         assert(await visible(p, '#kbInstallBtn'), 'bouton INSTALLER');
-        assert(/séparées : installe d’abord, saisis ensuite/.test(await p.locator('#kbCarteInstall').innerText()), 'phrase des données séparées');
+        assert(/séparées : installez d’abord, saisissez ensuite/.test(await p.locator('#kbCarteInstall').innerText()), 'phrase des données séparées');
         await p.locator('#kbInstallBtn').click();
         eq(await p.evaluate(() => window.__prompted), 1, 'prompt() appelé');
         assert(!(await visible(p, '#kbCarteInstall')), 'carte retirée après l’appui');

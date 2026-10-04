@@ -14,6 +14,7 @@
   var KBSite = global.KBSite = global.KBSite || {};
   var KB = global.KBLocal;
   var stockageActif = !!KB && !global.claude;
+  KBSite.local = stockageActif;   // M11 : textes propres au mode local (lus par index.html)
 
   /* ================= M03 : stockage ================= */
   function initStockage() {
@@ -70,6 +71,19 @@
     }
   }
   masquerArchivage();
+  /* M11 : textes de l'accueil et de la carte d'archivage masquée, sans « en ligne » ni « archiver » (mode local seulement). */
+  (function () {
+    var sub = document.querySelector('[onclick="openBackup()"] .hc-sub');
+    if (sub && /archiver/.test(sub.textContent)) sub.textContent = 'Exporter, importer';
+    var carte = document.querySelector('.backup-card [onclick^="startArchiveOldMatches("]');
+    carte = carte && carte.closest('.backup-card');
+    var t = carte && carte.querySelector('.bc-sub');
+    if (t && t.firstChild && t.firstChild.nodeType === 3 && /en ligne/.test(t.firstChild.nodeValue)) {
+      t.firstChild.nodeValue = 'Cette action exporte d’abord les matchs TERMINÉS de plus de ';
+      var fin = t.lastChild;
+      if (fin && fin.nodeType === 3) fin.nodeValue = ' jours dans un fichier, puis les retire de cet appareil — ils restent consultables via ce fichier.';
+    }
+  })();
 
   /* Rafraîchir à l'entrée dans l'écran (showOnly bascule son style.display). */
   var ecran = document.getElementById('backup');
@@ -88,7 +102,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-04.5';
+  var VERSION_SITE = '2026-10-04.6';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -275,9 +289,9 @@
     carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Installer l’app'));
     carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, ios
       ? 'Pour l’installer : Partager → Sur l’écran d’accueil. Elle s’ouvrira alors plein écran, même sans réseau.'
-      : 'Installe l’app sur cet appareil : elle s’ouvrira plein écran, même sans réseau.'));
+      : 'Installez l’app sur cet appareil : elle s’ouvrira plein écran, même sans réseau.'));
     carte.appendChild(el('div', { 'class': 'kb-carte-texte', style: 'margin-top:6px' },
-      'Les données de Safari et celles de l’app installée sont séparées : installe d’abord, saisis ensuite.'));
+      'Les données de Safari et celles de l’app installée sont séparées : installez d’abord, saisissez ensuite.'));
     var act = el('div', { 'class': 'kb-carte-actions' });
     if (!ios) {
       var b = el('button', { type: 'button', 'class': 'kb-btn kb-principal', id: 'kbInstallBtn' }, 'INSTALLER');
@@ -544,8 +558,8 @@
       if (vide && !/échec/.test(t)) {
         status.textContent = t;
         userApi.importIdentity({ id: ident.id, name: typeof ident.name === 'string' ? ident.name : '' }).then(function () {
-          status.textContent = t + ' Ton identité de preneur de stats a été reprise.';
-          ouvrirRestauree(t + ' Ton identité de preneur de stats a été reprise.');
+          status.textContent = t + ' Votre identité de preneur de stats a été reprise.';
+          ouvrirRestauree(t + ' Votre identité de preneur de stats a été reprise.');
         }, function () {
           status.textContent = t + ' L’identité du fichier n’a pas pu être reprise ; l’identité de cet appareil est conservée.';
         });
@@ -584,7 +598,7 @@
   function carteLancement() {
     var carte = el('div', { 'class': 'kb-carte' });
     carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Nouvel appareil, ou données effacées ?'));
-    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, 'Si tu as un fichier de sauvegarde, tu peux retrouver tes équipes, tes matchs et ton identité.'));
+    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, 'Si vous avez un fichier de sauvegarde, vous pouvez retrouver vos équipes, vos matchs et votre identité.'));
     var act = el('div', { 'class': 'kb-carte-actions' });
     var ok = el('button', { type: 'button', 'class': 'kb-btn kb-principal', id: 'kbImporterBtn' }, 'IMPORTER');
     ok.addEventListener('click', function () {
@@ -619,7 +633,7 @@
     var vus = {}, fait = 0, ids = termines(), i;
     if (derniereSauv && Array.isArray(derniereSauv.ids)) { for (i = 0; i < derniereSauv.ids.length; i++) vus[derniereSauv.ids[i]] = 1; }
     for (i = 0; i < ids.length; i++) if (!vus[ids[i]]) fait++;
-    if (fait >= 3) return fait + ' matchs terminés depuis ' + (derniereSauv ? 'ta dernière sauvegarde' : 'le début') + '.';
+    if (fait >= 3) return fait + ' matchs terminés depuis ' + (derniereSauv ? 'votre dernière sauvegarde' : 'le début') + '.';
     var ref = derniereSauv ? derniereSauv.at : premierUsage;
     if (!ref || now - ref < 14 * JOUR_MS) return null;
     var change = false, L = [].concat((typeof TEAMS_DB !== 'undefined' && TEAMS_DB) || [], (typeof MATCHES_DB !== 'undefined' && MATCHES_DB) || [], (typeof DELETED_MATCHES !== 'undefined' && DELETED_MATCHES) || []);
@@ -631,8 +645,8 @@
   }
   function carteRappel(raison) {
     var carte = el('div', { 'class': 'kb-carte' });
-    carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Pense à sauvegarder'));
-    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, raison + ' Un fichier gardé hors de l’app te protège d’un effacement des données du navigateur.'));
+    carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Pensez à sauvegarder'));
+    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, raison + ' Un fichier gardé hors de l’app vous protège d’un effacement des données du navigateur.'));
     var act = el('div', { 'class': 'kb-carte-actions' });
     var ok = el('button', { type: 'button', 'class': 'kb-btn kb-principal', id: 'kbSauvegarderBtn' }, 'SAUVEGARDER MAINTENANT');
     ok.addEventListener('click', function () {

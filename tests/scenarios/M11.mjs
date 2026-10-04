@@ -170,4 +170,43 @@ export default async function ({ gabarit, check }) {
       });
     } finally { await app.close(); }
   }
+
+  /* ---------- E : textes « serveur / connexion / en ligne » (F5), mode local seulement ---------- */
+  {
+    const app = await launch(gabarit); const p = app.page;
+    try {
+      await attendreBase(p);
+      const INTERDITS = /serveur|connexion|en ligne|Claude|synchronis/i;
+      await check(`${P}·6 textes du mode local : accueil, carte d'archivage, badge, feuille, échec de corbeille`, async () => {
+        const t = await p.evaluate(() => ({
+          sub: document.querySelector('[onclick="openBackup()"] .hc-sub').textContent,
+          arch: document.querySelector('[onclick^="startArchiveOldMatches("]').closest('.backup-card').querySelector('.bc-sub').textContent,
+        }));
+        eq(t.sub, 'Exporter, importer', 'sous-titre');
+        assert(!INTERDITS.test(t.arch) && /de plus de 180 jours/.test(t.arch), 'carte d’archivage : ' + t.arch);
+        await p.evaluate(() => setSyncState('error'));
+        const badge = await p.evaluate(() => document.getElementById('syncBadgeText').textContent);
+        assert(!INTERDITS.test(badge), 'badge : ' + badge);
+        await p.evaluate(() => openSyncSheet());
+        const feuille = await p.evaluate(() => document.getElementById('sheet').innerText);
+        assert(!INTERDITS.test(feuille), 'feuille : ' + feuille);
+        await p.evaluate(() => { closeSheet(); setSyncState('ok'); });
+        /* échec de mise à la corbeille : l'écriture est refusée */
+        await app.startMatch({ format: '9_11', name: 'echec_' + gabarit });
+        await app.initialPossession('Bleu');
+        await p.evaluate(() => { window.__w = writeMatchDoc; window.writeMatchDoc = async () => { throw new Error('refusé'); }; });
+        await p.evaluate(() => discardMatch());
+        const echec = await p.evaluate(() => document.getElementById('sheet').innerText);
+        assert(/STOCKAGE INACCESSIBLE/.test(echec) && !INTERDITS.test(echec), 'échec : ' + echec);
+        await p.evaluate(() => { window.writeMatchDoc = window.__w; closeSheet(); });
+      });
+      await check(`${P}·7 hors mode local (KBSite.local faux) : textes d'origine inchangés`, async () => {
+        await p.evaluate(() => { KBSite.local = false; setSyncState('error'); });
+        eq(await p.evaluate(() => document.getElementById('syncBadgeText').textContent), 'Non synchronisé — touchez pour en savoir plus', 'badge');
+        await p.evaluate(() => openSyncSheet());
+        assert(await p.evaluate(() => /SYNCHRONISATION/.test(document.getElementById('sheet').innerText)), 'titre');
+        await p.evaluate(() => { closeSheet(); KBSite.local = true; setSyncState('ok'); });
+      });
+    } finally { await app.close(); }
+  }
 }

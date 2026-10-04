@@ -25,6 +25,8 @@ Points d'accroche dans `index.html` (`grep -n MIGRATION index.html`) :
 | `<script src="kblocal.js">` avant le script de l'app, `<script src="kbsite.js">` après | chargement des deux fichiers du site (M03) |
 | `capabilityEntry(name)` et ses trois appels (db, user, downloads) | porte d'entrée des capacités : `window.claude` s'il existe, sinon `KBLocal`, sinon rien (M03) |
 | `openSyncSheet`, `checkLocalBackups`, `renderStorageInfo` | textes « sur cet appareil », plus de plafond de 5 000 documents (M03) |
+| `checkLocalBackups` (2 lignes), `restoreLocalBackup` (1 ligne) | copie locale périmée : rien ne se décide avant l'arrivée des matchs de chaque auteur, jamais d'écrasement d'un match plus récent (M11 ; logique dans `kbsite.js`, `KBSite.baseIncomplete`, `copieObsolete`, `copieRefusee`) |
+| `discardMatch`, `setSyncState`, `openSyncSheet`, sous-titre de l'accueil, carte d'archivage | textes sans « serveur / connexion / en ligne » en mode local seulement (M11) |
 | `exportFullBackup`, `handleImportFile` (5 lignes) | appels à `KBSite.sauvegardeV2`, `importDebut`, `garder`, `fin` : sauvegarde v2 et import sans écrasement (M06) |
 
 ## 2. Resynchroniser (nouvelle version du fichier amont)
@@ -81,3 +83,8 @@ Reprise à la main dans `tests/` et `sim/` du dépôt (jamais de fusion automati
 2. Scénario changé : `git diff amont/tests/scenarios/<chantier>.mjs` (la copie précédente est dans git : commiter `amont/` après chaque passage) et reporter le même changement dans `tests/scenarios/`.
 3. `lib.mjs` et `sim/` : `git diff --no-index amont/tests/lib.mjs tests/lib.mjs` et `git diff --no-index amont/sim sim`. Les écarts attendus sont les adaptations du dépôt (dossiers `KINBALL_*`, options de `launch`) ; tout autre écart venant de l'amont se reporte à la main.
 4. Lancer le scénario seul : `KINBALL_ONLY=<chantier> node tests/run.mjs`, puis le banc complet.
+
+## 6. Limites connues et défauts d'amont à signaler
+
+- **Défaut d'amont (non corrigé ici, à signaler dans la conversation de l'amont)** : `sectionMatchFaults` met `S.names[t]` sans `escapeHtml` dans l'étiquette de colonne du tableau « Par type de faute ». Un nom d'équipe (ou un fichier importé) contenant du HTML s'exécute à l'ouverture de l'onglet Fautes. Le correctif se fait en amont (échapper l'étiquette) puis se resynchronise ; `index.html` n'est pas retouché pour cela.
+- `counts.actions` de la sauvegarde v2 ne compte pas les matchs de la corbeille (`counts.deleted` les compte à part) : c'est voulu, cohérent avec la vérification d'import. Pour retrouver toutes les actions, additionner aussi celles des matchs supprimés.

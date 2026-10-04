@@ -916,7 +916,7 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
       <button class="home-card" style="grid-column:1/-1" onclick="openBackup()">
         <div>
           <div class="hc-title">Sauvegarde des données</div>
-          <div class="hc-sub">Exporter, importer, archiver</div>
+          <div class="hc-sub">Exporter, importer, archiver</div><!-- MIGRATION M11 : « archiver » retiré en mode local par kbsite.js -->
         </div>
         <div class="hc-arrow">›</div>
       </button>
@@ -1030,6 +1030,7 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
     </div>
     <div class="backup-card">
       <div class="bc-title">Archiver les vieux matchs</div>
+      <!-- MIGRATION M11 : carte masquée en mode local ; son texte est réécrit par kbsite.js -->
       <div class="bc-sub">Le stockage en ligne a une limite technique partagée (environ 5000 matchs et équipes au total). Cette action exporte d'abord les matchs TERMINÉS de plus de <span id="archiveDaysLabel">180</span> jours dans un fichier, puis les retire pour garder de la place — ils restent consultables via ce fichier.</div>
       <div class="team-select-row" style="margin-top:0">
         <input type="number" id="archiveDaysInput" value="180" min="1" style="height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font-size:15px;padding:0 12px;width:110px;font-family:inherit" oninput="document.getElementById('archiveDaysLabel').textContent=this.value||'0'">
@@ -1283,7 +1284,7 @@ function setSyncState(state){
   badge.className = state==='ok' ? '' : state;
   const text = document.getElementById('syncBadgeText');
   if(text) text.textContent = state==='saving' ? 'Enregistrement…'
-    : (state==='error' ? 'Non synchronisé — touchez pour en savoir plus' : '');
+    : (state==='error' ? (window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'Non enregistré — touchez pour en savoir plus' : 'Non synchronisé — touchez pour en savoir plus') : '');
 }
 
 /* ==========================================================
@@ -1390,7 +1391,7 @@ function capabilityEntry(name){
   return null;
 }
 (async()=>{
-  try{ DB = await capabilityEntry('db'); }
+  try{ DB = await capabilityEntry('db'); /* MIGRATION M11 : retouche M03 (capabilityEntry) */ }
   catch(e){ DB = null; }
   dbAvailable = !!DB;
   dbReadyResolve();
@@ -1421,7 +1422,7 @@ let USER_CAP = null, AUTHOR_ID = null;
 let CAN_EDIT_TEAMS = true;
 const profileCache = {};
 (async()=>{
-  try{ USER_CAP = await capabilityEntry('user'); }
+  try{ USER_CAP = await capabilityEntry('user'); /* MIGRATION M11 : retouche M03 (capabilityEntry) */ }
   catch(e){ USER_CAP = null; }
   if(USER_CAP){
     try{ AUTHOR_ID = await USER_CAP.id(); }catch(e){ AUTHOR_ID = null; }
@@ -1664,7 +1665,7 @@ function openSyncSheet(){
   const reste = hasUnsavedWork()
     ? `<div class="section-sub">Le match reste complet sur cet appareil et sera réessayé automatiquement. Ne fermez pas l'app d'ici là — ou exportez-le tout de suite.</div>`
     : '';
-  openSheet(`<div class="sheet-title">SYNCHRONISATION</div>
+  openSheet(`<div class="sheet-title">${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'ENREGISTREMENT' : 'SYNCHRONISATION'}</div>
     <div class="msg-center" style="font-size:17px; padding:6px 0 12px; color:${dbSyncState==='error'?'var(--red)':'var(--green)'}">${etat}</div>
     ${reste}
     <div class="choice-row" style="margin-top:10px">
@@ -3014,8 +3015,8 @@ async function discardMatch(){
          <button class="choice-btn" style="background:var(--surface2)" onclick="restoreDiscarded()">REMETTRE LE MATCH</button>
          <button class="choice-btn" style="background:var(--green); color:#0B1220" onclick="closeSheet()">TERMINÉ</button>
        </div>`
-    : `<div class="sheet-title" style="color:var(--red)">PAS PU JOINDRE LE SERVEUR</div>
-       <div class="empty" style="padding:0 0 16px">« ${escapeHtml(nom)} » est toujours dans l'historique. Réessayez de le mettre à la corbeille depuis l'historique dès que la connexion revient.</div>
+    : `<div class="sheet-title" style="color:var(--red)">${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'STOCKAGE INACCESSIBLE' : 'PAS PU JOINDRE LE SERVEUR'}</div>
+       <div class="empty" style="padding:0 0 16px">« ${escapeHtml(nom)} » est toujours dans l'historique. Réessayez de le mettre à la corbeille depuis l'historique ${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'dès que le stockage de cet appareil répond de nouveau' : 'dès que la connexion revient'}.</div>
        <button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>`, true);
 }
 /* Le tout dernier recours, offert sur-le-champ : une seule touche remet le
@@ -4950,7 +4951,7 @@ function matchInfoRows(){
 */
 let downloadsCap = null;
 (async()=>{
-  try{ downloadsCap = await capabilityEntry('downloads'); }
+  try{ downloadsCap = await capabilityEntry('downloads'); /* MIGRATION M11 : retouche M03 (capabilityEntry) */ }
   catch(e){ downloadsCap = null; }
 })();
 async function saveFile(filename, blob){
