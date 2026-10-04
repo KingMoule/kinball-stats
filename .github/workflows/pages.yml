@@ -25,6 +25,10 @@ jobs:
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
+      # Le déploiement échoue si la version ou l'empreinte de sw.js / kbsite.js ne correspondent pas aux fichiers
+      # (oubli de « node outils/check-release.mjs --ecrire » : les appareils ne verraient jamais la mise à jour).
+      - name: Vérifier la cohérence version et empreinte
+        run: node outils/check-release.mjs
       - name: Configurer Pages (activation automatique)
         uses: actions/configure-pages@v5
         with:
