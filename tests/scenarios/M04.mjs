@@ -295,7 +295,8 @@ export default async function ({ gabarit, check }) {
         eq(await p.evaluate(() => ('serviceWorker' in navigator ? navigator.serviceWorker.getRegistrations().then(r => r.length, () => 0) : 0)), 0, 'enregistrements');
         await attendre(500);
         assert(!(await p.evaluate(() => !!document.getElementById('kbCarteInstall') || !!document.getElementById('kbCarteMaj'))), 'aucune carte');
-        assert(!(await visible(p, '#kbAccueil')), 'zone de cartes invisible');
+        /* M06 : sur base vide, la carte de premier lancement peut occuper la zone ; aucune autre carte */
+        eq(await p.evaluate(() => [...document.getElementById('kbAccueil').children].map(c => c.id).filter(i => i !== 'kbCarteLancement')), [], 'zone de cartes sans carte de mise à jour ni d’installation');
         await p.evaluate(() => navTo('backup'));
         const t = await p.evaluate(() => document.getElementById('kbSauvegarde').textContent);
         assert(/^Version \d{4}-\d{2}-\d{2}\.\d+ · app amont [0-9a-f]{8}$/.test(t), 'ligne de version : « ' + t + ' »');
@@ -385,7 +386,7 @@ export default async function ({ gabarit, check }) {
         await q.waitForFunction(() => { const c = document.getElementById('kbCarteMaj'); return c && c.offsetHeight > 0; }, null, { timeout: 12000 });
         await q.waitForFunction(() => { const c = document.getElementById('kbCarteInstall'); return c && c.offsetHeight > 0; }, null, { timeout: 5000 });
         /* ordre : mise à jour avant installation */
-        eq(await q.evaluate(() => [...document.getElementById('kbAccueil').children].map(c => c.id)), ['kbCarteMaj', 'kbCarteInstall'], 'ordre des cartes');
+        eq(await q.evaluate(() => [...document.getElementById('kbAccueil').children].map(c => c.id).filter(i => i !== 'kbCarteLancement')), ['kbCarteMaj', 'kbCarteInstall'], 'ordre des cartes (hors carte de premier lancement M06)');
         await q.screenshot({ path: path.join(dossier, `accueil-cartes-${gabarit}.png`) });
         const mesure = await q.evaluate(() => {
           const b = document.querySelector('.home-hero').getBoundingClientRect();

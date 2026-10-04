@@ -5774,6 +5774,7 @@ async function exportFullBackup(){
      retirés ne serait pas une sauvegarde complète. */
   const payload = {format:'kinball_backup', version:1, exportedAt:new Date().toISOString(),
                    teams:TEAMS_DB, matches:[].concat(MATCHES_DB, DELETED_MATCHES)};
+  if(typeof KBSite !== 'undefined' && KBSite.sauvegardeV2) KBSite.sauvegardeV2(payload); /* MIGRATION M06 */
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   await saveFile('kinball_sauvegarde_'+todayStr()+'.json', blob);
 }
@@ -5800,17 +5801,20 @@ async function handleImportFile(event){
     status.textContent = "Fichier invalide : ce n'est pas une sauvegarde Kin-Ball reconnue.";
     return;
   }
+  const kbImport = (typeof KBSite !== 'undefined' && KBSite.importDebut) ? await KBSite.importDebut(payload) : null; /* MIGRATION M06 */
 
   const existingTeamIds = new Set(TEAMS_DB.map(t=>t.id));
   const existingMatchIds = new Set(MATCHES_DB.map(m=>m.id));
   let teamsAdded=0, teamsUpdated=0, matchesAdded=0, matchesUpdated=0, failed=0;
 
   for(const t of (payload.teams||[])){
+    if(kbImport && !kbImport.garder('team', t)) continue; /* MIGRATION M06 */
     const ok = await dbSetTeam(t);
     if(!ok){ failed++; continue; }
     if(existingTeamIds.has(t.id)) teamsUpdated++; else teamsAdded++;
   }
   for(const m of (payload.matches||[])){
+    if(kbImport && !kbImport.garder('match', m)) continue; /* MIGRATION M06 */
     const ok = await dbSetMatchRaw(m);
     if(!ok){ failed++; continue; }
     if(existingMatchIds.has(m.id)) matchesUpdated++; else matchesAdded++;
@@ -5819,6 +5823,7 @@ async function handleImportFile(event){
   status.textContent =
     `Import terminé : ${teamsAdded} équipe(s) ajoutée(s), ${teamsUpdated} mise(s) à jour, ${matchesAdded} match(s) ajouté(s), ${matchesUpdated} mis à jour.` +
     (failed ? ` (${failed} échec(s) d'écriture)` : '');
+  if(kbImport) kbImport.fin(status); /* MIGRATION M06 */
 }
 </script>
 <!-- MIGRATION M03 : ajouts propres au site (stockage persistant, état de la sauvegarde) -->

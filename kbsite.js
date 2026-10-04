@@ -4,6 +4,7 @@
    façade locale KBLocal est présente et si l'app ne tourne pas dans claude.ai).
    M04 : service worker, mise à jour sur accord, ligne de version, incitation à
    installer (espace de noms window.KBSite).
+   M06 : sauvegarde v2, import sans écrasement, identité, premier lancement, rappel.
    M05 : feuille « FICHIER PRÊT » (second geste du partage de fichiers, voir
    KBLocal.downloads.surSecondGeste dans kblocal.js).
    N'écrit jamais dans S, TEAMS_DB, MATCHES_DB et ne redéfinit aucune fonction de
@@ -87,7 +88,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-04.3';
+  var VERSION_SITE = '2026-10-04.4';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -378,6 +379,312 @@
     KB.downloads.surSecondGeste(feuilleFichierPret);
   }
 
+  /* ================= M06 : sauvegarde v2, import sans écrasement, premier lancement, rappel ================= */
+  /* Tout ce bloc n'agit que si la façade locale est là et si l'app ne tourne pas dans
+     claude.ai (comme M03). Lit TEAMS_DB, MATCHES_DB, DELETED_MATCHES, S sans jamais y écrire. */
+  var RE_IDENTITE = /^u_[0-9A-Za-z-]{8,64}$/;
+  var JOUR_MS = 86400000;
+  var userApi = null;                     // capacité « user » de la façade (identité tenue en mémoire)
+  var dbApi = null;                       // capacité « db » de la façade
+  var metaCharge = false;
+  var derniereSauv = null;                // {at, termines, ids} ou null (jamais)
+  var premierUsage = 0;
+  var rappelPlusTard = 0;                 // horodatage jusqu'auquel « Plus tard » tient
+  var accueilFerme = false;               // « Plus tard » de la carte de premier lancement
+  var sauvegardePrevue = null;            // sauvegarde complète en cours : {ids}
+  var baseVideConnue = null;              // null = pas lu ; true / false
+
+  function lsCopies() {
+    var n = 0, i, k;
+    try {
+      for (i = 0; i < global.localStorage.length; i++) {
+        k = global.localStorage.key(i);
+        if (k && k.indexOf('kinball_backup_') === 0) n++;
+      }
+    } catch (e) {}
+    return n;
+  }
+  function termines() {
+    var ids = [], i, m, L = (typeof MATCHES_DB !== 'undefined' && MATCHES_DB) || [];
+    for (i = 0; i < L.length; i++) { m = L[i]; if (m && m.id && m.status === 'completed') ids.push(m.id); }
+    return ids;
+  }
+  function compter(matchs) {
+    var c = { matches: 0, deleted: 0, actions: 0 }, i, m;
+    for (i = 0; i < matchs.length; i++) {
+      m = matchs[i];
+      if (!m) continue;
+      if (m.deleted) c.deleted++;
+      else { c.matches++; c.actions += Array.isArray(m.history) ? m.history.length : 0; }
+    }
+    return c;
+  }
+
+  /* ---------- Lecture de l'état RÉEL de la base par la façade ---------- */
+  function lireUneFois(chemin) {
+    return new Promise(function (resolve, reject) {
+      var off = null, fait = false;
+      function fermer() { if (off) { try { off(); } catch (e) {} off = null; } }
+      off = dbApi.collection(chemin).onSnapshot(function (snap) {
+        if (fait) return;
+        fait = true;
+        var docs = snap.docs.map(function (d) { return { id: d.id, data: d.data() }; });
+        if (off) fermer(); else setTimeout(fermer, 0);
+        resolve(docs);
+      }, function (e) { if (!fait) { fait = true; fermer(); reject(e); } });
+    });
+  }
+  /* Rend {equipes: [données], matchs: [données]} (corbeille comprise, anciens matchs à plat compris). */
+  function lireBase() {
+    if (!dbApi) return Promise.reject(new Error('base indisponible'));
+    var equipes = [], matchs = [];
+    return lireUneFois('teams').then(function (t) {
+      equipes = t.map(function (d) { return d.data; });
+      return lireUneFois('matches');
+    }).then(function (racine) {
+      var auteurs = [], ids = {}, moi = userApi && userApi.exportIdentity ? userApi.exportIdentity().id : null;
+      racine.forEach(function (d) {
+        if (d.data && Array.isArray(d.data.history)) matchs.push(d.data);
+        else auteurs.push(d.id);
+      });
+      if (moi && auteurs.indexOf(moi) < 0) auteurs.push(moi);
+      auteurs = auteurs.filter(function (a) { if (ids[a]) return false; ids[a] = 1; return true; });
+      return auteurs.reduce(function (suite, a) {
+        return suite.then(function () {
+          return lireUneFois('matches/' + a + '/items').then(function (items) {
+            items.forEach(function (d) { matchs.push(d.data); });
+          });
+        });
+      }, Promise.resolve());
+    }).then(function () { return { equipes: equipes, matchs: matchs }; });
+  }
+  function estVide(etat) { return etat.equipes.length === 0 && etat.matchs.length === 0 && lsCopies() === 0; }
+
+  /* ---------- Sauvegarde v2 ---------- */
+  KBSite.sauvegardeV2 = function (payload) {
+    if (!stockageActif || !payload || typeof payload !== 'object') return;
+    var id = null, nom = '';
+    try {
+      if (userApi && userApi.exportIdentity) { var x = userApi.exportIdentity(); id = x.id; nom = x.name || ''; }
+      else id = global.localStorage.getItem('kinball_install_id');
+    } catch (e) {}
+    payload.version = 2;
+    if (id) payload.identity = { id: id, name: nom };
+    payload.site = { version: VERSION_SITE, amont: VERSION_AMONT };
+    var c = compter(Array.isArray(payload.matches) ? payload.matches : []);
+    payload.counts = { teams: Array.isArray(payload.teams) ? payload.teams.length : 0, matches: c.matches, deleted: c.deleted, actions: c.actions };
+    sauvegardePrevue = { ids: termines() };
+  };
+  /* Une sauvegarde complète n'est « faite » qu'au moment où le fichier est remis. */
+  global.addEventListener('kb:fichier', function (ev) {
+    var nom = ev && ev.detail && ev.detail.filename;
+    if (!sauvegardePrevue || typeof nom !== 'string' || nom.indexOf('kinball_sauvegarde_') !== 0) return;
+    var s = { at: Date.now(), termines: sauvegardePrevue.ids.length, ids: sauvegardePrevue.ids };
+    sauvegardePrevue = null;
+    derniereSauv = s;
+    rappelPlusTard = 0;
+    try { KB.meta.set('site.derniereSauvegarde', s).then(null, function () {}); } catch (e) {}
+    majDerniere();
+    majRappel();
+  });
+
+  /* ---------- Import sûr ---------- */
+  KBSite.continuer = function () { global.location.reload(); };
+  function ouvrirRestauree(compteRendu) {
+    if (typeof global.openSheet !== 'function') { global.location.reload(); return; }
+    global.openSheet(
+      '<div id="kbRestauree">' +
+      '<div class="sheet-title">Sauvegarde restaurée</div>' +
+      '<div class="msg-center" style="font-size:14px; padding:6px 0 14px; line-height:1.45; word-break:break-word">' + echapper(compteRendu) + '</div>' +
+      '<button id="kbContinuer" class="choice-btn" style="background:var(--bleu); font-size:15px; width:100%" onclick="KBSite.continuer()">CONTINUER</button>' +
+      '</div>', false);
+  }
+  KBSite.importDebut = function (payload) {
+    if (!stockageActif) return Promise.resolve(null);
+    var local = { teams: {}, matches: {} }, ignores = 0, vide = false, lu = false;
+    var cible = { garder: function () { return false; }, fin: function () {} };
+    return lireBase().then(function (etat) {
+      etat.equipes.forEach(function (t) { if (t && t.id) local.teams[t.id] = t.updatedAt || 0; });
+      etat.matchs.forEach(function (m) { if (m && m.id) local.matches[m.id] = m.updatedAt || 0; });
+      vide = estVide(etat);
+      lu = true;
+      return {
+        garder: function (sorte, obj) {
+          var table = sorte === 'team' ? local.teams : local.matches, ok = true;
+          if (!obj || !obj.id) return false;               // sans identifiant : rien à comparer, rien à écrire (non compté)
+          if (Object.prototype.hasOwnProperty.call(table, obj.id) && table[obj.id] >= (obj.updatedAt || 0)) ok = false;
+          else if (sorte === 'match' && typeof S !== 'undefined' && S && S.id && S.id === obj.id) ok = false;
+          if (!ok) ignores++;
+          return ok;
+        },
+        fin: function (status) { terminerImport(status, payload, ignores, vide); }
+      };
+    }, function () {
+      /* Lecture impossible : on n'écrit rien plutôt que de risquer un écrasement. */
+      return {
+        garder: function () { return false; },
+        fin: function (status) { status.textContent = 'Import impossible : la base de cet appareil n’a pas pu être lue. Rien n’a été modifié.'; }
+      };
+    });
+  };
+  function terminerImport(status, payload, ignores, vide) {
+    var t = status.textContent || '';
+    if (ignores) t += ' ' + ignores + ' ignoré(s) : déjà à jour sur cet appareil.';
+    if (payload && payload.version === 2 && payload.counts && typeof payload.counts === 'object') {
+      var c = compter(Array.isArray(payload.matches) ? payload.matches : []);
+      var n = payload.counts;
+      if (n.teams !== (Array.isArray(payload.teams) ? payload.teams.length : 0) || n.matches !== c.matches || n.deleted !== c.deleted || n.actions !== c.actions) {
+        t += ' Attention : fichier modifié ou incomplet (ses décomptes ne correspondent pas à son contenu).';
+      }
+    }
+    var ident = payload && payload.identity, locale = null;
+    try { locale = userApi && userApi.exportIdentity ? userApi.exportIdentity() : null; } catch (e) {}
+    var valide = !!ident && typeof ident === 'object' && RE_IDENTITE.test(String(ident.id || ''));
+    if (valide && locale && ident.id !== locale.id) {
+      if (vide && !/échec/.test(t)) {
+        status.textContent = t;
+        userApi.importIdentity({ id: ident.id, name: typeof ident.name === 'string' ? ident.name : '' }).then(function () {
+          status.textContent = t + ' Ton identité de preneur de stats a été reprise.';
+          ouvrirRestauree(t + ' Ton identité de preneur de stats a été reprise.');
+        }, function () {
+          status.textContent = t + ' L’identité du fichier n’a pas pu être reprise ; l’identité de cet appareil est conservée.';
+        });
+        return;
+      }
+      if (!vide) t += ' Ce fichier vient d’un autre preneur de stats : l’identité de cet appareil est conservée.';
+    }
+    status.textContent = t;
+  }
+
+  /* ---------- Texte de la carte « Importer une sauvegarde » ---------- */
+  function texteImport() {
+    var champ = document.getElementById('importFileInput');
+    var carte = champ && champ.closest ? champ.closest('.backup-card') : null;
+    var sous = carte ? carte.querySelector('.bc-sub') : null;
+    if (sous) sous.textContent = 'Ajoute au contenu de cet appareil ce que le fichier a de plus récent. Une donnée plus récente ici n’est jamais écrasée.';
+  }
+
+  /* ---------- Dernière sauvegarde (écran Sauvegarde) ---------- */
+  function majDerniere() {
+    var info = document.getElementById('storageInfo');
+    if (!info || !info.parentNode) return;
+    var ligne = document.getElementById('kbDerniereSauv');
+    if (!ligne) {
+      ligne = el('div', { id: 'kbDerniereSauv', 'class': 'section-sub', style: 'margin:-4px 0 14px' });
+      var ancre = document.getElementById('kbSauvegarde');
+      info.parentNode.insertBefore(ligne, ancre || (document.getElementById('kbStorageStatus') || info).nextSibling);
+    }
+    if (!metaCharge) return;
+    if (!derniereSauv) { ligne.textContent = 'Dernière sauvegarde : jamais'; return; }
+    var d = new Date(derniereSauv.at), p = function (n) { return String(n).padStart(2, '0'); };
+    ligne.textContent = 'Dernière sauvegarde : ' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' à ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* ---------- Cartes de l'accueil : premier lancement et rappel ---------- */
+  function carteLancement() {
+    var carte = el('div', { 'class': 'kb-carte' });
+    carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Nouvel appareil, ou données effacées ?'));
+    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, 'Si tu as un fichier de sauvegarde, tu peux retrouver tes équipes, tes matchs et ton identité.'));
+    var act = el('div', { 'class': 'kb-carte-actions' });
+    var ok = el('button', { type: 'button', 'class': 'kb-btn kb-principal', id: 'kbImporterBtn' }, 'IMPORTER');
+    ok.addEventListener('click', function () {
+      /* même geste : l'écran Sauvegarde, puis le sélecteur de fichier */
+      try { if (typeof global.navTo === 'function') global.navTo('backup'); } catch (e) {}
+      var champ = document.getElementById('importFileInput');
+      if (champ) champ.click();
+    });
+    var plus = el('button', { type: 'button', 'class': 'kb-btn', id: 'kbImporterPlusTard' }, 'Plus tard');
+    plus.addEventListener('click', function () {
+      accueilFerme = true;
+      try { KB.meta.set('site.premierLancementFerme', true).then(null, function () {}); } catch (e) {}
+      retirerCarte('kbCarteLancement');
+    });
+    act.appendChild(ok); act.appendChild(plus);
+    carte.appendChild(act);
+    return carte;
+  }
+  function majLancement() {
+    if (!stockageActif || !metaCharge || !dbApi || accueilFerme || baseVideConnue === false) { retirerCarte('kbCarteLancement'); return Promise.resolve(); }
+    return lireBase().then(function (etat) {
+      baseVideConnue = estVide(etat) ? true : false;
+      if (baseVideConnue && ecranCourant() === 'home' && !document.getElementById('kbCarteLancement')) poserCarte('kbCarteLancement', 20, carteLancement());
+      else if (!baseVideConnue) retirerCarte('kbCarteLancement');
+    }, function () {});
+  }
+
+  /* Raison du rappel, ou null. Lit les variables de l'app (sans y écrire). */
+  function raisonRappel() {
+    var now = Date.now();
+    if (rappelPlusTard && now < rappelPlusTard) return null;
+    var vus = {}, fait = 0, ids = termines(), i;
+    if (derniereSauv && Array.isArray(derniereSauv.ids)) { for (i = 0; i < derniereSauv.ids.length; i++) vus[derniereSauv.ids[i]] = 1; }
+    for (i = 0; i < ids.length; i++) if (!vus[ids[i]]) fait++;
+    if (fait >= 3) return fait + ' matchs terminés depuis ' + (derniereSauv ? 'ta dernière sauvegarde' : 'le début') + '.';
+    var ref = derniereSauv ? derniereSauv.at : premierUsage;
+    if (!ref || now - ref < 14 * JOUR_MS) return null;
+    var change = false, L = [].concat((typeof TEAMS_DB !== 'undefined' && TEAMS_DB) || [], (typeof MATCHES_DB !== 'undefined' && MATCHES_DB) || [], (typeof DELETED_MATCHES !== 'undefined' && DELETED_MATCHES) || []);
+    var seuil = derniereSauv ? derniereSauv.at : 0;
+    for (i = 0; i < L.length; i++) { if (L[i] && (L[i].updatedAt || L[i].createdAt || 0) > seuil) { change = true; break; } }
+    if (!change) return null;
+    var jours = Math.floor((now - ref) / JOUR_MS);
+    return derniereSauv ? 'Dernière sauvegarde il y a ' + jours + ' jours, et des données ont changé depuis.' : 'Aucune sauvegarde faite, et l’app est utilisée depuis ' + jours + ' jours.';
+  }
+  function carteRappel(raison) {
+    var carte = el('div', { 'class': 'kb-carte' });
+    carte.appendChild(el('div', { 'class': 'kb-carte-titre' }, 'Pense à sauvegarder'));
+    carte.appendChild(el('div', { 'class': 'kb-carte-texte' }, raison + ' Un fichier gardé hors de l’app te protège d’un effacement des données du navigateur.'));
+    var act = el('div', { 'class': 'kb-carte-actions' });
+    var ok = el('button', { type: 'button', 'class': 'kb-btn kb-principal', id: 'kbSauvegarderBtn' }, 'SAUVEGARDER MAINTENANT');
+    ok.addEventListener('click', function () {
+      /* appel synchrone dans le geste (feuille de partage) ; la carte disparaît à l'événement kb:fichier */
+      try { if (typeof global.exportFullBackup === 'function') global.exportFullBackup(); } catch (e) {}
+    });
+    var plus = el('button', { type: 'button', 'class': 'kb-btn', id: 'kbRappelPlusTard' }, 'Plus tard');
+    plus.addEventListener('click', function () {
+      rappelPlusTard = Date.now() + JOUR_MS;
+      try { KB.meta.set('site.rappelPlusTard', rappelPlusTard).then(null, function () {}); } catch (e) {}
+      retirerCarte('kbCarteRappel');
+    });
+    act.appendChild(ok); act.appendChild(plus);
+    carte.appendChild(act);
+    return carte;
+  }
+  function majRappel() {
+    if (!stockageActif || !metaCharge || ecranCourant() !== 'home') { return; }
+    var r = raisonRappel();
+    if (!r) { retirerCarte('kbCarteRappel'); return; }
+    if (!document.getElementById('kbCarteRappel')) poserCarte('kbCarteRappel', 30, carteRappel(r));
+  }
+  /* Les abonnements de l'app arrivent un peu après le démarrage : on relit un court instant. */
+  function majM06() {
+    majRappel();
+    majLancement();
+  }
+
+  function demarrerM06() {
+    texteImport();
+    KB.use('db').then(function (d) { dbApi = d; }, function () {});
+    var pUser = KB.use('user').then(function (u) { userApi = u; }, function () {});
+    var lectures = [KB.meta.get('site.derniereSauvegarde'), KB.meta.get('site.premierUsage'), KB.meta.get('site.rappelPlusTard'), KB.meta.get('site.premierLancementFerme')];
+    Promise.all(lectures.concat([pUser])).then(function (v) {
+      derniereSauv = v[0] && typeof v[0] === 'object' ? v[0] : null;
+      premierUsage = typeof v[1] === 'number' ? v[1] : 0;
+      rappelPlusTard = typeof v[2] === 'number' ? v[2] : 0;
+      accueilFerme = v[3] === true;
+      if (!premierUsage) {
+        premierUsage = Date.now();
+        KB.meta.set('site.premierUsage', premierUsage).then(null, function () {});
+      }
+      metaCharge = true;
+      majDerniere();
+      return KB.use('db');
+    }).then(function (d) { dbApi = d; majM06(); }, function () {});
+  }
+  if (stockageActif) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrerM06);
+    else demarrerM06();
+  }
+
   /* ---------- Suivi de l'écran (sans rien envelopper dans l'app) ---------- */
   var ecranPrecedent = null;
   function surEcran() {
@@ -387,9 +694,10 @@
     if (e === 'home') {
       majInstallation();
       afficherMiseAJour();
+      if (typeof majM06 === 'function') majM06();
       if (rechercheReportee) verifierMiseAJour({ forcer: rechercheReportee === 'forcee' });
     }
-    if (e === 'backup') { ligneVersion(); }
+    if (e === 'backup') { ligneVersion(); majDerniere(); }
   }
 
   function demarrer() {
