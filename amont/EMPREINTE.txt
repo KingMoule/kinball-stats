@@ -1,0 +1,6 @@
+fichier : kinball.amont.html (identique à index.html à l'intégration M00)
+sha256  : cce95ad27bfa2d78c0dfc8622cb678e03024637ccdd9dc34b0403c8875f4d921
+taille  : 334966 octets
+lignes  : 5803
+version : livraison 2, fin de vague 2
+date    : 2026-10-04
