@@ -88,7 +88,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-04.4';
+  var VERSION_SITE = '2026-10-04.5';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -684,6 +684,54 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrerM06);
     else demarrerM06();
   }
+
+  /* ================= M11 : copie locale périmée (correctif F1) =================
+     checkLocalBackups() de l'app s'exécute à la première émission des documents
+     d'auteurs, avant l'arrivée des matchs (items) : une copie périmée passait pour
+     « absente de la base » et « Récupérer » écrasait un match plus récent. */
+  function enregBase(id) {
+    var i, L;
+    try { L = (typeof MATCHES_DB !== 'undefined' && MATCHES_DB) || []; for (i = 0; i < L.length; i++) if (L[i] && L[i].id === id) return L[i]; } catch (e) {}
+    try { L = (typeof DELETED_MATCHES !== 'undefined' && DELETED_MATCHES) || []; for (i = 0; i < L.length; i++) if (L[i] && L[i].id === id) return L[i]; } catch (e) {}
+    return null;
+  }
+  function nbActions(m) { return m && Array.isArray(m.history) ? m.history.length : 0; }
+  /* Vrai tant qu'un abonnement aux matchs d'un auteur n'a pas livré son premier instantané. */
+  KBSite.baseIncomplete = function () {
+    if (!stockageActif) return false;
+    try {
+      if (typeof DB === 'undefined' || !DB) return false;          // stockage injoignable : rien à attendre
+      var ids = Object.keys(unsubOwnerItems);
+      if (!ids.length) return true;
+      for (var i = 0; i < ids.length; i++) if (matchesByOwner[ids[i]] === undefined) return true;
+    } catch (e) { return false; }
+    return false;
+  };
+  /* Copie plus ancienne que ce qui est déjà à la corbeille : pas de bandeau. */
+  KBSite.copieObsolete = function (b) {
+    if (!stockageActif) return false;
+    var rec = enregBase(b.match.id);
+    return !!(rec && rec.deleted && (rec.updatedAt || 0) >= (b.match.updatedAt || 0));
+  };
+  /* Vrai = récupération refusée. Une copie moins récente ou moins fournie que la base est supprimée. */
+  KBSite.copieRefusee = function (b) {
+    if (!stockageActif) return false;
+    var msg;
+    if (KBSite.baseIncomplete()) {
+      msg = 'Le stockage de cet appareil est encore en cours de lecture. Réessayez dans un instant.';
+    } else {
+      var rec = enregBase(b.match.id);
+      if (!rec) return false;
+      if ((rec.updatedAt || 0) <= (b.match.updatedAt || 0) && nbActions(rec) <= nbActions(b.match)) return false;
+      try { markLocalBackupSynced(b.match.id); } catch (e) {}
+      msg = 'La version enregistrée sur cet appareil est plus récente que cette copie (' + nbActions(rec) + ' action(s) contre ' + nbActions(b.match) + '). La copie a été supprimée et rien n’a été modifié.';
+    }
+    try {
+      var box = document.getElementById('backupRecovery'); if (box) box.style.display = 'none';
+      openSheet('<div class="sheet-title">COPIE NON RÉCUPÉRÉE</div><div class="msg-center" style="font-size:16px; padding:6px 0 12px">' + echapper(msg) + '</div><button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>', true);
+    } catch (e) {}
+    return true;
+  };
 
   /* ---------- Suivi de l'écran (sans rien envelopper dans l'app) ---------- */
   var ecranPrecedent = null;

@@ -1681,8 +1681,10 @@ function openSyncSheet(){
    ce match compte. */
 function checkLocalBackups(){
   if(backupChecked) return;
+  if(window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()) return; /* MIGRATION M11 : rien ne se décide avant le premier instantané des matchs de chaque auteur */
   backupChecked = true;
   const candidats = listLocalBackups().filter(b=>{
+    if(window.KBSite && KBSite.copieObsolete && KBSite.copieObsolete(b)) return false; /* MIGRATION M11 : copie plus ancienne que la corbeille */
     const serveur = getMatchRecord(b.match.id);
     if(!serveur) return (b.match.history || []).length > 0;
     return (b.match.updatedAt || 0) > (serveur.updatedAt || 0)
@@ -1707,6 +1709,7 @@ function checkLocalBackups(){
 function restoreLocalBackup(id){
   const b = listLocalBackups().find(x=>x.match.id===id);
   if(!b) return;
+  if(window.KBSite && KBSite.copieRefusee && KBSite.copieRefusee(b)) return; /* MIGRATION M11 : jamais d'écrasement d'un match plus récent */
   exitArchiveView();
   S = JSON.parse(JSON.stringify(b.match));
   save();                       // repart dans la file d'écriture, réessais compris
