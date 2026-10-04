@@ -5,6 +5,8 @@
    M04 : service worker, mise à jour sur accord, ligne de version, incitation à
    installer (espace de noms window.KBSite).
    M06 : sauvegarde v2, import sans écrasement, identité, premier lancement, rappel.
+   M08 : chargement de config.js puis de kbcollect.js (collecte facultative, inerte sans
+   adresse ni contact configurés).
    M05 : feuille « FICHIER PRÊT » (second geste du partage de fichiers, voir
    KBLocal.downloads.surSecondGeste dans kblocal.js).
    N'écrit jamais dans S, TEAMS_DB, MATCHES_DB et ne redéfinit aucune fonction de
@@ -102,7 +104,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-04.6';
+  var VERSION_SITE = '2026-10-04.10';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -747,6 +749,37 @@
     return true;
   };
 
+  /* ================= M08 : collecte facultative (inerte sans configuration) =================
+     config.js (racine) porte {collecteUrl, contact}. Les DEUX doivent être non vides pour que
+     kbcollect.js soit chargé ; sinon rien : aucune carte, aucune requête. Jamais dans claude.ai.
+     Une adresse en http n'est admise que vers 127.0.0.1 / localhost (essais). */
+  KBSite.collecteConfig = null;
+  function chargerScript(src, fin) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = function () { fin(true); };
+    s.onerror = function () { fin(false); };
+    document.head.appendChild(s);
+  }
+  function adresseCollecteValide(u) {
+    try {
+      var x = new URL(u);
+      return x.protocol === 'https:' || (x.protocol === 'http:' && (x.hostname === '127.0.0.1' || x.hostname === 'localhost'));
+    } catch (e) { return false; }
+  }
+  function demarrerCollecte() {
+    if (!stockageActif) return;
+    chargerScript('config.js', function (ok) {
+      var c = ok ? global.KB_CONFIG : null;
+      if (!c || typeof c !== 'object' || typeof c.collecteUrl !== 'string' || typeof c.contact !== 'string') return;
+      var url = c.collecteUrl.trim(), contact = c.contact.trim();
+      if (!url || !contact || !adresseCollecteValide(url)) return;
+      KBSite.collecteConfig = { collecteUrl: url, contact: contact };
+      chargerScript('kbcollect.js', function () {});
+    });
+  }
+
   /* ---------- Suivi de l'écran (sans rien envelopper dans l'app) ---------- */
   var ecranPrecedent = null;
   function surEcran() {
@@ -768,6 +801,7 @@
     new MutationObserver(surEcran).observe(document.documentElement, { attributes: true, attributeFilter: ['data-screen'] });
     surEcran();     // navHome() a déjà tourné : lecture initiale
     enregistrer();
+    demarrerCollecte();
     if (peutEnregistrer) {
       var lu = false;
       var fin = function (v) { if (lu) return; lu = true; installRefusee = v === true; majInstallation(); };

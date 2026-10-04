@@ -8,6 +8,7 @@ La racine du dépôt EST le site (GitHub Pages).
 
 - `index.html` : l'app. C'est le fichier amont, avec quelques points d'accroche, tous marqués `MIGRATION <chantier>` (commentaire). Rien d'autre n'y change : aucun reformatage, aucun déplacement.
 - `kblocal.js` : façade de stockage locale (IndexedDB) qui imite les capacités db / user / downloads d'origine.
+- `kbcollect.js`, `config.js`, `confidentialite.html` (M08) : collecte facultative des matchs terminés ; `config.js` porte `{collecteUrl, contact}`, vides par défaut = collecte coupée. Voir `collecte/MODE-D-EMPLOI.md`.
 - `kbsite.js` : tout ce qui est propre au site (installation, mise à jour, sauvegarde, fichiers, cartes de l'accueil). Chargé après le script de l'app.
 - `sw.js` : service worker (hors-ligne, mise à jour sur accord). `VERSION`, `EMPREINTE` et la liste de précache y sont tenues par `outils/check-release.mjs`.
 - `manifest.webmanifest`, `fonts/`, `vendor/`, `icons/`, `.nojekyll`.
@@ -62,6 +63,10 @@ Après toute resynchronisation : `KINBALL_ONLY=M02,M03,M04,M05,M06 node tests/ru
 3. `git add -A`, `git commit`, `git fetch origin main`, vérifier que `main` local est en avance simple, `git push origin main`. Jamais `--force`.
 
 GitHub Pages republie le site. Sur l'iPad, l'app déjà installée télécharge la nouvelle version en silence ; l'accueil affiche « Mise à jour prête » et la personne l'applique quand elle veut (jamais pendant un match).
+
+### Allumer la collecte facultative (M08)
+
+M08 n'ajoute AUCUN point d'accroche dans `index.html` (`kbsite.js` charge `config.js` puis, seulement si l'adresse et le contact sont remplis, `kbcollect.js`). Pour l'allumer : suivre `collecte/MODE-D-EMPLOI.md` (créer le script, obtenir l'adresse `…/exec`), mettre les DEUX valeurs dans `config.js` (`collecteUrl`, `contact`), puis `node outils/check-release.mjs --ecrire`, `node outils/check-release.mjs`, commit et poussée. Valeurs vides dans le dépôt = collecte coupée (aucune carte, aucune requête). La page `confidentialite.html` annonce un délai de traitement des retraits de 30 jours.
 
 ## 4. Revenir en arrière
 

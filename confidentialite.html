@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Confidentialité · Kin-Ball Stats</title>
+<style>
+@font-face{font-family:'Inter';font-style:normal;font-display:swap;font-weight:400;src:url(fonts/inter-latin-400-normal.woff2) format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-display:swap;font-weight:600;src:url(fonts/inter-latin-600-normal.woff2) format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-display:swap;font-weight:700;src:url(fonts/inter-latin-700-normal.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-display:swap;font-weight:800;src:url(fonts/barlow-condensed-latin-800-normal.woff2) format('woff2')}
+:root{
+  --bg:#0B1220; --surface:#141D2E; --surface2:#1C2740; --line:#26324A;
+  --ink:#F5F7FA; --dim:#8CA0C2; --bleu:#2F6BFF; --bleu-ink:#5B8CFF; --red:#FF5A5F; --amber:#F5B94A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;font-size:16px;line-height:1.55;
+  padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0)}
+main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+h1,h2{font-family:'Barlow Condensed',sans-serif;font-weight:800;letter-spacing:.02em;margin:0}
+h1{font-size:38px;line-height:1.05;margin:6px 0 6px}
+h2{font-size:24px;margin:30px 0 8px;color:var(--bleu-ink)}
+p{margin:0 0 12px}
+ul{margin:0 0 12px;padding-left:22px}
+li{margin-bottom:6px}
+.sub{color:var(--dim);font-size:14px;margin-bottom:18px}
+.retour{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.carte{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 14px}
+.carte.non{border-color:var(--red)}
+.carte h3{margin:0 0 6px;font-size:16px}
+.etat{background:var(--surface2);border:1px solid var(--bleu);border-radius:14px;padding:12px 16px;margin:0 0 14px;font-size:14px}
+.contact{font-weight:700;word-break:break-word}
+.contact.vide{color:var(--amber)}
+code{font-family:ui-monospace,Menlo,monospace;font-size:14px;background:var(--surface2);padding:1px 6px;border-radius:6px}
+@media (max-width:480px){ h1{font-size:32px} main{padding:14px 14px 40px} }
+</style>
+</head>
+<body>
+<main>
+<button type="button" class="retour" id="retour">← Retour</button>
+<h1>Confidentialité</h1>
+<div class="sub">Kin-Ball Stats : le partage facultatif de vos matchs pour l’analyse</div>
+
+<div class="etat" id="etat" role="status"></div>
+
+<p>Kin-Ball Stats garde vos équipes, vos joueurs et vos matchs <strong>sur votre appareil</strong>. Rien ne quitte l’appareil à moins que vous ne l’acceptiez, avec l’interrupteur « Partager mes matchs pour l’analyse » de l’écran Sauvegarde. Ce partage est <strong>facultatif</strong> et il est <strong>désactivé par défaut</strong>.</p>
+
+<h2>Ce qui est partagé</h2>
+<p>Seulement vos matchs <strong>terminés</strong>, une fois qu’ils sont terminés :</p>
+<ul>
+<li>les actions du match (lancers, résultats, fautes, remplacements, reprises de jeu), les pointages et les périodes ;</li>
+<li>les positions sur le terrain ;</li>
+<li>le nom du match et les noms des équipes, tels que vous les avez saisis ;</li>
+<li>des identifiants techniques sans signification pour une personne : un numéro d’appareil tiré au hasard, un numéro de preneur de stats (il ne contient aucun nom) et des numéros de joueurs du type <code>p_k3x9…</code> ;</li>
+<li>la version de l’app et la date de l’envoi.</li>
+</ul>
+<p>Pour cette raison, n’écrivez pas de nom de personne dans le nom d’un match ou d’une équipe : ces textes partent tels quels.</p>
+
+<h2>Ce qui n’est jamais partagé</h2>
+<div class="carte non">
+<ul style="margin:0">
+<li><strong>les noms des joueurs</strong> : ils sont retirés de chaque match avant l’envoi, sur l’appareil ; le serveur refuse d’ailleurs tout envoi qui en contient un ;</li>
+<li>vos équipes enregistrées et leurs alignements ;</li>
+<li>les matchs en cours, et les matchs mis à la corbeille qui n’ont jamais été partagés ;</li>
+<li>les matchs pris par d’autres personnes ;</li>
+<li>votre nom, votre adresse courriel, votre position, ou toute mesure d’audience.</li>
+</ul>
+</div>
+<p>Les données restées sur votre appareil ne sont jamais modifiées par le partage.</p>
+
+<h2>À qui et où</h2>
+<p>Les matchs partagés sont reçus par le responsable du projet, dans un espace Google qu’il contrôle (un classeur Google Sheets et un dossier Google Drive). Ils ne sont pas vendus, ni transmis à d’autres personnes, ni publiés. Google héberge cet espace et tient ses propres journaux techniques, comme pour tout service en ligne.</p>
+
+<h2>À quoi ça sert</h2>
+<p>Uniquement à analyser les statistiques de kin-ball : comparer des matchs, des formats et des équipes, et améliorer l’outil. Les joueurs sont souvent mineurs ; c’est pourquoi aucun nom de joueur ne quitte l’appareil.</p>
+
+<h2>Retirer votre accord et demander l’effacement</h2>
+<ul>
+<li><strong>Arrêter le partage</strong> : éteignez l’interrupteur dans l’écran Sauvegarde. Plus rien n’est envoyé, à partir de cet instant.</li>
+<li><strong>Faire effacer ce qui a déjà été partagé</strong> : dans la même carte, appuyez sur « Demander l’effacement de ce que j’ai partagé ». Une demande est envoyée avec le numéro d’appareil ; le responsable efface ce qui vient de cet appareil dans un délai de <strong>30 jours</strong>.</li>
+<li><strong>Mettre un match à la corbeille</strong> après l’avoir partagé envoie une note de suppression pour ce match, et seulement cela.</li>
+<li><strong>Autre moyen</strong> : écrivez au contact ci-dessous.</li>
+</ul>
+<p>Si vous rallumez le partage plus tard, l’app repart de zéro : vos matchs terminés sont de nouveau proposés à l’envoi.</p>
+
+<h2>Contact</h2>
+<p>Pour toute question ou demande : <span class="contact" id="contact"></span></p>
+
+<p class="sub" style="margin-top:28px">Cette page est servie avec l’app et reste lisible sans réseau une fois l’app ouverte une première fois.</p>
+</main>
+<script src="config.js"></script>
+<script>
+(function () {
+  var cfg = (window.KB_CONFIG && typeof window.KB_CONFIG === 'object') ? window.KB_CONFIG : {};
+  var contact = typeof cfg.contact === 'string' ? cfg.contact.trim() : '';
+  var url = typeof cfg.collecteUrl === 'string' ? cfg.collecteUrl.trim() : '';
+  var c = document.getElementById('contact');
+  if (contact) { c.textContent = contact; }
+  else { c.textContent = 'contact non renseigné : adressez-vous au responsable de l’adresse de ce site, ou ouvrez une « issue » sur le dépôt GitHub du projet.'; c.className = 'contact vide'; }
+  var e = document.getElementById('etat');
+  e.textContent = (url && contact)
+    ? 'Le partage facultatif est disponible dans cette version de l’app. Il reste désactivé tant que vous ne l’activez pas.'
+    : 'Dans cette version de l’app, le partage est désactivé : rien ne peut être envoyé' + (contact ? '.' : ' (contact non renseigné).');
+  document.getElementById('retour').addEventListener('click', function () {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = 'index.html';
+  });
+})();
+</script>
+</body>
+</html>
