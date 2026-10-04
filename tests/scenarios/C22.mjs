@@ -220,13 +220,20 @@ export default async function ({ gabarit, check }) {
     // ------------------------------------------------------------------ 5
     await check(`${P} · 5 F22 : pendingPeriodWinner hors de S`, async () => {
       await setup(app, 8);
+      /* M03 : avec le stockage local, la copie kinball_backup_<id> est retirée dès que l'écriture
+         réussit ; on la lit donc au moment où elle est écrite (enregistrement des setItem). */
+      await app.page.evaluate(() => {
+        window.__lsEcrits = [];
+        const si = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('kinball_backup_')) window.__lsEcrits.push(String(v)); return si.call(this, k, v); };
+      });
       await app.faute({ code: 'APPEL' });                   // 9e : duel
       await app.duelStart('Gris');
       await app.faute({ code: 'APPEL' });                   // Noir 10
       await app.faute({ code: 'APPEL' });                   // Noir 11 : période terminée par faute
       const r = await app.page.evaluate(() => {
         const k = Object.keys(localStorage).filter(k => k.startsWith('kinball_backup_'));
-        return { inS: 'pendingPeriodWinner' in S, ls: k.map(x => localStorage.getItem(x)).join('').includes('pendingPeriodWinner'), nls: k.length, wins: S.periodWins, period: S.period };
+        return { inS: 'pendingPeriodWinner' in S, ls: k.map(x => localStorage.getItem(x)).concat(window.__lsEcrits).join('').includes('pendingPeriodWinner'), nls: k.length + window.__lsEcrits.length, wins: S.periodWins, period: S.period };
       });
       assert(r.wins.Noir === 1, `la période n'est pas terminée : ${JSON.stringify(r)}`);
       assert(!r.inS, "'pendingPeriodWinner' encore dans S");

@@ -70,7 +70,7 @@ export async function launch(gabarit = 'tablette', opts = {}) {
      l'ordre relatif des minuteries est conservé, et settle() attend qu'il n'en
      reste aucune. KINBALL_TIMESCALE=1 donne les vrais délais (plus lent). */
   await page.addInitScript(INIT, opts.timescale || SCALE);   // C23 : opts.timescale = facteur de délais propre à cette page (1 = vrais délais)
-  await page.goto('file://' + HTML, { waitUntil: 'domcontentloaded' });
+  await page.goto(opts.url || ('file://' + (opts.html || HTML)), { waitUntil: 'domcontentloaded' });   // M03 : opts.url (page servie en http) / opts.html (copie de l'app)
   await page.waitForFunction(() => typeof startMatch === 'function' && typeof S !== 'undefined');
   /* Sans animation de la feuille par défaut ; on la garde avec KINBALL_ANIM=1
      ou launch(gabarit, { anim: true }) (le scénario C22 en a besoin : c'est

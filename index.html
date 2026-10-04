@@ -867,7 +867,8 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
   </div>
   <div class="brand-sub">Statistiques de match</div>
   <div id="backupRecovery"></div>
-  <div id="dbUnavailable" style="display:none">Impossible de se connecter au stockage Claude. Vérifiez votre connexion et que vous êtes bien connecté à votre compte, puis rechargez la page.</div>
+  <!-- MIGRATION M03 : texte « stockage de cet appareil » -->
+  <div id="dbUnavailable" style="display:none">Impossible d'accéder au stockage de cet appareil. Rechargez la page ; si le problème continue, exportez vos matchs en fichier dès que possible.</div>
 
   <div class="home-wrap">
     <button class="resume-card" id="resumeCard" style="display:none" onclick="resumeMatch()">
@@ -1017,7 +1018,8 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
     <div class="backup-grid">
     <div class="backup-card">
       <div class="bc-title">Exporter toutes les données</div>
-      <div class="bc-sub">Équipes, alignements et tous les matchs (en cours et terminés) dans un seul fichier. Vos données sont déjà stockées en ligne et suivent votre compte d'un appareil à l'autre ; ce fichier sert à les garder hors de l'app, pour l'analyse ou par précaution.</div>
+      <!-- MIGRATION M03 : texte « stockée sur cet appareil » -->
+    <div class="bc-sub">Équipes, alignements et tous les matchs (en cours et terminés) dans un seul fichier. Vos données sont stockées sur cet appareil ; ce fichier sert à les garder hors de l'app, pour l'analyse ou par précaution.</div>
       <button class="primary-btn" style="margin-top:0" onclick="exportFullBackup()">EXPORTER LA SAUVEGARDE</button>
     </div>
     <div class="backup-card">
@@ -1078,6 +1080,8 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
 
 <!-- MIGRATION M02 : xlsx 0.18.5 embarqué (vendor/) au lieu du CDN -->
 <script src="vendor/xlsx.full.min.js"></script>
+<!-- MIGRATION M03 : façade de stockage local (IndexedDB) -->
+<script src="kblocal.js"></script>
 <script>
 /* ==========================================================
    TÉLÉPHONE — mise en page dédiée et verrou portrait
@@ -1378,8 +1382,15 @@ function rebuildMatches(){
 }
 function isVisible(id){ const el = document.getElementById(id); return el && el.style.display==='flex'; }
 
+/* MIGRATION M03 : porte d'entrée des capacités. window.claude s'il existe (comportement
+   d'origine), sinon la façade locale KBLocal, sinon null (stockage indisponible). */
+function capabilityEntry(name){
+  if(window.claude && window.claude.use) return window.claude.use(name);
+  if(window.KBLocal && window.KBLocal.use) return window.KBLocal.use(name);
+  return null;
+}
 (async()=>{
-  try{ DB = (window.claude && window.claude.use) ? await window.claude.use('db') : null; }
+  try{ DB = await capabilityEntry('db'); }
   catch(e){ DB = null; }
   dbAvailable = !!DB;
   dbReadyResolve();
@@ -1410,7 +1421,7 @@ let USER_CAP = null, AUTHOR_ID = null;
 let CAN_EDIT_TEAMS = true;
 const profileCache = {};
 (async()=>{
-  try{ USER_CAP = (window.claude && window.claude.use) ? await window.claude.use('user') : null; }
+  try{ USER_CAP = await capabilityEntry('user'); }
   catch(e){ USER_CAP = null; }
   if(USER_CAP){
     try{ AUTHOR_ID = await USER_CAP.id(); }catch(e){ AUTHOR_ID = null; }
@@ -1645,12 +1656,13 @@ window.addEventListener('online', ()=>{ if(pendingSaveId){ retryStep = 0; save(t
    se passe, et surtout donner deux issues de secours utilisables sans
    réseau (réessayer, ou sortir le match en fichier). */
 function openSyncSheet(){
+  /* MIGRATION M03 : textes « sur cet appareil » (état et reste, ci-dessous) */
   const etat = dbSyncState === 'error'
-    ? (DB ? `Les dernières actions n'ont pas pu être envoyées au serveur.`
-          : `L'app n'arrive pas à joindre le stockage Claude.`)
+    ? (DB ? `Les dernières actions n'ont pas pu être enregistrées sur cet appareil.`
+          : `L'app n'arrive pas à accéder au stockage de cet appareil.`)
     : (dbSyncState === 'saving' ? `Enregistrement en cours…` : `Tout est enregistré.`);
   const reste = hasUnsavedWork()
-    ? `<div class="section-sub">Le match reste complet sur cet appareil et sera renvoyé automatiquement dès que la connexion revient. Ne fermez pas l'app d'ici là — ou exportez-le tout de suite, l'export fonctionne sans réseau.</div>`
+    ? `<div class="section-sub">Le match reste complet sur cet appareil et sera réessayé automatiquement. Ne fermez pas l'app d'ici là — ou exportez-le tout de suite.</div>`
     : '';
   openSheet(`<div class="sheet-title">SYNCHRONISATION</div>
     <div class="msg-center" style="font-size:17px; padding:6px 0 12px; color:${dbSyncState==='error'?'var(--red)':'var(--green)'}">${etat}</div>
@@ -1682,10 +1694,11 @@ function checkLocalBackups(){
   const b = candidats.sort((x,y)=>(y.match.updatedAt||0)-(x.match.updatedAt||0))[0];
   const serveur = getMatchRecord(b.match.id);
   const ecart = (b.match.history||[]).length - ((serveur && serveur.history) || []).length;
+  /* MIGRATION M03 : texte « version enregistrée » / « stockage de cet appareil » (ci-dessous) */
   box.style.display = 'block';
   box.innerHTML = `<div class="rec-title">Un match n'avait pas été sauvegardé</div>
     <div class="rec-sub">« ${escapeHtml(b.match.matchName || 'match')} » — ${(b.match.history||[]).length} action(s) conservée(s) sur cet appareil${
-      serveur ? `, soit ${ecart} de plus que la version en ligne` : ', absent du stockage en ligne'}.</div>
+      serveur ? `, soit ${ecart} de plus que la version enregistrée` : ', absent du stockage de cet appareil'}.</div>
     <div class="rec-actions">
       <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${b.match.id}')">Récupérer ce match</button>
       <button class="ghost-btn" onclick="dismissLocalBackup('${b.match.id}')">Ignorer</button>
@@ -4934,7 +4947,7 @@ function matchInfoRows(){
 */
 let downloadsCap = null;
 (async()=>{
-  try{ downloadsCap = (window.claude && window.claude.use) ? await window.claude.use('downloads') : null; }
+  try{ downloadsCap = await capabilityEntry('downloads'); }
   catch(e){ downloadsCap = null; }
 })();
 async function saveFile(filename, blob){
@@ -5711,7 +5724,7 @@ function renderStorageInfo(){
   const el = document.getElementById('storageInfo');
   if(!el) return;
   const total = MATCHES_DB.length + TEAMS_DB.length;
-  const warn = total > 4000;
+  const warn = false;   /* MIGRATION M03 : plus de plafond de 5 000 documents sur cet appareil */
   const actions = MATCHES_DB.reduce((n,m)=>n+((m.history||[]).length), 0);
   el.innerHTML = `<span style="${warn?'color:var(--red);font-weight:700':''}">${MATCHES_DB.length} match${MATCHES_DB.length>1?'s':''}, `
     + `${TEAMS_DB.length} équipe${TEAMS_DB.length>1?'s':''} et ${actions.toLocaleString('fr-CA')} action${actions>1?'s':''} enregistrée${actions>1?'s':''}`
@@ -5808,5 +5821,7 @@ async function handleImportFile(event){
     (failed ? ` (${failed} échec(s) d'écriture)` : '');
 }
 </script>
+<!-- MIGRATION M03 : ajouts propres au site (stockage persistant, état de la sauvegarde) -->
+<script src="kbsite.js"></script>
 </body>
 </html>
