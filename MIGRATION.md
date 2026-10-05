@@ -6,6 +6,8 @@ Mode d'emploi court. Tout se lance depuis la racine du dépôt.
 
 La racine du dépôt EST le site (GitHub Pages).
 
+> **Depuis la vague 3 (2026-10-04) : le dépôt est la source.** `index.html` évolue ici (C24, C20 : modifications faites directement dans le dépôt, sans marqueur `MIGRATION`). `amont/` reste figé comme dernière version issue de l'artifact claude.ai, qui n'évolue plus ; `check-release` continue de s'y référer et la resynchronisation (section 2) ne sert plus qu'en secours.
+
 - `index.html` : l'app. C'est le fichier amont, avec quelques points d'accroche, tous marqués `MIGRATION <chantier>` (commentaire). Rien d'autre n'y change : aucun reformatage, aucun déplacement.
 - `kblocal.js` : façade de stockage locale (IndexedDB) qui imite les capacités db / user / downloads d'origine.
 - `kbcollect.js`, `config.js`, `confidentialite.html` (M08) : collecte facultative des matchs terminés ; `config.js` porte `{collecteUrl, contact}`, vides par défaut = collecte coupée. Voir `collecte/MODE-D-EMPLOI.md`.
