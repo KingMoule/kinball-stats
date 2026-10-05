@@ -71,17 +71,25 @@ export async function launch(gabarit = 'tablette', opts = {}) {
      l'ordre relatif des minuteries est conservé, et settle() attend qu'il n'en
      reste aucune. KINBALL_TIMESCALE=1 donne les vrais délais (plus lent). */
   await page.addInitScript(INIT, opts.timescale || SCALE);   // C23 : opts.timescale = facteur de délais propre à cette page (1 = vrais délais)
+  /* C21 : réglage d'appareil « Saisie en match » écrit AVANT le chargement de la page. Le banc travaille en
+     'feuille' (comportement d'origine, les 380 vérifications d'avant) ; launch(gabarit, { saisie: 'radiale' })
+     ou KINBALL_SAISIE=radiale pour le menu radial ; { saisie: null } n'écrit rien (défaut de l'app). */
+  const saisie = opts.saisie !== undefined ? opts.saisie : (process.env.KINBALL_SAISIE || 'feuille');
+  /* P3 : écrit une seule fois par contexte (marque en sessionStorage) et seulement si la clé est absente : un test qui
+     vide le stockage ou recharge la page (M03, M11) ne voit plus le réglage réécrit avant le code de l'app. */
+  if (saisie) await page.addInitScript((v) => { try { if (!sessionStorage.getItem('__saisieInit')) { sessionStorage.setItem('__saisieInit', '1'); if (localStorage.getItem('kinball.saisie') === null) localStorage.setItem('kinball.saisie', v); } } catch (e) {} }, saisie);
   await page.goto(opts.url || ('file://' + (opts.html || HTML)), { waitUntil: 'domcontentloaded' });   // M03 : opts.url (page servie en http) / opts.html (copie de l'app)
   await page.waitForFunction(() => typeof startMatch === 'function' && typeof S !== 'undefined');
   /* Sans animation de la feuille par défaut ; on la garde avec KINBALL_ANIM=1
      ou launch(gabarit, { anim: true }) (le scénario C22 en a besoin : c'est
      pendant la descente de 220 ms que les appuis fantômes se produisent). */
-  if (!(process.env.KINBALL_ANIM || opts.anim)) await page.addStyleTag({ content: '#sheet{transition:none !important}' });
+  if (!(process.env.KINBALL_ANIM || opts.anim)) await page.addStyleTag({ content: '#sheet{transition:none !important} #radial, #radial *{transition:none !important; animation:none !important}' });
   return new App(browser, page, errors, gabarit);
 }
 
+/* C21 : un bouton d'appel peut être dans la feuille OU dans la couche radiale (mêmes onclick). */
 const sel = {
-  sheetBtn: (call) => `#sheet [onclick="${call}"]`,
+  sheetBtn: (call) => `#sheet [onclick="${call}"], #radial [onclick="${call}"]`,
 };
 
 export class App {
@@ -112,7 +120,8 @@ export class App {
   async settle() {
     await this.page.waitForFunction(() => window.__timers === 0
       && document.getElementById('sheet').getAnimations().length === 0
-      && !document.getElementById('sheet').classList.contains('closing'), null, { timeout: 8000, polling: 10 });
+      && !document.getElementById('sheet').classList.contains('closing')
+      && (() => { const r = document.getElementById('radial'); return !r || (!r.classList.contains('closing') && r.getAnimations({ subtree: true }).length === 0); })(), null, { timeout: 8000, polling: 10 });
     const bad = await this.page.evaluate(() => {
       const sh = document.getElementById('sheet');
       return sh.classList.contains('open') && !!sh.querySelector('.msg-center');
@@ -131,9 +140,9 @@ export class App {
   async clickSheet(call) {
     const s = sel.sheetBtn(call);
     await this.page.waitForFunction((s) => {
-      const sh = document.getElementById('sheet');
-      if (!sh.classList.contains('open') || sh.classList.contains('closing') || sh.getAnimations().length) return false;
-      const b = sh.querySelector(s); if (!b) return false;
+      const b = document.querySelector(s); if (!b) return false;
+      const sh = b.closest('#radial') || document.getElementById('sheet');
+      if (!sh.classList.contains('open') || sh.classList.contains('closing') || sh.getAnimations({ subtree: true }).length) return false;
       if (typeof sheetLastTap !== 'undefined' && typeof SHEET_DOUBLE_MS !== 'undefined') {
         const r = b.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
         if (Date.now() - sheetLastTap.t < SHEET_DOUBLE_MS + 20 && Math.hypot(x - sheetLastTap.x, y - sheetLastTap.y) < SHEET_DOUBLE_PX + 4) return false;
@@ -179,7 +188,7 @@ export class App {
     return { x: b.x + n[0] * b.width, y: b.y + n[1] * b.height };
   }
   async _pickPlayer(player) {
-    if (await this.page.locator('#sheet .player-pick-row').count()) {
+    if (await this.page.locator('#sheet .player-pick-row, #radial .rd-disc').count()) {
       await this.clickSheet(`choosePlayer('${player || ''}')`);
     }
   }

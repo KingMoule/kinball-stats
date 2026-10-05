@@ -8,11 +8,13 @@ const RUNS = [
   { format: 'duel11', seed: 303, n: 110 },
 ];
 
-export default async function fuzz({ gabarit, check }) {
+/* C21 : `saisie` = 'feuille' | 'radiale' (défaut : KINBALL_SAISIE, sinon 'feuille') ; mêmes graines et mêmes invariants dans les deux modes. */
+export default async function fuzz({ gabarit, check }) { return runFuzz({ gabarit, check }); }
+export async function runFuzz({ gabarit, check, saisie, tag }) {
   for (const run of RUNS) {
-    const P = `[${gabarit}] fuzz ${run.format}`;
+    const P = `[${gabarit}] ${tag ? tag + ' ' : ''}fuzz ${run.format}`;
     await check(`${P} (${run.n} actions, graine ${run.seed})`, async () => {
-      const app = await launch(gabarit);
+      const app = await launch(gabarit, saisie ? { saisie } : {});
       try {
         const m = new Model(run.format);
         await app.startMatch({ format: run.format, withRosters: !!run.rosters, name: 'fuzz' });

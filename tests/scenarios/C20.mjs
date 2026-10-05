@@ -21,7 +21,7 @@ const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete
 async function drag(app, from = [0.3, 0.3], to = [0.7, 0.7]) {
   const a = await app._pt(from), b = await app._pt(to), m = app.page.mouse;
   await m.move(a.x, a.y); await m.down(); await m.move(b.x, b.y, { steps: 2 }); await m.up();
-  await app.page.waitForFunction(() => !!document.querySelector('#sheet [onclick^="pickResult"]'), null, { timeout: 4000, polling: 10 });
+  await app.page.waitForFunction(() => !!document.querySelector('#sheet [onclick^="pickResult"], #radial [onclick^="pickResult"]'), null, { timeout: 4000, polling: 10 });
 }
 const detail = app => app.ev(() => { const e = S.history[S.history.length - 1]; return e && { type: e.type, d: e.details, b: e.before }; });
 async function nouveau(gabarit, opts = {}, format = '9_11', poss = 'Gris') {
@@ -40,8 +40,11 @@ export default async function ({ gabarit, check }) {
     try {
       await drag(app);
       const r = await app.ev(() => {
-        const sh = document.getElementById('sheet').getBoundingClientRect();
-        return [...document.querySelectorAll('#sheet .opp-block')].map(bl => ({
+        /* C21 : en saisie radiale, la « feuille » est le terrain et un bloc est une rangée de trois boutons de la couche. */
+        const radial = document.getElementById('radial').classList.contains('open');
+        const sh = (radial ? document.getElementById('field') : document.getElementById('sheet')).getBoundingClientRect();
+        const rangees = radial ? (b => [0, 3].map(i => ({ querySelectorAll: () => b.slice(i, i + 3) })))([...document.querySelectorAll('#radial .rd-btn')]) : [...document.querySelectorAll('#sheet .opp-block')];
+        return rangees.map(bl => ({
           calls: [...bl.querySelectorAll('[onclick]')].map(x => x.getAttribute('onclick')),
           texts: [...bl.querySelectorAll('[onclick]')].map(x => x.textContent.trim()),
           boxes: [...bl.querySelectorAll('[onclick]')].map(x => { const q = x.getBoundingClientRect(); return { w: q.width, h: q.height, l: q.left, r: q.right, over: x.scrollWidth > x.clientWidth + 1 }; }),
@@ -65,7 +68,9 @@ export default async function ({ gabarit, check }) {
     try {
       if (await app.ev(() => !!S.awaitingInitial)) await app.initialPossession('Bleu');
       await drag(app);
-      const n = await app.ev(() => [document.querySelectorAll('#sheet .opp-block').length, document.querySelectorAll('#sheet .opp-block [onclick]').length]);
+      const n = await app.ev(() => document.getElementById('radial').classList.contains('open')
+        ? [1, [...document.querySelectorAll('#radial .rd-btn')].filter(b => !/cancelPendingEvent/.test(b.getAttribute('onclick'))).length]
+        : [document.querySelectorAll('#sheet .opp-block').length, document.querySelectorAll('#sheet .opp-block [onclick]').length]);
       eq(n, [1, 3], 'un bloc, trois segments');
     } finally { await app.close(); }
   });
@@ -90,7 +95,7 @@ export default async function ({ gabarit, check }) {
       sb.history.forEach(e => { if (e.details) { delete e.details.attacker_player_id; delete e.details.attacker_player_name; } });
       [sa, sb].forEach(x => x.history.forEach(e => { if (e.details) { delete e.details.start_norm; delete e.details.end_norm; } if (e.ts) delete e.ts; if (e.by) delete e.by; }));
       eq(sa.scores, sb.scores, 'points'); eq(sa.possession, sb.possession, 'possession'); eq(sa.stopped, sb.stopped, 'départ arrêté');
-      eq(await a.ev(() => !!document.querySelector('#sheet .player-pick-row')), false, 'aucune feuille de joueur');
+      eq(await a.ev(() => !!document.querySelector('#sheet .player-pick-row, #radial .rd-disc')), false, 'aucune feuille de joueur');
       eq(await a.ev(() => S.scores.Bleu + '-' + S.scores.Gris + '-' + S.scores.Noir), '0-1-1', 'Gris et Noir +1');
       eq(eb.d.fault_type, undefined, 'témoin sans fault_type');
     } finally { await a.close(); await b.close(); }
