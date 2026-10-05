@@ -244,6 +244,34 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .opp-block.is-noir{border:2px solid rgba(255,255,255,.55);}
 .msg-center{text-align:center; padding:18px 0; font-size:22px; font-weight:800;}
 
+/* ---------- C21 : MENU RADIAL PRÈS DU DOIGT ----------
+   Une seule couche, enfant de #field : même repère que fieldPoint(), y compris sous le verrou portrait.
+   Elle ne recouvre que le terrain (ni le ruban de pointage, ni la barre du téléphone : ↶ reste atteignable). */
+#radial{position:absolute; inset:0; z-index:6; display:none; touch-action:none;}
+#radial.open, #radial.closing{display:block;}
+#radial.closing{opacity:0; transition:opacity .1s linear;}
+#radial.closing *{pointer-events:none;}   /* couche qui se ferme : boutons et voile inertes, la couche elle-même avale l'appui */
+#radial .rd-veil{position:absolute; inset:0; background:rgba(0,0,0,.34);}
+.rd-btn{position:absolute; display:flex; align-items:center; justify-content:center; text-align:center; color:#fff; font-weight:800; letter-spacing:.02em; line-height:1.05; padding:0 6px; overflow:hidden; box-shadow:0 6px 16px -6px rgba(0,0,0,.6);}
+.rd-rect{border-radius:12px; font-size:19px;}
+.rd-rect.miss{box-shadow:inset 0 0 0 999px rgba(0,0,0,.24), 0 6px 16px -6px rgba(0,0,0,.6);}
+.rd-rect.is-noir{box-shadow:inset 0 0 0 2px rgba(255,255,255,.55), 0 6px 16px -6px rgba(0,0,0,.6);}
+.rd-rect.is-noir.miss{box-shadow:inset 0 0 0 999px rgba(255,255,255,.07), inset 0 0 0 2px rgba(255,255,255,.55), 0 6px 16px -6px rgba(0,0,0,.6);}
+.rd-rect.rd-def{font-size:13px; line-height:1.1; padding:0 3px; border:1px solid rgba(255,255,255,.45);}
+.rd-disc{width:72px; height:72px; border-radius:50%; font-size:12.5px; line-height:1.1; padding:0 5px; border:2px solid rgba(255,255,255,.55);}
+.rd-disc.is-noir{border-color:rgba(255,255,255,.9);}
+.rd-disc .rd-t{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; max-width:100%; overflow:hidden; white-space:normal; word-break:break-word; overflow-wrap:anywhere;}
+.rd-disc.unknown{background:var(--surface2); color:var(--dim); font-size:28px; border:1px solid var(--line);}
+.rd-wide{border-radius:12px; font-size:14px; line-height:1.15; background:#3a1d22; color:#ff9aa0; border:1px solid var(--red-d);}
+.rd-ghost{border-radius:12px; font-size:15px; font-weight:700; background:rgba(20,27,43,.94); border:1px solid rgba(255,255,255,.35);}
+.rd-fault{border-radius:12px; background:var(--red); font-size:12.5px; font-weight:700; line-height:1.15; padding:0 5px;}
+.rd-reprise{border-radius:12px; font-size:15px; background:var(--surface2); color:var(--bleu-ink); border:1px solid var(--bleu);}
+.rd-cap{position:absolute; transform:translateX(-50%); max-width:216px; padding:3px 10px; border-radius:999px; background:rgba(11,18,32,.82); text-align:center; font-size:12px; line-height:16px; font-weight:700; letter-spacing:.04em; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;}
+@media (prefers-reduced-motion:no-preference){
+  #radial.open .rd-btn{animation:rdpop .12s ease-out;}
+  @keyframes rdpop{from{transform:scale(.85); opacity:0;}}
+}
+
 /* ---------- STATS ---------- */
 #stats{display:none; flex-direction:column; flex:1 1 auto; min-height:0; background:var(--bg);}
 .ghost-btn{height:44px; padding:0 16px; border-radius:10px; background:var(--surface2); color:var(--ink); font-size:14px; font-weight:600;}
@@ -976,6 +1004,14 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
     </div>
     <div class="field-hint" id="modeHint">Rapide, pour suivre le match en direct.</div>
 
+    <!-- C21 : réglage de CET appareil (localStorage « kinball.saisie »), pas une donnée du match -->
+    <div class="field-label" style="margin-top:20px">Saisie en match (cet appareil)</div>
+    <div class="mode-toggle-row">
+      <button type="button" id="saisieRadBtn" class="mode-toggle-btn active" onclick="setSaisieMode('radiale')">RADIALE (près du doigt)</button>
+      <button type="button" id="saisieFeuBtn" class="mode-toggle-btn" onclick="setSaisieMode('feuille')">FEUILLE DU BAS</button>
+    </div>
+    <div class="field-hint">Radiale : les choix s'ouvrent autour du doigt, sur le terrain. Feuille du bas : comme avant.</div>
+
     <div class="form-error" id="newMatchError"></div>
     <button class="primary-btn" onclick="startMatch()">COMMENCER LE MATCH</button>
   </div>
@@ -1065,6 +1101,7 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
       <div class="duel-tag" id="duelTag"></div>
       <div class="adv-tag" id="advTag"></div>
       <div class="situation-tag" id="situationTag"></div>
+      <div id="radial"></div>
     </div>
   </div>
   <!-- Téléphone : contrôles du match sous le pouce (vide et masqué sur tablette) -->
@@ -1896,6 +1933,7 @@ function setScreenTitle(text){
 }
 /* Version étroite des onglets : réutilise le bottom sheet de l'app. */
 function openNavMenu(){
+  if(radialBusy()) return;   // C21 : jamais pendant une saisie radiale (sinon saisie orpheline, ↶ mort)
   const cur = SCREEN_META[currentScreen()] || {};
   // Sur téléphone, les actions de l'écran (HEAT MAP, EXPORTER…) vivent ici.
   const actions = (IS_PHONE && cur.actions && cur.actions.length)
@@ -2072,6 +2110,7 @@ function openNewMatch(){ navTo('newMatch'); }
    cours sans confirmation — le match reste récupérable, mais le savoir ne
    vaut rien si on ne le dit pas au moment où on risque de le perdre. */
 function goHome(){
+  if(radialBusy()) return;   // C21 : idem (⌂ reste atteignable sous la couche, qui ne couvre que le terrain)
   if(currentScreen()==='match' && !viewingArchive && S.id && S.status==='in_progress' && S.history.length){
     openSheet(`<div class="sheet-title">QUITTER LE MATCH EN COURS ?</div>
       <div class="empty" style="padding:0 0 16px">Le match est sauvegardé en continu : vous pourrez le reprendre depuis l'accueil, exactement où vous l'avez laissé.</div>
@@ -2363,6 +2402,7 @@ function openLineupSheet(team){
   if(viewingArchive || !S.id) return;
   // jamais par-dessus une étape de jeu en cours (possession, résultat, faute…)
   if(pending || S.awaitingInitial || S.awaitingDuelStart || periodEndTimer) return;
+  if(radialBusy()) return;   // C21 : jamais pendant une saisie radiale
   if(document.getElementById('sheet').classList.contains('open')) return;
   if(!S.lineups) S.lineups = {Bleu:[],Gris:[],Noir:[]};
   lineupSheetTeam = team; subOut = null; lineupDraft = [];
@@ -2575,10 +2615,12 @@ function holdButtonHTML(label, hint, action){
    Variables de module, pas dans S. */
 const SHEET_CLOSE_MS = 240, SHEET_DOUBLE_MS = 300, SHEET_DOUBLE_PX = 32, UNDO_REARM_MS = 400;
 let sheetCloseTimer = null, sheetLastTap = {t:0, x:-1e9, y:-1e9}, undoBlockedUntil = 0;
+let radialFastClose = false, radialCloseTimer = null, radialStage = null, radialAnchor = null, radialRelease = null, radialPendingRef = null;   // C21 (déclarées ici : openSheet / closeSheet les lisent dès le chargement)
 function openSheet(html, dismissable){
   const sh = document.getElementById('sheet');
   clearTimeout(sheetCloseTimer); sheetCloseTimer = null;
   sh.classList.remove('closing');          // rouverte pendant la descente : active tout de suite
+  if(radialBusy()) hideRadial();           // C21 : une feuille prend toujours le pas sur la couche radiale
   sh.innerHTML = html;
   document.getElementById('sheetBackdrop').style.display='block';
   sh.classList.add('open');
@@ -2593,19 +2635,138 @@ function closeSheet(){
   }
   sh.classList.remove('open');
   document.getElementById('sheetBackdrop').style.display='none';
+  if(radialBusy()) closeRadial();          // C21 : fermer la saisie ferme aussi la couche radiale (animation, boutons inertes)
 }
 /* Un seul écouteur, en capture : anti-double-appui au même endroit et
    réarmement de ↶. Chaque appui reçu par la feuille (avalé ou non) est mémorisé. */
-document.getElementById('sheet').addEventListener('click', e=>{
+function sheetTapGuard(e){
   const now = Date.now();
-  if(now - sheetLastTap.t < SHEET_DOUBLE_MS && Math.hypot(e.clientX - sheetLastTap.x, e.clientY - sheetLastTap.y) < SHEET_DOUBLE_PX){
-    e.stopPropagation(); e.preventDefault();
-  }
+  const double = now - sheetLastTap.t < SHEET_DOUBLE_MS && Math.hypot(e.clientX - sheetLastTap.x, e.clientY - sheetLastTap.y) < SHEET_DOUBLE_PX;
+  if(double){ e.stopPropagation(); e.preventDefault(); }
   sheetLastTap = {t:now, x:e.clientX, y:e.clientY};
   undoBlockedUntil = now + UNDO_REARM_MS;
-}, true);
+  return double;
+}
+document.getElementById('sheet').addEventListener('click', sheetTapGuard, true);
 document.getElementById('sheetBackdrop').addEventListener('click', ()=>{ undoBlockedUntil = Date.now() + UNDO_REARM_MS; });
 function closeSheetIfDismissable(){ if(S.sheetDismissable) closeSheet(); }
+
+/* ---------- C21 : MENU RADIAL PRÈS DU DOIGT ----------
+   Présentation seulement : les boutons portent les MÊMES onclick que ceux des feuilles (pickResult, pickDefIll,
+   pickFault, pickReprise, choosePlayer, cancelPendingEvent) ; aucune règle du jeu ne passe par ici.
+   Réglage d'appareil (hors S) : localStorage « kinball.saisie » = 'radiale' (défaut) | 'feuille' (comportement
+   d'avant, inchangé). Le choix est lu à l'ouverture du menu. Tout se place dans le repère du terrain (#field) :
+   le point de relâchement vient de fieldPoint(), le centre du menu des joueurs est celui du bouton touché. */
+const SAISIE_KEY = 'kinball.saisie';
+function saisieMode(){ try{ return localStorage.getItem(SAISIE_KEY) === 'feuille' ? 'feuille' : 'radiale'; }catch(e){ return 'radiale'; } }
+function setSaisieMode(v){ try{ localStorage.setItem(SAISIE_KEY, v === 'feuille' ? 'feuille' : 'radiale'); }catch(e){} renderSaisieToggle(); }
+function renderSaisieToggle(){
+  const r = saisieMode() === 'radiale';
+  document.getElementById('saisieRadBtn').classList.toggle('active', r);
+  document.getElementById('saisieFeuBtn').classList.toggle('active', !r);
+}
+renderSaisieToggle();
+function radialEl(){ return document.getElementById('radial'); }
+function radialBusy(){ const el = radialEl(); return !!el && (el.classList.contains('open') || el.classList.contains('closing')); }
+function radialIsOpen(){ const el = radialEl(); return !!el && el.classList.contains('open'); }
+function radialPaint(html, stage){
+  const el = radialEl();
+  clearTimeout(radialCloseTimer); radialCloseTimer = null;
+  el.classList.remove('closing');
+  el.innerHTML = html; el.classList.add('open'); radialStage = stage;
+  radialPendingRef = pending;               // la saisie que cette couche sert (voir reopenMatchSheets)
+}
+/* Fermeture douce (comme la feuille : « closing » = boutons inertes, la couche avale l'appui) ; hideRadial = tout de suite. */
+function closeRadial(){
+  const el = radialEl();
+  if(el.classList.contains('open')){
+    el.classList.remove('open'); el.classList.add('closing');
+    clearTimeout(radialCloseTimer);
+    radialCloseTimer = setTimeout(()=>{ el.classList.remove('closing'); el.innerHTML = ''; radialCloseTimer = null; }, radialFastClose ? 120 : SHEET_CLOSE_MS);
+    radialFastClose = false;
+  }
+  radialStage = null;
+}
+function hideRadial(){
+  const el = radialEl();
+  clearTimeout(radialCloseTimer); radialCloseTimer = null;
+  el.classList.remove('open', 'closing'); el.innerHTML = ''; radialStage = null;
+}
+/* Anti-double-appui, même fenêtre que la feuille : le doigt qui vient de se lever compte comme un appui, et
+   chaque appui reçu par la couche (avalé ou non) est mémorisé ; le centre du bouton touché devient l'ancre
+   du menu suivant (repère local de la couche = celui du terrain). */
+radialEl().addEventListener('click', e=>{
+  if(sheetTapGuard(e)) return;
+  /* Annuler et voile : aucun résultat choisi, donc aucun appui fantôme à craindre : fermeture courte (120 ms) pour ne pas perdre le geste suivant. */
+  const oc = (e.target.closest && e.target.closest('[onclick]')); const call = oc ? oc.getAttribute('onclick') : '';
+  radialFastClose = call === 'cancelPendingEvent()' || call === 'radialVeil()';
+  const b = e.target.closest && e.target.closest('.rd-btn');
+  if(b) radialAnchor = {x:b.offsetLeft + b.offsetWidth/2, y:b.offsetTop + b.offsetHeight/2};
+}, true);
+radialEl().addEventListener('pointerdown', e=>e.stopPropagation());
+/* Redimensionnement / rotation avec une couche ouverte : les positions sont calculées une fois, donc la saisie est annulée proprement (aucun point, aucun événement). */
+function radialOnResize(){ if(radialIsOpen() && pending) cancelPendingEvent(); else if(radialIsOpen()) hideRadial(); }
+window.addEventListener('resize', radialOnResize);
+window.addEventListener('orientationchange', radialOnResize);   // un appui sur la couche ne démarre jamais un geste du terrain
+function radialLift(pt, ev){
+  radialRelease = {x:pt.x, y:pt.y}; radialAnchor = null;
+  if(ev) sheetLastTap = {t:Date.now(), x:ev.clientX, y:ev.clientY};
+}
+/* Voile : annule la saisie (aucun point, aucun événement) aux étages « résultat » et « type de faute » ;
+   à l'étage des joueurs il ne fait rien (le résultat est déjà choisi : on passe par « ? »). */
+function radialVeil(){ if(radialStage === 'players') return; cancelPendingEvent(); }
+const rdClamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
+function rdBtn(cls, x, y, w, h, call, label, style, extra){
+  return `<button type="button" class="rd-btn ${cls}" style="left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${h}px;${style||''}" onclick="${call}"${extra||''}>${label}</button>`;
+}
+const RD_VEIL = '<div class="rd-veil" onclick="radialVeil()"></div>';
+/* Étage « résultat » : une rangée par équipe adverse (ATTRAPÉ | ÉCHAPPÉ | DÉF ILL) autour du point de relâchement, puis Annuler. */
+function radialResultMenu(opp, pt){
+  const fw = field.offsetWidth, fh = field.offsetHeight;
+  const W = Math.min(300, fw - 16), gap = 4, wD = 60, wA = Math.floor((W - wD - 2*gap) / 2), PITCH = 62, CH = 44;
+  const H = opp.length * PITCH + 2 + CH;
+  const left = rdClamp(pt.x - W/2, 8, fw - W - 8), top = rdClamp(pt.y - H/2, 8, fh - H - 8);
+  let h = RD_VEIL;
+  opp.forEach((t, i) => {
+    const y = top + i*PITCH, nm = escapeHtml(S.names[t]), bg = `background:${TEAM_BG[t]};`, nr = isNoir(t);
+    h += rdBtn('rd-rect '+nr, left, y, wA, 56, `pickResult('${t}',true)`, 'ATTRAPÉ', bg, ` aria-label="ATTRAPÉ — ${nm}"`);
+    h += rdBtn('rd-rect miss '+nr, left + wA + gap, y, wA, 56, `pickResult('${t}',false)`, 'ÉCHAPPÉ', bg, ` aria-label="ÉCHAPPÉ — ${nm}"`);
+    h += rdBtn('rd-rect miss rd-def '+nr, left + 2*wA + 2*gap, y, W - 2*wA - 2*gap, 56, `pickDefIll('${t}')`, 'DÉF ILL', bg, ` aria-label="DÉF ILL — ${nm}"`);
+  });
+  h += rdBtn('rd-ghost', left, top + opp.length*PITCH + 2, W, CH, 'cancelPendingEvent()', 'Annuler');
+  radialPaint(h, 'result');
+}
+/* Étage « type de faute » : grille 2 × 4, REPRISE DE JEU, Annuler. */
+function radialFaultMenu(pt){
+  const fw = field.offsetWidth, fh = field.offsetHeight;
+  const g = 4, W = Math.min(256, fw - 16), bw = Math.floor((W - g) / 2), RH = IS_PHONE ? 48 : 52, CH = 44;
+  const bh = Math.floor(Math.min(IS_PHONE ? 48 : 56, (fh - 16 - 3*g - 8 - RH - g - CH) / 4));
+  const H = 4*bh + 3*g + 8 + RH + g + CH;
+  const left = rdClamp(pt.x - W/2, 8, fw - W - 8), top = rdClamp(pt.y - H/2, 8, fh - H - 8);
+  let h = RD_VEIL;
+  FAULTS.forEach((f, i) => {
+    h += rdBtn('rd-fault', left + (i % 2)*(bw + g), top + Math.floor(i/2)*(bh + g), bw, bh, `pickFault('${f}')`, escapeHtml(faultLabel(f)));
+  });
+  const ry = top + 4*bh + 3*g + 8;
+  h += rdBtn('rd-reprise', left, ry, W, RH, 'pickReprise()', 'REPRISE DE JEU');
+  h += rdBtn('rd-ghost', left, ry + RH + g, W, CH, 'cancelPendingEvent()', 'Annuler');
+  radialPaint(h, 'fault');
+}
+/* Étage « joueurs » : 4 disques en diagonale (rayon 84 px) autour du « ? », centré sur le bouton touché ; avec
+   FAUTE D'ÉQUIPE (faute directe) un bouton large sous le « ? ». Le centre est ramené dans le terrain. */
+function radialPlayersMenu(team, players, allowTeam, title){
+  const D = 72, fw = field.offsetWidth, fh = field.offsetHeight, R = 84, m = R + 36 + 22, bot = allowTeam ? R + 54 + 22 + 4 : R + 36 + 4;
+  const a = radialAnchor || radialRelease || {x:fw/2, y:fh/2};
+  const cx = Math.round(rdClamp(a.x, R + D/2, fw - R - D/2)), cy = Math.round(rdClamp(a.y, m, fh - bot));
+  let h = RD_VEIL + `<div class="rd-cap" style="left:${cx}px;top:${cy - R - D/2 - 22}px">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>`;
+  players.forEach((p, i) => {
+    const ang = (-135 + 90*i) * Math.PI / 180, x = cx + R*Math.cos(ang), y = cy + R*Math.sin(ang);
+    h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${p.id}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
+  });
+  h += rdBtn('rd-disc unknown', cx - D/2, cy - D/2, D, D, "choosePlayer('')", '?', '', ' aria-label="Joueur inconnu"');
+  if(allowTeam) h += rdBtn('rd-wide', cx - 75, cy + R + 54 - 22, 150, 44, `choosePlayer('${TEAM_FAULT}')`, 'FAUTE D’ÉQUIPE');
+  radialPaint(h, 'players');
+}
 
 function possessionChoiceHTML(title, teams, fnName){
   return `<div class="sheet-title">${title}</div><div class="choice-row">` +
@@ -2631,6 +2792,11 @@ function openDuelStartSheet(){
    refusent tout. Ne fait rien en consultation d'archive, match terminé, saisie en cours ni pendant la fenêtre
    de fin de période. Lit `pending` et `periodEndTimer` (déclarés plus bas) : jamais appelée au chargement. */
 function reopenMatchSheets(){
+  /* C21 : quitter l'écran (navHome → closeSheet) ferme la couche radiale mais laisse la saisie qu'elle servait
+     (`pending`) : au retour, cette saisie orpheline est jetée avec la couche. Aucun point, aucun événement (l'état
+     d'une saisie en cours n'est de toute façon pas enregistré). Un `pending` d'une autre origine n'est pas touché. */
+  if(radialPendingRef && pending === radialPendingRef){ hideRadial(); pending = null; pendingPeriodWinner = null; playerPickCont = null; renderScoreboard(); }
+  radialPendingRef = null;
   if(viewingArchive || !S.id || S.status !== 'in_progress') return;
   if(pending || periodEndTimer) return;
   if(S.awaitingInitial){
@@ -2697,6 +2863,7 @@ function drawDrag(p1,p2){
 }
 field.addEventListener('pointerdown', e=>{
   if(document.getElementById('sheet').classList.contains('open')) return;
+  if(radialBusy()) return;              // C21 : couche radiale ouverte (ou en train de se fermer)
   if(S.awaitingInitial||S.awaitingDuelStart) return;
   if(periodEndTimer) return;            // C23 : transition de fin de période, aucun geste
   dragStart = fieldPoint(e); dragging = true;
@@ -2717,10 +2884,10 @@ field.addEventListener('pointerup', e=>{
     /* Les points ne sont PLUS attribués ici : l'appui peut finalement être
        une reprise de jeu, qui n'en donne aucun. On attend le choix. */
     beginEvent('faute_directe', {position_norm:[start.nx, start.ny]});
-    showFaultMenu();
+    showFaultMenu(end, e);
   } else {
     beginEvent('lancer', {attacker:S.possession, start_norm:[start.nx,start.ny], end_norm:[end.nx,end.ny]});
-    showResultMenu();
+    showResultMenu(end, e);
   }
 });
 
@@ -2757,7 +2924,8 @@ function commitEvent(extra){
   save();
 }
 
-function showFaultMenu(){
+function showFaultMenu(pt, ev){
+  if(pt && saisieMode() === 'radiale'){ radialLift(pt, ev); radialFaultMenu(pt); return; }   // C21
   openSheet(`<div class="sheet-title">FAUTE DIRECTE</div><div class="fault-grid">` +
     FAULTS.map(f=>`<button class="fault-btn" onclick="pickFault('${f}')">${faultLabel(f)}</button>`).join('') + `</div>` +
     `<button class="resume-play-btn" onclick="pickReprise()">REPRISE DE JEU<small>Aucun point — choisir qui repart au ballon</small></button>`
@@ -2802,6 +2970,7 @@ function askPlayer(team, title, cont, allowTeam){
   const players = ids.map(id => roster.find(p=>p.id===id)).filter(Boolean);
   if(players.length !== LINEUP_SIZE){ cont(null); return; }
   playerPickCont = cont; playerPickTeam = team;
+  if(radialIsOpen()){ radialPlayersMenu(team, players, allowTeam, title); return; }   // C21 : saisie radiale en cours
   // non refermable d'un geste : l'action attend sa réponse (« ? » pour passer)
   openSheet(`<div class="sheet-title">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>
     <div class="player-pick-row">` +
@@ -2840,8 +3009,9 @@ function applyFault(f, team, pid){
   flashMessage(`FAUTE DIRECTE • ${faultLabel(f)}`, 'var(--red)');
   renderScoreboard();
 }
-function showResultMenu(){
+function showResultMenu(pt, ev){
   const opp = ATEAMS().filter(t=>t!==S.possession && t!==S.eliminated);
+  if(pt && saisieMode() === 'radiale'){ radialLift(pt, ev); radialResultMenu(opp, pt); return; }   // C21
   openSheet(`<div class="sheet-title">RÉSULTAT DE LA FRAPPE</div>` +
     opp.map(t=>`<div class="opp-block ${isNoir(t)}">
       <div class="opp-half" style="background:${TEAM_BG[t]}" onclick="pickResult('${t}',true)">ATTRAPÉ</div>
@@ -2981,6 +3151,7 @@ function finishPeriod(winner){
    utile partout ailleurs (période écourtée, temps de pratique limité). */
 function openFinishMenu(){
   if(!S.id) return;
+  if(radialBusy()) return;   // C21 : la couche radiale ne recouvre pas le ruban, mais une saisie en cours passe avant TERMINER
   const teams = ATEAMS().filter(t=>t!==S.eliminated);
   openSheet(`<div class="sheet-title">TERMINER</div>
     <div class="adv-section-label">Terminer la période en cours — qui la remporte ?</div>
