@@ -546,7 +546,7 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .adv-player-btn{height:44px; padding:0 16px; border-radius:10px; background:var(--surface2); color:var(--ink); font-size:14px; font-weight:600; border:1px solid var(--line);}
 .adv-player-btn.selected{background:var(--bleu); border-color:var(--bleu); color:white;}
 /* C19 : feuille des changements (terrain 2×2 + banc, glisser-déposer) */
-.sub-pitch{position:relative; border-radius:14px; padding:14px; background:linear-gradient(#17402F,#0F3023); border:1px solid rgba(255,255,255,.18); overflow:hidden;}
+.sub-pitch{position:relative; border-radius:14px; padding:14px; background:linear-gradient(#17402F,#0F3023); border:1px solid rgba(255,255,255,.18); overflow:visible;}
 .sub-pitch::before{content:''; position:absolute; inset:7px; border:2px solid rgba(255,255,255,.22); border-radius:10px; pointer-events:none;}
 .sub-pitch::after{content:''; position:absolute; left:50%; top:50%; width:64px; height:64px; margin:-32px 0 0 -32px; border:2px solid rgba(255,255,255,.18); border-radius:50%; pointer-events:none;}
 .sub-pitch-label{position:relative; z-index:1; font-size:11px; font-weight:800; letter-spacing:.12em; color:rgba(255,255,255,.75); text-align:center; margin:-4px 0 8px;}
@@ -1810,7 +1810,7 @@ function onEnterScreen(id){
   switch(id){
     case 'home':            renderTeamPickers(); checkResume(); break;
     case 'newMatch':        renderTeamPickers(); renderFormatPicker(); break;
-    case 'match':           renderScoreboard(); break;
+    case 'match':           renderScoreboard(); reopenMatchSheets(); break;
     case 'teamManager':     renderTeamManagerList(); break;
     case 'matchHistory':    renderMatchHistoryList(); break;
     case 'teamOverview':    renderTeamOverview(); break;
@@ -2613,6 +2613,32 @@ function chooseInitialPossession(team){
 function openDuelStartSheet(){
   openSheet(possessionChoiceHTML('DUEL — QUI REPREND LE BALLON ?', ATEAMS().filter(t=>t!==S.eliminated), 'chooseDuelStart') +
     `<button class="ghost-btn" style="width:100%; margin-top:14px" onclick="undo()" ${S.history.length?'':'disabled'} aria-label="Annuler la dernière action">↶ Annuler la dernière action</button>`, false);
+}
+/* C24 (F29, F26) : à chaque entrée dans l'écran de match (démarrage, reprise, copie locale récupérée, retour
+   depuis les stats), rouvre ce que le match attend. Un choix de possession (« QUI COMMENCE AU BALLON ? »,
+   « DUEL — QUI REPREND LE BALLON ? ») n'est sinon rouvert nulle part : écran muet, terrain et changements
+   refusent tout. Ne fait rien en consultation d'archive, match terminé, saisie en cours ni pendant la fenêtre
+   de fin de période. Lit `pending` et `periodEndTimer` (déclarés plus bas) : jamais appelée au chargement. */
+function reopenMatchSheets(){
+  if(viewingArchive || !S.id || S.status !== 'in_progress') return;
+  if(pending || periodEndTimer) return;
+  if(S.awaitingInitial){
+    openSheet(possessionChoiceHTML('QUI COMMENCE AU BALLON ?', ATEAMS(), 'chooseInitialPossession'), false);
+    return;
+  }
+  if(S.awaitingDuelStart){ openDuelStartSheet(); return; }
+  /* F26 : fin de période restée en suspens (pointage au seuil, aucun minuteur) : l'app a été fermée dans les
+     1,4 s qui suivent l'action. Deux formes d'état enregistré : par une faute, la période n'est pas encore
+     comptée ; par un ballon échappé, elle l'est déjà. On la compte une seule fois, puis finishPeriod comme
+     d'habitude. Historique vide ou autre période que celle du dernier événement : indécidable, rien. */
+  const fmt = getFormat(S);
+  if(!fmt.periodAt || !S.history.length) return;
+  const winner = ATEAMS().filter(t=>t!==S.eliminated).find(t=>S.scores[t] >= fmt.periodAt);
+  if(!winner) return;
+  const last = S.history[S.history.length-1], b = last && last.before;
+  if(!(last.type==='lancer' || last.type==='faute_directe') || !b || !b.periodWins || b.period !== S.period) return;
+  if((S.periodWins[winner]||0) > (b.periodWins[winner]||0)) S.periodWins[winner] -= 1;   // déjà comptée avant l'enregistrement
+  finishPeriod(winner);
 }
 function chooseDuelStart(team){
   if(!S.awaitingDuelStart || team===S.eliminated) return;
