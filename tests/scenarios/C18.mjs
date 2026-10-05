@@ -42,7 +42,10 @@ export default async function ({ gabarit, check }) {
           const offZ = ZONES.reduce((n, z) => n + o.offZones[z].attempts, 0), defZ = ZONES.reduce((n, z) => n + o.defZones[z].attempts, 0);
           const ptsO = heatPointsFrom(S, t, 'offense', 'all', 'start'), ptsD = heatPointsFrom(S, t, 'defense', 'all', 'end');
           const cO = heatCellCounts(ptsO), cD = heatCellCounts(ptsD);
-          out.rows.push({ t, offZ, defZ, offA: o.offAttempts, defA: o.defAttempts,
+          /* C20 : une DÉF ILL est une tentative sans coordonnées (la faute précède la frappe) */
+          const diO = S.history.filter(e => e.type === 'lancer' && e.details.fault_type === 'DÉF ILL' && e.details.attacker === t).length;
+          const diD = S.history.filter(e => e.type === 'lancer' && e.details.fault_type === 'DÉF ILL' && e.details.target === t).length;
+          out.rows.push({ diO, diD, t, offZ, defZ, offA: o.offAttempts, defA: o.defAttempts,
             hO: cO.k.reduce((a, b) => a + b, 0), hD: cD.k.reduce((a, b) => a + b, 0), nO: ptsO.length, nD: ptsD.length });
         }
         return out;
@@ -51,7 +54,7 @@ export default async function ({ gabarit, check }) {
       for (const r of d.rows) {
         eq(r.hO, r.nO, 'heat off = points localisés'); eq(r.hD, r.nD, 'heat déf = points localisés');
         eq(r.offZ, r.nO, 'zones off = points localisés'); eq(r.defZ, r.nD, 'zones déf = points localisés');
-        eq(r.offZ, r.offA, 'zones off = tentatives'); eq(r.defZ, r.defA, 'zones déf = tentatives');
+        eq(r.offZ, r.offA - r.diO, 'zones off = tentatives localisées'); eq(r.defZ, r.defA - r.diD, 'zones déf = tentatives localisées');
       }
     });
     await check(`${P} · heat map : 9 cases, aucune finesse, hachures < 3 lancers (critère 6)`, async () => {
