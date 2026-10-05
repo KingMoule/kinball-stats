@@ -3,8 +3,8 @@
    s'installe en silence mais ne s'active JAMAIS toute seule : seule la page, sur accord
    de la personne et depuis l'accueil, envoie {type:'ACTIVER'}.
    VERSION et EMPREINTE sont écrites par outils/check-release.mjs --ecrire. */
-const VERSION = '2026-10-04.11';
-const EMPREINTE = '719b13a34af4a8fd7629e4dd3b11c9afe0ba1a593ae70c6331ee438ee4b4f645';
+const VERSION = '2026-10-05.1';
+const EMPREINTE = 'f099f3df15d15bb36915a73eaaf1f2c32c11d2a35bb1bce47d29d9e1747f44a0';
 const NOM_CACHE = 'kinball-' + VERSION;
 
 /* Liste de précache EXPLICITE (tableau lisible par JSON.parse ; outils/check-release.mjs la lit). */
