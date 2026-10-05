@@ -191,6 +191,14 @@ export class App {
     await this._pickPlayer(player);
     await this.settle();
   }
+  /* C20 : glisser puis DÉF ILL de l'équipe visée (aucune feuille de joueur ensuite). */
+  async defIll({ from = [0.3, 0.3], to = [0.7, 0.7], target } = {}) {
+    const a = await this._pt(from), b = await this._pt(to), m = this.page.mouse;
+    await m.move(a.x, a.y); await m.down();
+    await m.move(b.x, b.y, { steps: 2 }); await m.up();
+    await this.clickSheet(`pickDefIll('${target}')`);
+    await this.settle();
+  }
   async _tap(at) {
     const a = await this._pt(at), m = this.page.mouse;
     await m.move(a.x, a.y); await m.down(); await m.up();

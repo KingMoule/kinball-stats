@@ -206,7 +206,9 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 #sheet.closing *{pointer-events:none;}
 .sheet-title{font-size:15px; color:var(--dim); font-weight:600; text-align:center; margin-bottom:12px;}
 .opp-block{border-radius:16px; overflow:hidden; margin-bottom:10px; display:flex; height:96px;}
-.opp-half{flex:1; display:flex; align-items:center; justify-content:center; font-size:44px; font-weight:800; color:white;}
+.opp-half{flex:1; display:flex; align-items:center; justify-content:center; text-align:center; font-size:26px; font-weight:800; letter-spacing:.01em; color:white;}
+/* C20 : DÉF ILL, plus étroit et plus discret, séparé par un trait ; ≥ 44 px de large et de haut. */
+.opp-half.opp-defill{flex:.55; font-size:15px; line-height:1.15; border-left:1px solid rgba(255,255,255,.45); min-width:64px;}
 /* La moitié « échappé » doit se distinguer de la moitié « attrapé ». On ne
    peut pas le faire avec `background` : la couleur d'équipe est posée en
    style inline et gagne toujours. Un voile en box-shadow interne, lui,
@@ -611,7 +613,7 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
   .icon-btn{width:46px; font-size:18px;}
   .icon-btn.stats{width:56px; font-size:11px;}
   .choice-btn{font-size:17px;}
-  .opp-half{font-size:36px;}
+  .opp-half{font-size:26px;}
 }
 @media (max-width:400px){
   .home-grid{grid-template-columns:1fr;}
@@ -738,7 +740,8 @@ html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}   /* Safari grossit 
 .phone .sub-bench-grid{grid-template-columns:1fr 1fr; gap:8px;}
 .phone .sub-tok{height:56px; font-size:14px;}
 .phone .opp-block{height:78px;}
-.phone .opp-half{font-size:30px;}
+.phone .opp-half{font-size:17px;}
+.phone .opp-half.opp-defill{font-size:12px; min-width:56px;}
 .phone .choice-btn{height:64px; font-size:16px; padding:0 6px; white-space:normal; line-height:1.1; overflow-wrap:anywhere;}
 .phone .fault-grid{grid-template-columns:1fr 1fr;}
 .phone .fault-btn{min-height:56px; font-size:11.5px; padding:5px 5px;}
@@ -1180,6 +1183,14 @@ const FAULT_LABELS = {
   'TROP TEMPS': 'Faute de temps',
   'OFF ILL':    'Offensive illégale',
 };
+/* C20 : défensive illégale — la faute de l'équipe CIBLÉE avant la prise. Elle
+   est stockée comme un ballon ÉCHAPPÉ (mêmes points, même reprise, le lancer
+   compte) avec fault_type:'DÉF ILL' ; elle n'entre PAS dans FAULTS (grille de
+   la feuille de faute), seulement dans les tableaux de fautes. */
+const DEF_ILL = 'DÉF ILL';
+FAULT_LABELS[DEF_ILL] = 'Défensive illégale';
+const FAULT_TYPES = FAULTS.concat(DEF_ILL);
+function isDefIll(d){ return !!d && d.result==='échappé' && d.fault_type===DEF_ILL; }
 function faultLabel(code){ return (FAULT_LABELS[code] || code).toUpperCase(); }
 const CHIP_CLASS={Bleu:'chip-bleu',Gris:'chip-gris',Noir:'chip-noir'};
 /* Deux palettes distinctes, parce qu'une couleur d'équipe ne se comporte pas
@@ -2833,8 +2844,9 @@ function showResultMenu(){
   const opp = ATEAMS().filter(t=>t!==S.possession && t!==S.eliminated);
   openSheet(`<div class="sheet-title">RÉSULTAT DE LA FRAPPE</div>` +
     opp.map(t=>`<div class="opp-block ${isNoir(t)}">
-      <div class="opp-half" style="background:${TEAM_BG[t]}" onclick="pickResult('${t}',true)">✓</div>
-      <div class="opp-half miss" style="background:${TEAM_BG[t]}" onclick="pickResult('${t}',false)">✕</div>
+      <div class="opp-half" style="background:${TEAM_BG[t]}" onclick="pickResult('${t}',true)">ATTRAPÉ</div>
+      <div class="opp-half miss" style="background:${TEAM_BG[t]}" onclick="pickResult('${t}',false)">ÉCHAPPÉ</div>
+      <div class="opp-half miss opp-defill" style="background:${TEAM_BG[t]}" onclick="pickDefIll('${t}')">DÉF ILL</div>
     </div>`).join('') + cancelEventBtn(), false);
 }
 /* Abandonner une saisie mal partie (geste involontaire sur le terrain).
@@ -2858,9 +2870,19 @@ function pickResult(team, caught){
   const atk = S.possession;
   askPlayer(atk, 'QUI A LANCÉ ?', pid => applyResult(team, caught, atk, pid));
 }
-function applyResult(team, caught, atk, pid){
+/* C20 : DÉF ILL = ballon échappé sans lanceur demandé ni receveur demandé
+   (la faute précède la frappe). Mêmes gardes que pickResult. */
+function pickDefIll(team){
+  if(!pending) return;
+  if(S.duelActive && team===S.eliminated) return;
+  applyResult(team, false, S.possession, null, true);
+}
+function applyResult(team, caught, atk, pid, defIll){
   if(!pending) return;
   const who = playerFields(atk, pid);
+  const dif = defIll ? {fault_type:DEF_ILL} : {};
+  /* C20 : la faute précède la frappe, le glisser n'a aucune signification : ni zones ni heat map. */
+  if(defIll && pending && pending.details){ delete pending.details.start_norm; delete pending.details.end_norm; }
   /* La situation du LANCEUR au moment du lancer, figée dans l'événement :
      elle sera lue telle quelle par les stats et par l'export, sans avoir à
      la redéduire de l'enchaînement. */
@@ -2872,7 +2894,7 @@ function applyResult(team, caught, atk, pid){
      d'enregistrer le lancer : l'action disparaissait des stats et de
      l'export, et Annuler restait bloqué. */
   if(!caught && S.awaitingDuelStart){
-    commitEvent({result:'échappé', target:team, ...situation, ...who});
+    commitEvent({result:'échappé', target:team, ...situation, ...who, ...dif});
     renderScoreboard();   // C14 : le fondu doit être visible pendant le choix
     openDuelStartSheet();
     return;
@@ -2881,11 +2903,11 @@ function applyResult(team, caught, atk, pid){
   /* Le receveur devient le prochain attaquant : s'il a ATTRAPÉ, il peut se
      déplacer (situation continue) ; s'il l'a échappé, il repart sur place. */
   S.stopped = !caught;
-  commitEvent({result: caught?'attrapé':'échappé', target:team, ...situation, ...who});
+  commitEvent({result: caught?'attrapé':'échappé', target:team, ...situation, ...who, ...dif});
   closeSheet();
   const evIndex = S.history.length-1;
-  // Mode avancé : le lanceur est déjà connu, il ne reste que le receveur.
-  flashMessage(`${S.names[team].toUpperCase()} • ${caught?'ATTRAPÉ':'ÉCHAPPÉ'}`, TEAM_INK[team], S.advancedMode ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
+  // Mode avancé : le lanceur est déjà connu, il ne reste que le receveur (pas pour une DÉF ILL).
+  flashMessage(`${S.names[team].toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team], (S.advancedMode && !defIll) ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
   renderScoreboard();
 }
 function flashMessage(text,color,onDone){
@@ -3690,14 +3712,18 @@ function computeH2H(phase){
 /* Extrait du duel les compteurs correspondant au filtre courant. */
 function h2hCell(pair, filtre){ return filtre === 'all' ? pair : pair[filtre]; }
 function computeFaults(phase){
-  const f={}; ATEAMS().forEach(t=>f[t]={actions:0,faults:0,types:{}});
-  FAULTS.forEach(ft=>ATEAMS().forEach(t=>f[t].types[ft]=0));
+  const f={}; ATEAMS().forEach(t=>f[t]={actions:0,faults:0,defIll:0,types:{}});
+  FAULT_TYPES.forEach(ft=>ATEAMS().forEach(t=>f[t].types[ft]=0));
   const fmt = getFormat(S), filtrePhase = (phase && phase!=='all') ? phase : null;
   S.history.forEach((ev,i)=>{
     if(filtrePhase && phaseOf(S.history, i, fmt)!==filtrePhase) return;
     const attacker = ev.before && ev.before.possession;
     if(!attacker || !f[attacker]) return;
     if(ev.type==='lancer'||ev.type==='faute_directe') f[attacker].actions+=1;
+    /* C20 : la DÉF ILL est une faute de l'équipe ciblée ; hors F % (actions offensives). */
+    if(ev.type==='lancer' && isDefIll(ev.details) && f[ev.details.target]){
+      f[ev.details.target].defIll+=1; f[ev.details.target].types[DEF_ILL]+=1;
+    }
     if(ev.type==='faute_directe'){
       f[attacker].faults+=1;
       const ft=ev.details.fault_type;
@@ -4089,7 +4115,7 @@ function accumulatePlayerStats(m, slot, acc, nameOf){
         const sit = situationOf(m.history, evIndex);
         x['throws_'+sit]++; if(reussi) x['succ_'+sit]++;
       }
-      else if(b.lineups && (b.lineups[slot]||[]).length) unattributed++;
+      else if(b.lineups && (b.lineups[slot]||[]).length && !isDefIll(d)) unattributed++;   // C20 : une DÉF ILL n'a pas de lanceur
     }
     if(ev.type==='faute_directe' && mine && d.attacker_player_id) get(d.attacker_player_id).faults++;
     /* +/- : seuls les joueurs IMPLIQUÉS dans l'action bougent.
@@ -4477,7 +4503,7 @@ function sectionMatchFaults(){
   const fmt = getFormat(S), phase = activePhase(faultPhase);
   const faults = computeFaults(phase), ats = ATEAMS();
   let html = `<div class="section-title">Fautes directes${phaseQuoi(phase)}</div>
-    <div class="section-sub">Une faute directe donne un point à chaque adversaire. F % = fautes / actions offensives.</div>`
+    <div class="section-sub">Une faute directe donne un point à chaque adversaire. F % = fautes directes / actions offensives (la défensive illégale compte dans les fautes, pas dans F %).</div>`
     + (fmt.phaseAt ? phaseLegendHTML(fmt) + phaseFilterHTML(phase, 'setFaultPhase') : '');
   if(!S.history.length) return html + `<div class="empty">Aucune action enregistrée pour le moment.</div>`;
   html += statTable({
@@ -4486,7 +4512,7 @@ function sectionMatchFaults(){
     rows: ats.map(t=>({t, _name:S.names[t], f:faults[t], _click:`openFaultDetail('${t}')`})),
     cols:[
       {key:'name', label:'Équipe', val:r=>r._name, fmt:r=>`${swatchHTML(TEAM_BG[r.t])}${escapeHtml(r._name)}`},
-      {key:'ft',   label:'Fautes', short:'Ftes', strong:true, best:'low', val:r=>r.f.faults},
+      {key:'ft',   label:'Fautes', short:'Ftes', strong:true, best:'low', val:r=>r.f.faults + r.f.defIll},
       {key:'act',  label:'Actions', short:'Act.', cls:'sub', val:r=>r.f.actions},
       {key:'pct',  label:'F %', best:'low',
        val:r=>pctVal(r.f.faults, r.f.actions), fmt:r=>pctStr(r.f.faults, r.f.actions)},
@@ -4497,7 +4523,7 @@ function sectionMatchFaults(){
      plus lisible que huit cartes par équipe, et triable pour repérer le
      type de faute qui revient le plus. */
   const total = t => ats.reduce((n,x)=>n+faults[x].types[t], 0);
-  const typeRows = FAULTS.map(ft=>({ft, _name:faultLabel(ft), tot:total(ft)})).filter(r=>r.tot>0);
+  const typeRows = FAULT_TYPES.map(ft=>({ft, _name:faultLabel(ft), tot:total(ft)})).filter(r=>r.tot>0);
   if(typeRows.length) html += `<div class="section-title" style="margin-top:18px">Par type de faute</div>` + statTable({
     scope:'match', id:'matchFaultTypes',
     defaultSort:{key:'tot', dir:-1},
@@ -4522,9 +4548,9 @@ function renderStats(){
 function openFaultDetail(team){
   statsRerender = () => openFaultDetail(team);
   const phase = activePhase(faultPhase);
-  const faults = computeFaults(phase)[team], total = faults.faults;
+  const faults = computeFaults(phase)[team], total = faults.faults + faults.defIll;
   const fz = computeFaultZones(team, phase);
-  const typeRows = FAULTS.map(ft=>({ft, _name:faultLabel(ft), c:faults.types[ft]})).filter(r=>r.c>0);
+  const typeRows = FAULT_TYPES.map(ft=>({ft, _name:faultLabel(ft), c:faults.types[ft]})).filter(r=>r.c>0);
   const types = `<div class="section-title">Par type</div>` + (typeRows.length ? statTable({
     scope:'match', id:'faultDetailTypes',
     defaultSort:{key:'n', dir:-1},
@@ -5162,8 +5188,8 @@ function h2hAoa(){
 function faultTypeAoa(){
   const f = computeFaults();
   const aoa = [['Équipe','Type de faute','Nombre','% des fautes de l’équipe']];
-  ATEAMS().forEach(t=> FAULTS.forEach(ft=>
-    aoa.push([nm(t), faultLabel(ft), f[t].types[ft], pctNum(f[t].types[ft], f[t].faults)])));
+  ATEAMS().forEach(t=> FAULT_TYPES.forEach(ft=>
+    aoa.push([nm(t), faultLabel(ft), f[t].types[ft], pctNum(f[t].types[ft], f[t].faults + f[t].defIll)])));
   return aoa;
 }
 
@@ -5461,8 +5487,8 @@ function computeTeamAggregate(teamId){
   const zoneOff = {}, zoneDef = {};
   ZONES.forEach(z=>{ zoneOff[z]={attempts:0,successes:0}; zoneDef[z]={attempts:0,successes:0}; });
   const faultZones = {}; ZONES.forEach(z=>faultZones[z]=0);
-  const faultTypes = {}; FAULTS.forEach(f=>faultTypes[f]=0);
-  let actions=0, faults=0, periodWins=0;
+  const faultTypes = {}; FAULT_TYPES.forEach(f=>faultTypes[f]=0);
+  let actions=0, faults=0, defIll=0, periodWins=0;
   const blankSit = () => { const o = {reprises:0};
     SITUATIONS.forEach(x=>{ o['off_'+x.id]={attempts:0,successes:0}; o['def_'+x.id]={attempts:0,successes:0}; });
     return o; };
@@ -5521,6 +5547,7 @@ function computeTeamAggregate(teamId){
       }
       const attacker = ev.before && ev.before.possession;
       if(attacker===mySlot && (ev.type==='lancer'||ev.type==='faute_directe')) actions++;
+      if(ev.type==='lancer' && isDefIll(ev.details) && ev.details.target===mySlot){ defIll++; faultTypes[DEF_ILL]++; }
       if(attacker===mySlot && ev.type==='faute_directe'){
         faults++;
         const ft = ev.details && ev.details.fault_type;
@@ -5532,7 +5559,7 @@ function computeTeamAggregate(teamId){
   });
 
   return {teamName, matchesPlayed:matches.length, periodWins, h2h, zoneOff, zoneDef,
-          faultZones, faultTypes, actions, faults, situationTotal, situations};
+          faultZones, faultTypes, actions, faults, defIll, situationTotal, situations};
 }
 
 /* ==========================================================
@@ -5612,7 +5639,7 @@ function sectionTeamZones(agg){
              `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`);
 }
 function sectionTeamFaults(agg){
-  const typeRows = FAULTS.map(ft=>({ft, _name:faultLabel(ft), c:agg.faultTypes[ft]})).filter(r=>r.c>0);
+  const typeRows = FAULT_TYPES.map(ft=>({ft, _name:faultLabel(ft), c:agg.faultTypes[ft]})).filter(r=>r.c>0);
   const types = `<div class="section-title">Par type</div>` + (typeRows.length ? statTable({
     scope:'team', id:'teamFaultTypes',
     defaultSort:{key:'n', dir:-1},
@@ -5621,7 +5648,7 @@ function sectionTeamFaults(agg){
       {key:'type', label:'Type', val:r=>r._name},
       {key:'n',    label:'Nombre', short:'Nb', strong:true, val:r=>r.c},
       {key:'pct',  label:'% des fautes', short:'%', cls:'sub',
-       val:r=>pctVal(r.c, agg.faults), fmt:r=>pctStr(r.c, agg.faults)},
+       val:r=>pctVal(r.c, agg.faults + agg.defIll), fmt:r=>pctStr(r.c, agg.faults + agg.defIll)},
     ],
     note:SORT_HINT,
   }) : `<div class="empty">Aucune faute directe enregistrée.</div>`);
@@ -5639,7 +5666,7 @@ function sectionTeamFaults(agg){
       note:SORT_HINT,
     }) + `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`;
   return `<div class="section-title">Fautes directes</div>
-    <div class="section-sub">${agg.actions? pctStr(agg.faults, agg.actions)+' des actions offensives' : 'Aucune action offensive enregistrée'} • ${agg.faults} faute(s) au total</div>`
+    <div class="section-sub">${agg.actions? pctStr(agg.faults, agg.actions)+' des actions offensives' : 'Aucune action offensive enregistrée'} • ${agg.faults + agg.defIll} faute(s) au total${agg.defIll? ` (dont ${agg.defIll} défensive(s) illégale(s))` : ''}</div>`
     + statPair(types, zones);
 }
 

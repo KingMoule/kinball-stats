@@ -106,7 +106,11 @@ export function pickAction(m, r) {
   const target = others[Math.floor(r() * others.length)];
   let from, to;
   do { from = pt(r); to = pt(r); } while (Math.hypot((to[0] - from[0]) * 600, (to[1] - from[1]) * 600) < 60);
-  return { t: 'lancer', target, caught: r() < 0.6, from, to, duel };
+  const caught = r() < 0.6;
+  /* C20 : une partie des ballons échappés sont des DÉF ILL. Décision dérivée des tirages déjà faits (aucun
+     r() de plus : les suites aléatoires existantes gardent exactement les mêmes séquences). */
+  const defIll = !caught && Math.floor(from[0] * 1e4) % 5 === 0;
+  return { t: 'lancer', target, caught, defIll, from, to, duel };
 }
 
 /* Joue l'action sur l'app ET sur le modèle. opts.manualDuel : ne pas choisir
@@ -118,7 +122,9 @@ export async function play(app, m, a, opts = {}) {
   let player = opts.player;
   if (opts.rosters) player = a.duel === 0 ? m.possession + '_p1' : (a.t === 'faute' && a.code === 'EXT' ? '__equipe__' : '');
   if (a.t === 'lancer') {
-    await app.lancer({ from: a.from, to: a.to, target: a.target, caught: a.caught, player });
+    /* DÉF ILL : même résolution qu'un ballon échappé, sans feuille de joueur. */
+    if (a.defIll) await app.defIll({ from: a.from, to: a.to, target: a.target });
+    else await app.lancer({ from: a.from, to: a.to, target: a.target, caught: a.caught, player });
     res = m.lancer(a.target, a.caught);
   } else if (a.t === 'faute') {
     await app.faute({ at: a.at, code: a.code, player });
