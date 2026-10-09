@@ -716,6 +716,7 @@
   KBSite.baseIncomplete = function () {
     if (!stockageActif) return false;
     try {
+      if (typeof lecturesEchouees !== 'undefined' && lecturesEchouees.size) return false;   // C27 · R1 : une lecture en échec ne fait pas attendre sans fin (l'app gère cet état à part)
       if (typeof DB === 'undefined' || !DB) return false;          // stockage injoignable : rien à attendre
       var ids = Object.keys(unsubOwnerItems);
       if (!ids.length) return true;

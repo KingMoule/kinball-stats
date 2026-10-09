@@ -1328,6 +1328,37 @@ let dbSyncState = 'ok'; // 'ok' | 'saving' | 'error'
    l'appelle immédiatement quand le stockage est injoignable, sans passer
    par le moindre await. */
 let backupChecked = false;
+/* C27 · R1 : une LECTURE du stockage qui échoue (abonnement en erreur) n'est jamais prise pour « rien en base ».
+   La clé de la lecture ('teams', 'matches', 'items:<auteur>') entre dans `lecturesEchouees` tant qu'elle n'a pas
+   réussi ; l'app relit avec des délais croissants. Pendant ce temps : bandeau d'accueil, copie de secours proposée
+   avec un avertissement (comparaison impossible, donc « Récupérer » attend), et plus aucune attente sans fin. */
+const lecturesEchouees = new Set();
+const RELECTURE_MS = [1500, 5000, 15000, 30000];
+const relectures = {};
+function lectureEchouee(cle, relancer){
+  lecturesEchouees.add(cle);
+  majBanniereLecture();
+  const k = relectures[cle] = (relectures[cle] || 0) + 1;
+  setTimeout(relancer, RELECTURE_MS[Math.min(k-1, RELECTURE_MS.length-1)]);
+  checkLocalBackups();
+}
+function lectureReussie(cle){
+  if(!lecturesEchouees.delete(cle)) return;
+  relectures[cle] = 0;
+  majBanniereLecture();
+}
+function majBanniereLecture(){
+  const b = document.getElementById('dbUnavailable');
+  if(!b) return;
+  if(lecturesEchouees.size){
+    if(b.dataset.texte === undefined) b.dataset.texte = b.textContent;
+    b.textContent = "La lecture du stockage de cet appareil a échoué : vos équipes et vos matchs peuvent ne pas s'afficher pour l'instant. Rien n'est effacé, l'app réessaie. Ne relancez pas de match tant que ce message est là ; exportez ce qui est en cours si besoin.";
+    b.style.display = 'block';
+  } else if(b.dataset.texte !== undefined){
+    b.textContent = b.dataset.texte; delete b.dataset.texte;
+    b.style.display = dbAvailable ? 'none' : 'block';
+  }
+}
 function setSyncState(state){
   dbSyncState = state;
   const badge = document.getElementById('syncBadge');
@@ -1373,6 +1404,7 @@ function subscribeTeams(){
   if(unsubTeams || !DB) return;
   unsubTeams = DB.collection('teams').onSnapshot(
     snap => {
+      lectureReussie('teams');
       const toutes = snap.docs.map(d=>d.data());
       TEAMS_DB = toutes.filter(t => t && !t.deleted);
       DELETED_TEAMS = toutes.filter(t => t && t.deleted);
@@ -1383,7 +1415,7 @@ function subscribeTeams(){
       if(isVisible('teamStatsPicker')) renderTeamStatsPickerList();
       if(isVisible('teamOverview')) renderTeamOverview();
     },
-    err => { console.error('Abonnement équipes interrompu', err); setSyncState('error'); }
+    err => { console.error('Abonnement équipes interrompu', err); setSyncState('error'); unsubTeams = null; lectureEchouee('teams', subscribeTeams); }
   );
 }
 function subscribeMatches(){
@@ -1393,6 +1425,7 @@ function subscribeMatches(){
       /* Cette collection contient deux sortes de documents : les anciens
          matchs à plat (ils ont un `history`) et les fiches d'auteur de la
          nouvelle structure (elles n'en ont pas). */
+      lectureReussie('matches');
       const docs = snap.docs.map(d=>({id:d.id, data:d.data()}));
       legacyMatches = docs.filter(d => d.data && Array.isArray(d.data.history)).map(d=>d.data);
       const auteurs = docs.filter(d => !(d.data && Array.isArray(d.data.history))).map(d=>d.id);
@@ -1409,14 +1442,24 @@ function subscribeMatches(){
       rebuildMatches();
       migrateLegacyMatches();
     },
-    err => { console.error('Abonnement matchs interrompu', err); setSyncState('error'); }
+    err => {
+      console.error('Abonnement matchs interrompu', err); setSyncState('error');
+      unsubMatchOwners = null;
+      lectureEchouee('matches', subscribeMatches);
+      /* La liste des auteurs est illisible : on lit au moins mon propre espace, où sont mes matchs. */
+      subscribeOwnerMatches(myMatchesOwner());
+    }
   );
 }
 function subscribeOwnerMatches(ownerId){
   if(!DB || unsubOwnerItems[ownerId]) return;
   unsubOwnerItems[ownerId] = DB.collection(matchesPathOf(ownerId)).onSnapshot(
-    snap => { matchesByOwner[ownerId] = snap.docs.map(d=>d.data()); rebuildMatches(); },
-    err => { console.error('Abonnement des matchs de '+ownerId+' interrompu', err); }
+    snap => { lectureReussie('items:'+ownerId); matchesByOwner[ownerId] = snap.docs.map(d=>d.data()); rebuildMatches(); },
+    err => {
+      console.error('Abonnement des matchs de '+ownerId+' interrompu', err);
+      delete unsubOwnerItems[ownerId];
+      lectureEchouee('items:'+ownerId, ()=>subscribeOwnerMatches(ownerId));
+    }
   );
 }
 /* MATCHES_DB reste ce que tout le reste de l'app lit : la réunion de tous
@@ -1750,8 +1793,9 @@ function openSyncSheet(){
    ce match compte. */
 function checkLocalBackups(){
   if(backupChecked) return;
-  if(window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()) return; /* MIGRATION M11 : rien ne se décide avant le premier instantané des matchs de chaque auteur */
-  backupChecked = true;
+  const illisible = lecturesEchouees.size > 0;   // C27 · R1 : lecture en panne = la copie reste proposée, avec un avertissement, et la décision est reprise à la prochaine lecture réussie
+  if(!illisible && window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()) return; /* MIGRATION M11 : rien ne se décide avant le premier instantané des matchs de chaque auteur */
+  if(!illisible) backupChecked = true;
   const candidats = listLocalBackups().filter(b=>{
     if(window.KBSite && KBSite.copieObsolete && KBSite.copieObsolete(b)) return false; /* MIGRATION M11 : copie plus ancienne que la corbeille */
     const serveur = getMatchRecord(b.match.id);
@@ -1770,6 +1814,7 @@ function checkLocalBackups(){
   box.innerHTML = `<div class="rec-title">Un match n'avait pas été sauvegardé</div>
     <div class="rec-sub">« ${escapeHtml(b.match.matchName || 'match')} » — ${(b.match.history||[]).length} action(s) conservée(s) sur cet appareil${
       serveur ? `, soit ${ecart} de plus que la version enregistrée` : ', absent du stockage de cet appareil'}.</div>
+    ${illisible ? `<div class="rec-sub" style="color:var(--red)">Le stockage de cet appareil n'a pas pu être lu pour l'instant : la copie est gardée, rien n'est perdu. L'app réessaie la lecture ; « Récupérer » fonctionnera dès qu'elle sera revenue.</div>` : ''}
     <div class="rec-actions">
       <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${jsArg(b.match.id)}')">Récupérer ce match</button>
       <button class="ghost-btn" onclick="dismissLocalBackup('${jsArg(b.match.id)}')">Ignorer</button>
@@ -1778,6 +1823,10 @@ function checkLocalBackups(){
 function restoreLocalBackup(id){
   const b = listLocalBackups().find(x=>x.match.id===id);
   if(!b) return;
+  if(lecturesEchouees.size){   // C27 · R1 : impossible de comparer avec ce qui est enregistré tant que la lecture est en panne
+    openSheet(`<div class="sheet-title">COPIE NON RÉCUPÉRÉE</div><div class="msg-center" style="font-size:16px; padding:6px 0 12px">Le stockage de cet appareil n'a pas pu être lu pour l'instant. La copie est gardée et l'app réessaie : vous pourrez la récupérer dès que la lecture sera revenue.</div><button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>`, true);
+    return;
+  }
   if(window.KBSite && KBSite.copieRefusee && KBSite.copieRefusee(b)) return; /* MIGRATION M11 : jamais d'écrasement d'un match plus récent */
   exitArchiveView();
   S = JSON.parse(JSON.stringify(b.match));

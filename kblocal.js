@@ -95,6 +95,7 @@
 
   /* ---------- Ouverture de la base ---------- */
   var dbOpenPromise = null;
+  var dbCourante = null;             // la connexion actuellement bonne (C27 · R2)
   function openDb() {
     if (dbOpenPromise) return dbOpenPromise;
     used = true;
@@ -117,9 +118,12 @@
       };
       req.onsuccess = function () {
         var db = req.result;
-        function oublier() { if (dbOpenPromise === p) dbOpenPromise = null; }
+        /* Connexion fermée par le système (close) ou par une autre page (versionchange) : on la marque morte et on
+           l'oublie ; la prochaine opération en ouvre une neuve, et celle qui était en cours est rejouée (avecDb). */
+        function oublier() { db.kbMorte = true; if (dbCourante === db) dbCourante = null; if (dbOpenPromise === p) dbOpenPromise = null; }
         db.onversionchange = function () { try { db.close(); } catch (e) {} oublier(); };
         db.onclose = oublier;
+        dbCourante = db;
         resolve(db);
       };
       req.onerror = function () { reject(req.error || new Error('Ouverture d’IndexedDB refusée')); };
@@ -128,6 +132,30 @@
     dbOpenPromise = p;
     p.catch(function () { if (dbOpenPromise === p) dbOpenPromise = null; });
     return p;
+  }
+
+  /* C27 · R2 : une connexion peut mourir sans prévenir (Safari iOS après une longue veille : « Connection to Indexed
+     Database server lost », transaction() qui lève InvalidStateError ou TransactionInactiveError). Plutôt que de garder
+     une connexion morte jusqu'au rechargement de la page, on l'oublie, on en rouvre une UNE fois et on rejoue
+     l'opération (écrire ou lire un document est idempotent). Un second échec est rendu tel quel : les réessais de
+     l'app (save, RÉESSAYER MAINTENANT) repartent alors d'une ouverture neuve. */
+  function connexionMorte(e) {
+    var n = e && e.name;
+    return n === 'InvalidStateError' || n === 'TransactionInactiveError' || n === 'UnknownError';
+  }
+  function oublierConnexion(db) {
+    db.kbMorte = true;
+    try { db.close(); } catch (e) {}
+    if (dbCourante === db) { dbCourante = null; dbOpenPromise = null; }
+  }
+  function avecDb(fn) {
+    return openDb().then(function (db) {
+      return fn(db).then(null, function (e) {
+        if (!db.kbMorte && !connexionMorte(e)) throw e;
+        oublierConnexion(db);
+        return openDb().then(fn);
+      });
+    });
   }
 
   /* ---------- Miroirs par collection abonnée ---------- */
@@ -189,26 +217,24 @@
   }
   function startLoad(m) {
     m.loading = true;
-    openDb().then(function (db) {
+    avecDb(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction([STORE_DOCS], 'readonly');
+        var req = tx.objectStore(STORE_DOCS).index('parent').getAll(IDBKeyRange.only(m.path));
+        tx.oncomplete = function () { resolve(req.result || []); };
+        tx.onabort = function () { reject(tx.error || new Error('Lecture avortée')); };
+      });
+    }).then(function (recs) {
       if (m.dead) return;
-      var tx = db.transaction([STORE_DOCS], 'readonly');
-      var req = tx.objectStore(STORE_DOCS).index('parent').getAll(IDBKeyRange.only(m.path));
-      var fini = false;
-      tx.oncomplete = function () {
-        if (fini || m.dead) return;
-        fini = true;
-        var recs = req.result || [];
-        recs.sort(function (a, b) { return a.path < b.path ? -1 : (a.path > b.path ? 1 : 0); });
-        for (var i = 0; i < recs.length; i++) {
-          var id = recs[i].path.slice(recs[i].parent.length + 1);
-          m.arr.push(makeDoc(id, deepFreeze(recs[i].data)));
-        }
-        m.loaded = true; m.loading = false;
-        var ls = m.listeners.slice();
-        for (var j = 0; j < ls.length; j++) if (ls[j].active && !ls[j].delivered) scheduleFirst(m, ls[j]);
-      };
-      tx.onabort = function () { if (fini) return; fini = true; loadFailed(m, tx.error || new Error('Lecture avortée')); };
-    }).catch(function (e) { loadFailed(m, e); });
+      recs.sort(function (a, b) { return a.path < b.path ? -1 : (a.path > b.path ? 1 : 0); });
+      for (var i = 0; i < recs.length; i++) {
+        var id = recs[i].path.slice(recs[i].parent.length + 1);
+        m.arr.push(makeDoc(id, deepFreeze(recs[i].data)));
+      }
+      m.loaded = true; m.loading = false;
+      var ls = m.listeners.slice();
+      for (var j = 0; j < ls.length; j++) if (ls[j].active && !ls[j].delivered) scheduleFirst(m, ls[j]);
+    }).then(null, function (e) { if (!m.dead) loadFailed(m, e); });
   }
   function subscribe(path, next, error) {
     if (typeof next !== 'function') throw new TypeError('onSnapshot : rappel attendu');
@@ -244,7 +270,7 @@
 
   /* ---------- Écriture / lecture de documents ---------- */
   function writeDoc(path, parts, frozenData, isDelete) {
-    return openDb().then(function (db) {
+    return avecDb(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = null, done = false;
         function fail(e) { if (done) return; done = true; reject(e || new Error('Transaction avortée')); }
@@ -274,7 +300,7 @@
       var pos = locate(m.arr, parts.id);
       return Promise.resolve(pos.found ? m.arr[pos.index] : absentDoc(parts.id));
     }
-    return openDb().then(function (db) {
+    return avecDb(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction([STORE_DOCS], 'readonly');
         var req = tx.objectStore(STORE_DOCS).get(path);
@@ -321,7 +347,7 @@
 
   /* ---------- Magasin « meta » ---------- */
   function metaTx(mode, fn) {
-    return openDb().then(function (db) {
+    return avecDb(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = null, out;
         try {
