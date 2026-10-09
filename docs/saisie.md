@@ -67,11 +67,15 @@ Un match stocke toujours trois emplacements d'équipe ; `S.activeTeams` dit lesq
 
 - `finishPeriod` ne fait rien (une seule fin de période à la fois) ;
 - le terrain et `openLineupSheet` refusent tout geste ;
-- `undo()` annule le minuteur avant de défaire le dernier événement : ↶ pendant le message annule la fin de période et le dernier événement, et l'état restauré le reste.
+- `undo()` annule le minuteur avant de défaire le dernier événement. Pour une fin de période automatique (seuil), cet événement est l'action qui l'a provoquée : ↶ pendant le message défait la fin de période et cette action, et l'état restauré le reste. Pour une fin manuelle, voir plus bas.
 
 Un match rechargé pendant cette fenêtre : `reopenMatchSheets()` rejoue la fin de période une seule fois (retire d'abord le point de période s'il était déjà compté). Elle ne le fait que si le dernier événement est un lancer ou une faute directe de la même période ; sinon l'état est indécidable et rien n'est fait.
 
-Fin de période décidée à la main (TERMINER, ou le bouton FIN PÉRIODE des formats libres, `endPeriodByLeader` : le meneur l'emporte, une égalité ouvre une feuille de choix) : ce n'est pas un événement de l'historique.
+Fin de période décidée à la main (TERMINER, ou le bouton FIN PÉRIODE des formats libres, `endPeriodByLeader` : le meneur l'emporte, une égalité ouvre une feuille de choix) : `endPeriodManually` et `endPeriodByLeader` appellent `finishPeriod(vainqueur, true)`, qui pousse d'abord un événement `fin_periode` (`before` = `snapshotBefore()`, `details:{winner}`, vainqueur ou `null`) puis compte la période comme d'habitude (C26 · R6). ↶ défait cette fin de période seule, pendant le message comme après, et ramène exactement l'état d'avant, sans toucher à la dernière action ; un second ↶ défait cette action. Les fins automatiques (seuil) ne produisent pas d'événement. Tous les lecteurs de l'historique filtrent par `type` et ignorent `fin_periode` comme `changement` et `alignement` (stats, WP, `situationOf` — qui le traite comme un départ arrêté —, `phaseOf`, +/-, compteurs d'actions) ; l'export Actions en fait une ligne « Fin de période » (période terminée, résultat « Période gagnée par … » ou « Période sans vainqueur »), l'export brut une colonne `winner`. `reopenMatchSheets` ne rejoue jamais une fin manuelle : son dernier événement n'est ni un lancer ni une faute (et `save()` ne part qu'à la fin du message).
+
+### Match terminé
+
+Un match dont `status !== 'in_progress'` refuse tout geste de saisie (C26 · R7) : appui et glisser sur le terrain (`pointerdown` du terrain), `openLineupSheet`, `applySub`, `commitLineupDefinition`, `undo` (le bouton ↶ est aussi désactivé), `openFinishMenu`, `endPeriodByLeader`, `endPeriodManually`. La feuille « Et maintenant ? » de `finishMatchNow` n'est pas refermable d'un appui à côté : on en sort par VOIR LES STATS, NOUVEAU MATCH ou ACCUEIL.
 
 ### Reprise à l'entrée de l'écran
 
@@ -95,4 +99,4 @@ Réglage de l'écran Nouveau match, « EN DIRECT » ou « AVANCÉ (différé) »
 
 ## Annulation
 
-`undo()` retire le dernier événement et fait `Object.assign(S, ev.before)`, ferme la feuille, rend, sauvegarde ; elle ne fait rien pendant une saisie en cours ou si l'historique est vide. L'annulation d'un changement de joueur est la même opération. Elle ne relance un calcul de probabilité que par l'effet normal de `wpSync` (voir `probabilite-victoire.md`).
+`undo()` retire le dernier événement et fait `Object.assign(S, ev.before)`, ferme la feuille, rend, sauvegarde ; elle ne fait rien pendant une saisie en cours, si l'historique est vide ou si le match est terminé. L'annulation d'un changement de joueur est la même opération. Elle ne relance un calcul de probabilité que par l'effet normal de `wpSync` (voir `probabilite-victoire.md`).

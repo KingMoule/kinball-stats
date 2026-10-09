@@ -21,8 +21,9 @@ Un match référence une équipe sans la modifier : `rosters` est une copie, don
 | `reprise` | `team`, `team_name` (aucun point) |
 | `changement` | `team`, `player_out_id`, `player_out_name`, `player_in_id`, `player_in_name` |
 | `alignement` | `team`, `lineup_ids`, `lineup_names` (alignement défini en cours de match) |
+| `fin_periode` | `winner` (couleur de l'équipe qui remporte la période, ou `null`) ; fin de période décidée à la main seulement (C26 · R6). `before` = l'état d'avant, ↶ la défait seule. Les anciens matchs n'en ont pas |
 
-La fin de période manuelle n'est pas un événement (elle ne laisse que `periodWins`).
+Une fin de période automatique (seuil) n'est pas un événement : elle est portée par l'action qui la provoque.
 
 **Ce qui se calcule à la lecture n'est pas stocké** : la zone d'un lancer (de `start_norm`, `end_norm`, `position_norm`), la phase d'une action (de `before`), les pourcentages par période. Une nouvelle façon de lire s'applique donc d'elle-même à tous les matchs déjà enregistrés. Exception voulue : `details.situation` est figée à la saisie.
 
@@ -59,7 +60,7 @@ Un match perdu ne se rejoue pas. `save()` est appelée à chaque changement d'é
 
 ## Corbeille
 
-« Supprimer » un match écrit `deleted:true`, `deletedAt`, `deletedBy` (`dbTrashMatch`) ; le match sort de l'historique et des statistiques et se récupère dans l'écran Données (`dbRestoreMatch`). Seul « Effacer pour de bon » (`doPurgeMatch`) supprime, avec confirmation. Une équipe, elle, se supprime vraiment (`dbDeleteTeam`).
+« Supprimer » un match écrit `deleted:true`, `deletedAt`, `deletedBy` (`dbTrashMatch`) ; le match sort de l'historique et des statistiques et se récupère dans l'écran Données (`dbRestoreMatch`). Seul « Effacer pour de bon » (`doPurgeMatch`) supprime, avec confirmation. Une équipe suit le même chemin (C26 · R9) : SUPPRIMER dans l'éditeur ouvre une confirmation armée (`armSheet`) qui nomme l'équipe, puis `dbTrashTeam` écrit `deleted:true`, `deletedAt`, `deletedBy`. `TEAMS_DB` ne contient que les équipes actives, `DELETED_TEAMS` celles de la corbeille ; `getTeamAny(id)` retrouve les deux (nom et fiche d'une équipe dont des matchs passés gardent la trace). Une équipe à la corbeille sort des choix de match, de « Mes équipes », du classement et du choix de fiche ; l'écran Sauvegarde la liste (« Récupérer » = `dbRestoreTeam`, 🗑 = `confirmPurgeTeam` puis `doPurgeTeam` → `dbDeleteTeam`, la seule vraie suppression). La sauvegarde complète et l'archive la contiennent.
 
 **Jeter un match** (`discardMatch`, depuis TERMINER) coupe d'abord tout ce qui pourrait le réécrire (réessai, copie de secours, `S` remis à neuf, attente de l'écriture en vol), puis l'écrit avec `deleted:true`. Une touche « REMETTRE LE MATCH » le rétablit sur-le-champ. L'ordre compte : sans cette séquence, un match jeté hors réseau réapparaîtrait au retour de la connexion.
 
@@ -80,6 +81,6 @@ Les champs récents restent facultatifs (pas de migration) : un ancien match qui
 
 **Limites connues** (revue de code du 2026-10-09, détail et suites dans le registre) :
 - si IndexedDB s'ouvre mais que sa lecture échoue, la copie de secours n'est jamais proposée ; si la connexion à IndexedDB meurt en cours de match (Safari iOS après une longue veille), aucun réessai ne peut réussir avant le rechargement de la page ;
-- un match terminé accepte encore des actions si l'on referme la feuille « Et maintenant ? » ; regarder la heat map d'un match terminé le réécrit (`updatedAt` change) ;
+- regarder la heat map d'un match terminé le réécrit (`updatedAt` change) ;
 - un match lancé puis quitté avant la première action reste « en cours » et compte comme match joué ;
 - dans un onglet Safari non installé, WebKit peut effacer le stockage d'un site inactif depuis 7 jours.

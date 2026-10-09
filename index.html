@@ -1306,12 +1306,15 @@ function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+Math.ran
 let TEAMS_DB = [];
 let MATCHES_DB = [];
 let DELETED_MATCHES = [];   // à la corbeille : retirés de l'historique, pas effacés
+let DELETED_TEAMS = [];     // équipes à la corbeille (C26 · R9) : hors des choix, récupérables ; leurs matchs passés gardent leur fiche
 let DB = null;
 let dbAvailable = null; // null = pas encore su, true/false = résolu
 let dbReadyResolve;
 const dbReady = new Promise(res=>{ dbReadyResolve = res; });
 
 function getTeam(id){ return TEAMS_DB.find(t=>t.id===id) || null; }
+/* Active ou à la corbeille : pour afficher le nom et la fiche d'une équipe dont des matchs passés gardent la trace. */
+function getTeamAny(id){ return getTeam(id) || DELETED_TEAMS.find(t=>t.id===id) || null; }
 function getMatchRecord(id){ return MATCHES_DB.find(m=>m.id===id) || null; }
 
 /* ---------- INDICATEUR DE SYNCHRONISATION ----------
@@ -1370,9 +1373,12 @@ function subscribeTeams(){
   if(unsubTeams || !DB) return;
   unsubTeams = DB.collection('teams').onSnapshot(
     snap => {
-      TEAMS_DB = snap.docs.map(d=>d.data());
+      const toutes = snap.docs.map(d=>d.data());
+      TEAMS_DB = toutes.filter(t => t && !t.deleted);
+      DELETED_TEAMS = toutes.filter(t => t && t.deleted);
       setSyncState('ok');
       renderTeamPickers();
+      if(isVisible('backup')) renderTrash();
       if(isVisible('teamManager')) renderTeamManagerList();
       if(isVisible('teamStatsPicker')) renderTeamStatsPickerList();
       if(isVisible('teamOverview')) renderTeamOverview();
@@ -1529,6 +1535,20 @@ async function dbSetTeam(team){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
   try{ await DB.collection('teams').doc(team.id).set(team); setSyncState('ok'); return true; }
   catch(e){ console.error('Échec de sauvegarde de l\'équipe', e); setSyncState('error'); return false; }
+}
+/* C26 · R9 : « supprimer » une équipe l'écrit deleted:true (comme un match) ; seul « Effacer pour de bon » appelle dbDeleteTeam. */
+async function dbTrashTeam(id){
+  await dbReady; if(!DB){ setSyncState('error'); return false; }
+  const t = getTeam(id);
+  if(!t) return false;
+  return dbSetTeam(Object.assign({}, t, {deleted:true, deletedAt:Date.now(), deletedBy:AUTHOR_ID || null, updatedAt:Date.now()}));
+}
+async function dbRestoreTeam(id){
+  await dbReady; if(!DB){ setSyncState('error'); return false; }
+  const t = DELETED_TEAMS.find(x=>x.id===id);
+  if(!t) return false;
+  const copie = Object.assign({}, t, {updatedAt:Date.now()}); delete copie.deleted; delete copie.deletedAt; delete copie.deletedBy;
+  return dbSetTeam(copie);
 }
 async function dbDeleteTeam(id){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
@@ -1965,7 +1985,7 @@ function renderTeamPickers(){
     sel.innerHTML = TEAMS_DB.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('') +
       `<option value="__free__">— Nom libre —</option>`;
     if(TEAMS_DB.some(t=>t.id===prevValue) || prevValue==='__free__'){ sel.value = prevValue; }
-    else if(TEAMS_DB.length){ sel.value = TEAMS_DB[Math.min(TEAMS.indexOf(slot), TEAMS_DB.length-1)].id; }
+    else if(TEAMS_DB.length > TEAMS.indexOf(slot)){ sel.value = TEAMS_DB[TEAMS.indexOf(slot)].id; }   // C26 · R20 : jamais la même équipe d'office pour deux couleurs (nom libre quand il n'y en a pas assez)
     else { sel.value = '__free__'; }
     onTeamPickChange(slot, true);
   });
@@ -2263,7 +2283,7 @@ function finishMatchNow(){
       <button class="choice-btn" style="background:var(--bleu)" onclick="closeSheet(); openStats()">VOIR LES STATS</button>
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet(); navHome(); openNewMatch()">NOUVEAU MATCH</button>
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet(); navHome()">ACCUEIL</button>
-    </div>`, true);
+    </div>`, false);   // C26 · R7 : non refermable d'un appui à côté (on ne revient pas sur le terrain d'un match terminé)
 }
 
 function startMatch(){
@@ -2273,6 +2293,16 @@ function startMatch(){
   const fmtChk = FORMATS[pendingFormatId] || FORMATS[DEFAULT_FORMAT];
   const playing = fmtChk.teams===2 ? TEAMS.filter(t=>t!==pendingExcludedTeam) : TEAMS.slice();
   playing.forEach(syncPendingLineup);
+  /* C26 · R20 : la même équipe enregistrée ne peut pas occuper deux couleurs. */
+  const errDoublon = document.getElementById('newMatchError');
+  for(let i=0; i<playing.length; i++) for(let k=i+1; k<playing.length; k++){
+    const a = document.getElementById('teamPick'+playing[i]).value, b = document.getElementById('teamPick'+playing[k]).value;
+    if(a !== '__free__' && a === b){
+      const memeEquipe = getTeam(a);
+      errDoublon.textContent = `« ${memeEquipe ? memeEquipe.name : 'Cette équipe'} » est choisie pour deux couleurs (${playing[i]} et ${playing[k]}). Choisissez une autre équipe pour l'une des deux, ou un nom libre.`;
+      return;
+    }
+  }
   const incomplete = playing.filter(t => { const n = pendingLineups[t].length; return n!==0 && n!==LINEUP_SIZE; });
   const errBox = document.getElementById('newMatchError');
   if(incomplete.length){
@@ -2358,7 +2388,7 @@ function renderScoreboard(){
   const finPeriodeHTML = libre
     ? `<button class="icon-btn periode" onclick="endPeriodByLeader()">FIN<br>PÉRIODE</button>` : '';
   const controlsHTML =
-    `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
+    `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
      ${finPeriodeHTML}
      <button class="icon-btn finish" onclick="openFinishMenu()">TERMINER</button>
      <button class="icon-btn" onclick="goHome()" aria-label="Accueil">⌂</button>
@@ -2369,7 +2399,7 @@ function renderScoreboard(){
   sb.classList.toggle('two-teams', ATEAMS().length===2);
   const mb = document.getElementById('matchBar');
   mb.innerHTML = IS_PHONE
-    ? `<button class="mb-btn mb-undo" id="undoBtnPhone" onclick="undoTap()" ${S.history.length?'':'disabled'}><span class="mb-ico">↶</span>Annuler</button>
+    ? `<button class="mb-btn mb-undo" id="undoBtnPhone" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'}><span class="mb-ico">↶</span>Annuler</button>
        ${libre ? `<button class="mb-btn mb-periode" onclick="endPeriodByLeader()"><span class="mb-ico">⏱</span>Fin pér.</button>` : ''}
        <button class="mb-btn" onclick="openStats()"><span class="mb-ico">▦</span>Stats</button>
        <button class="mb-btn" onclick="goHome()"><span class="mb-ico">⌂</span>Accueil</button>
@@ -2399,7 +2429,7 @@ function renderScoreboard(){
    changement est un événement de l'historique : Annuler le défait. */
 let lineupSheetTeam = null, subOut = null, lineupDraft = [];
 function openLineupSheet(team){
-  if(viewingArchive || !S.id) return;
+  if(viewingArchive || !S.id || S.status !== 'in_progress') return;   // C26 · R7
   // jamais par-dessus une étape de jeu en cours (possession, résultat, faute…)
   if(pending || S.awaitingInitial || S.awaitingDuelStart || periodEndTimer) return;
   if(radialBusy()) return;   // C21 : jamais pendant une saisie radiale
@@ -2447,7 +2477,7 @@ function pickSubOut(id){ subOut = (subOut===id ? null : id); renderLineupSheet()
 /* Un échange = un événement « changement » (même forme pour le toucher-toucher
    et le glisser). Refuse sans rien changer si l'échange n'est pas valide. */
 function applySub(team, outId, inId){
-  if(!lineupSheetTeam || team !== lineupSheetTeam) return false;
+  if(!lineupSheetTeam || team !== lineupSheetTeam || S.status !== 'in_progress') return false;
   const lineup = lineupOf(team);
   const roster = (S.rosters && S.rosters[team]) || [];
   if(lineup.length !== LINEUP_SIZE || !lineup.includes(outId) || lineup.includes(inId) || !roster.some(p=>p.id===inId)) return false;
@@ -2541,7 +2571,7 @@ function toggleDraftPlayer(id){
   renderLineupSheet();
 }
 function commitLineupDefinition(){
-  if(!lineupSheetTeam) return;
+  if(!lineupSheetTeam || S.status !== 'in_progress') return;
   if(lineupDraft.length !== LINEUP_SIZE) return;
   const team = lineupSheetTeam;
   const before = snapshotBefore();
@@ -2862,6 +2892,7 @@ function drawDrag(p1,p2){
   </svg>`;
 }
 field.addEventListener('pointerdown', e=>{
+  if(S.status !== 'in_progress') return;   // C26 · R7 : un match terminé n'accepte plus aucune action
   if(document.getElementById('sheet').classList.contains('open')) return;
   if(radialBusy()) return;              // C21 : couche radiale ouverte (ou en train de se fermer)
   if(S.awaitingInitial||S.awaitingDuelStart) return;
@@ -3124,8 +3155,13 @@ function checkPeriodState(){
 }
 /* `winner` peut être null : en format libre, une période peut se terminer
    sans vainqueur désigné. */
-function finishPeriod(winner){
+function finishPeriod(winner, manual){
   if(periodEndTimer) return;            // C23 : une seule fin de période à la fois
+  /* C26 · R6 : une fin de période décidée à la main est un événement de l'historique (fin_periode, avec le
+     vainqueur ou null) : ↶ la défait seule et ramène exactement l'état d'avant, sans toucher à la dernière action.
+     Les fins automatiques (seuil) restent portées par l'action qui les provoque. Rien n'est enregistré ici :
+     save() part avec la fin du message, comme avant. */
+  if(manual) S.history.push({type:'fin_periode', before:snapshotBefore(), details:{winner:winner || null}});
   if(winner) S.periodWins[winner]+=1;
   const fmt = getFormat(S);
   const eliminated = S.eliminated;
@@ -3150,7 +3186,7 @@ function finishPeriod(winner){
 /* Fin de période déclenchée à la main — indispensable en format libre, et
    utile partout ailleurs (période écourtée, temps de pratique limité). */
 function openFinishMenu(){
-  if(!S.id) return;
+  if(!S.id || S.status !== 'in_progress') return;   // C26 · R7
   if(radialBusy()) return;   // C21 : la couche radiale ne recouvre pas le ruban, mais une saisie en cours passe avant TERMINER
   const teams = ATEAMS().filter(t=>t!==S.eliminated);
   openSheet(`<div class="sheet-title">TERMINER</div>
@@ -3254,13 +3290,13 @@ async function restoreDiscarded(){
    au moment où on appuie. Si deux équipes sont à égalité en tête, l'app ne
    peut pas trancher à la place de l'arbitre : elle demande. */
 function endPeriodByLeader(){
-  if(!S.id || pending || S.awaitingInitial || S.awaitingDuelStart) return;
+  if(!S.id || S.status !== 'in_progress' || pending || S.awaitingInitial || S.awaitingDuelStart) return;
   const enJeu = ATEAMS().filter(t => t !== S.eliminated);
   const max = Math.max(...enJeu.map(t => S.scores[t]));
   const meneurs = enJeu.filter(t => S.scores[t] === max);
   if(meneurs.length === 1){
     closeSheet();
-    finishPeriod(meneurs[0]);
+    finishPeriod(meneurs[0], true);
     return;
   }
   openSheet(`<div class="sheet-title">FIN DE PÉRIODE — ÉGALITÉ</div>
@@ -3274,7 +3310,8 @@ function endPeriodByLeader(){
 }
 function endPeriodManually(team){
   closeSheet();
-  finishPeriod(team || null);
+  if(S.status !== 'in_progress') return;   // C26 · R7
+  finishPeriod(team || null, true);
 }
 
 function undoTap(){
@@ -3282,7 +3319,7 @@ function undoTap(){
   undo();
 }
 function undo(){
-  if(pending || !S.history.length) return;
+  if(pending || !S.history.length || S.status !== 'in_progress') return;   // C26 · R7 : ↶ refusé sur un match terminé
   if(periodEndTimer){ clearTimeout(periodEndTimer); periodEndTimer = null; }   // C23 : annuler pendant la fin de période l'annule aussi
   pendingPeriodWinner = null;
   const ev = S.history.pop();
@@ -4140,7 +4177,7 @@ function situationOf(history, i){
   const per = ev.before && ev.before.period;
   for(let k = i-1; k >= 0; k--){
     const p = history[k];
-    if(p.type === 'reprise' || p.type === 'faute_directe') return 'arretee';
+    if(p.type === 'reprise' || p.type === 'faute_directe' || p.type === 'fin_periode') return 'arretee';   // une nouvelle période repart toujours à l'arrêt
     if(p.type === 'lancer'){
       const pp = p.before && p.before.period;
       if(per !== undefined && pp !== undefined && pp !== per) return 'arretee';  // période différente
@@ -4374,7 +4411,7 @@ function sectionMatchPlayers(){
   return html;
 }
 function sectionTeamPlayers(agg, teamId){
-  const team = getTeam(teamId);
+  const team = getTeamAny(teamId);
   const nameOf = id => ((team && team.players) || []).find(p=>p.id===id)?.name;
   const acc = {};
   const extra = {unattributed:0, teamFaults:0, unknownFaults:0};
@@ -5208,7 +5245,7 @@ async function saveFile(filename, blob){
    un fichier ouvert trois mois plus tard doit rester lisible seul.
    ========================================================== */
 const EV_LABEL = {lancer:'Lancer', faute_directe:'Faute directe', reprise:'Reprise de jeu',
-                  changement:'Changement', alignement:'Alignement'};
+                  changement:'Changement', alignement:'Alignement', fin_periode:'Fin de période'};
 const SIT_LABEL = {arretee:'Arrêtée', continue:'Continue'};
 function nm(slot){ return (S.names && S.names[slot]) || slot; }
 function zoneAt(pos){ return pos ? ZONE_LABEL[classifyZone(pos[0], pos[1])] : ''; }
@@ -5236,7 +5273,7 @@ function buildActionRows(){
       'Équipe en possession': b.possession ? nm(b.possession) : '',
       'Équipe attaquante': d.attacker ? nm(d.attacker) : (ev.type==='faute_directe' && b.possession ? nm(b.possession) : ''),
       'Équipe ciblée': d.target ? nm(d.target) : '',
-      'Résultat': d.result === 'échappé' ? 'Échappé' : (d.result === 'attrapé' ? 'Attrapé' : ''),
+      'Résultat': d.result === 'échappé' ? 'Échappé' : (d.result === 'attrapé' ? 'Attrapé' : (ev.type==='fin_periode' ? (d.winner ? 'Période gagnée par '+nm(d.winner) : 'Période sans vainqueur') : '')),
       /* Arrêtée ou continue : la distinction qui sépare une relance sur
          place (faute, ballon échappé, début de période) d'une relance après
          avoir attrapé, où l'équipe a pu se déplacer. */
@@ -5492,14 +5529,17 @@ function openTeamEditor(teamId){
   const rows = document.getElementById('playerRows');
   rows.innerHTML = '';
   const players = team ? team.players : [];
-  if(players.length){ players.forEach(p=>addPlayerRow(p.name)); }
+  if(players.length){ players.forEach(p=>addPlayerRow(p.name, p.id)); }
   else { addPlayerRow(); addPlayerRow(); }
 }
 function closeTeamEditor(){ navBack(); }
-function addPlayerRow(name){
+/* C26 · R8 : l'identifiant d'un joueur existant est posé sur sa LIGNE (data-pid), pas retrouvé par son nom :
+   renommer garde l'identifiant, deux homonymes gardent chacun le leur. Une ligne neuve n'en a pas. */
+function addPlayerRow(name, pid){
   const rows = document.getElementById('playerRows');
   const row = document.createElement('div');
   row.className = 'player-row';
+  if(pid) row.dataset.pid = pid;
   row.innerHTML = `<input type="text" placeholder="Nom du joueur" value="${name?escapeHtml(name):''}">
     <button class="player-remove" onclick="this.parentElement.remove()">✕</button>`;
   rows.appendChild(row);
@@ -5507,16 +5547,13 @@ function addPlayerRow(name){
 async function saveTeamEditor(){
   const name = document.getElementById('teamEditorName').value.trim();
   if(!name){ document.getElementById('teamEditorName').focus(); return; }
-  const playerInputs = document.querySelectorAll('#playerRows .player-row input');
+  const playerRows = document.querySelectorAll('#playerRows .player-row');
   // Clone : l'équipe existante vient de TEAMS_DB (alimenté par onSnapshot), on ne mute jamais ça en place.
   const existingTeam = editingTeamId ? JSON.parse(JSON.stringify(getTeam(editingTeamId) || {})) : null;
-  const players = Array.from(playerInputs)
-    .map(inp=>inp.value.trim())
-    .filter(n=>n)
-    .map(n=>{
-      const existing = existingTeam && existingTeam.players && existingTeam.players.find(p=>p.name===n);
-      return {id: existing?existing.id:uid('p'), name:n};
-    });
+  const players = Array.from(playerRows)
+    .map(row=>({pid: row.dataset.pid || null, name: row.querySelector('input').value.trim()}))
+    .filter(x=>x.name)
+    .map(x=>({id: x.pid || uid('p'), name:x.name}));
 
   const team = editingTeamId
     ? {...existingTeam, id: editingTeamId, name, players, updatedAt: Date.now()}
@@ -5525,11 +5562,23 @@ async function saveTeamEditor(){
   closeTeamEditor();          // navigation immédiate ; la liste se rafraîchit via l'abonnement onSnapshot
   await dbSetTeam(team);
 }
-async function deleteTeamEditor(){
+/* C26 · R9 : même protection que pour un match (confirmation armée avec le nom, puis mise à la corbeille récupérable). */
+function deleteTeamEditor(){
   if(!editingTeamId) return;
-  const id = editingTeamId;
-  closeTeamEditor();
-  await dbDeleteTeam(id);
+  const t = getTeam(editingTeamId);
+  if(!t) return;
+  openSheet(`<div class="sheet-title">METTRE L'ÉQUIPE À LA CORBEILLE</div>
+    <div class="empty" style="padding:0 0 16px">« ${escapeHtml(t.name)} » (${t.players.length} joueur${t.players.length>1?'s':''}) ne sera plus proposée dans les choix de match. Rien n'est effacé : vous pourrez la récupérer depuis la corbeille, dans Sauvegarde des données. Les matchs déjà joués gardent son nom et sa fiche.</div>
+    <div class="choice-row">
+      <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteTeam('${jsArg(t.id)}')">METTRE À LA CORBEILLE</button>
+    </div>`, true);
+  armSheet();
+}
+async function doDeleteTeam(id){
+  closeSheet();
+  if(editingTeamId === id){ editingTeamId = null; closeTeamEditor(); }
+  await dbTrashTeam(id);
 }
 
 /* ==========================================================
@@ -5552,7 +5601,7 @@ function renderMatchHistoryList(){
   let list = [...MATCHES_DB];
   let head = '';
   if(historyFilterTeamId){
-    const team = getTeam(historyFilterTeamId);
+    const team = getTeamAny(historyFilterTeamId);
     list = list.filter(m => TEAMS.some(slot => m.teamIds && m.teamIds[slot]===historyFilterTeamId));
     head = `<div class="filter-chip">
       <span>Matchs de <b>${escapeHtml(team ? team.name : '?')}</b></span>
@@ -5658,7 +5707,7 @@ function renderTeamStatsPickerList(){
    match par match et additionné, avec la couleur de chaque match traduite
    vers l'identité d'équipe permanente via teamIds. */
 function computeTeamAggregate(teamId){
-  const team = getTeam(teamId);
+  const team = getTeamAny(teamId);
   const teamName = team ? team.name : '?';
   const matches = MATCHES_DB.filter(m => TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===teamId));
 
@@ -5859,8 +5908,9 @@ function renderTeamAggregate(teamId){
     <div class="as-sub">${agg.matchesPlayed} match${agg.matchesPlayed>1?'s':''} joué${agg.matchesPlayed>1?'s':''} • ${agg.periodWins} période${agg.periodWins>1?'s':''} gagnée${agg.periodWins>1?'s':''}</div>
     <div class="agg-links">
       <button class="ghost-btn" onclick="openMatchHistory('${jsArg(teamId)}')">Voir ses matchs →</button>
-      <button class="ghost-btn" onclick="openTeamEditor('${jsArg(teamId)}')">Modifier l'alignement →</button>
+      ${getTeam(teamId) ? `<button class="ghost-btn" onclick="openTeamEditor('${jsArg(teamId)}')">Modifier l'alignement →</button>` : ''}
     </div>
+    ${getTeam(teamId) ? '' : `<div class="as-sub">Cette équipe est à la corbeille : récupérable depuis « Sauvegarde des données ».</div>`}
   </div>`;
 
   if(!agg.matchesPlayed){
@@ -5913,7 +5963,7 @@ function renderTrash(){
   const box = document.getElementById('trashSection');
   if(!box) return;
   statsRerender = renderTrash;
-  if(!DELETED_MATCHES.length){ box.innerHTML = ''; box.style.display = 'none'; return; }
+  if(!DELETED_MATCHES.length && !DELETED_TEAMS.length){ box.innerHTML = ''; box.style.display = 'none'; return; }
   box.style.display = 'block';
   const rows = DELETED_MATCHES.map(m=>{
     const d = new Date(m.deletedAt || m.updatedAt || 0);
@@ -5921,9 +5971,7 @@ function renderTrash(){
       dateStr: d.toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})};
   });
   resolveProfiles(rows.map(r=>r.m.authorId), renderTrash);
-  box.innerHTML = `<div class="section-title" style="margin-top:22px">Corbeille</div>
-    <div class="section-sub">Les matchs retirés de l'historique ne sont pas effacés. Ils restent ici, hors des statistiques, jusqu'à ce que vous les récupériez ou les effaciez pour de bon.</div>`
-    + statTable({
+  const matchsHTML = DELETED_MATCHES.length ? statTable({
       scope:'team', id:'trash',
       defaultSort:{key:'date', dir:-1},
       rows,
@@ -5938,7 +5986,44 @@ function renderTrash(){
          fmt:r=>`<button class="row-delete" onclick="confirmPurgeMatch('${jsArg(r.m.id)}')" aria-label="Effacer définitivement">🗑</button>`},
       ],
       note:"« Récupérer » remet le match dans l'historique et dans les statistiques. La corbeille de quelqu'un d'autre ne peut être vidée que par lui.",
-    });
+    }) : '';
+  /* C26 · R9 : les équipes retirées vivent dans la même corbeille. */
+  const equipesHTML = DELETED_TEAMS.length ? `<div class="section-sub" style="margin-top:14px">Équipes retirées : hors des choix de match, mais leurs matchs passés gardent leur nom et leur fiche.</div>`
+    + statTable({
+      scope:'team', id:'trashTeams',
+      defaultSort:{key:'date', dir:-1},
+      rows: DELETED_TEAMS.map(t=>({t, _name:t.name, quand:t.deletedAt || 0,
+        dateStr: new Date(t.deletedAt || t.updatedAt || 0).toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})})),
+      cols:[
+        {key:'nom',  label:'Équipe', val:r=>r._name, fmt:r=>escapeHtml(r._name)},
+        {key:'date', label:'Retirée le', val:r=>r.quand, fmt:r=>r.dateStr},
+        {key:'jr',   label:'Joueurs', short:'Jr', cls:'sub', val:r=>(r.t.players||[]).length},
+        {key:'rest', label:'', val:r=>0,
+         fmt:r=>CAN_EDIT_TEAMS ? `<button class="inline-link" onclick="doRestoreTeam('${jsArg(r.t.id)}')">Récupérer</button>` : ''},
+        {key:'suppr', label:'', val:r=>0,
+         fmt:r=>CAN_EDIT_TEAMS ? `<button class="row-delete" onclick="confirmPurgeTeam('${jsArg(r.t.id)}')" aria-label="Effacer définitivement">🗑</button>` : ''},
+      ],
+      note:"« Récupérer » remet l'équipe et son alignement dans les choix de match.",
+    }) : '';
+  box.innerHTML = `<div class="section-title" style="margin-top:22px">Corbeille</div>
+    <div class="section-sub">Les matchs et les équipes retirés ne sont pas effacés. Ils restent ici, hors des statistiques et des choix, jusqu'à ce que vous les récupériez ou les effaciez pour de bon.</div>`
+    + matchsHTML + equipesHTML;
+}
+async function doRestoreTeam(id){ await dbRestoreTeam(id); }
+function confirmPurgeTeam(id){
+  const t = DELETED_TEAMS.find(x=>x.id===id);
+  if(!t) return;
+  openSheet(`<div class="sheet-title">EFFACER POUR DE BON</div>
+    <div class="empty" style="padding:0 0 16px">« ${escapeHtml(t.name)} » et son alignement de ${(t.players||[]).length} joueur(s) seront effacés définitivement. Les matchs déjà joués gardent son nom mais perdent sa fiche. Cette fois, c'est irréversible.</div>
+    <div class="choice-row">
+      <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doPurgeTeam('${jsArg(id)}')">EFFACER</button>
+    </div>`, true);
+  armSheet();
+}
+async function doPurgeTeam(id){
+  closeSheet();
+  if(DELETED_TEAMS.some(x=>x.id===id)) await dbDeleteTeam(id);
 }
 async function doRestoreMatch(id){ await dbRestoreMatch(id); }
 function confirmPurgeMatch(id){
@@ -5988,7 +6073,7 @@ async function confirmArchiveOldMatches(days){
   const list = eligibleArchiveMatches(days);
   if(!list.length) return;
   status.textContent = 'Export en cours…';
-  const payload = {format:'kinball_archive', version:1, exportedAt:new Date().toISOString(), teams:TEAMS_DB, matches:list};
+  const payload = {format:'kinball_archive', version:1, exportedAt:new Date().toISOString(), teams:[].concat(TEAMS_DB, DELETED_TEAMS), matches:list};
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const ok = await saveFile('kinball_archive_'+todayStr()+'.json', blob);
   if(!ok){ status.textContent = "Export annulé : rien n'a été supprimé."; return; }
@@ -6009,7 +6094,7 @@ async function exportFullBackup(){
   /* La corbeille part avec : une sauvegarde qui oublierait les matchs
      retirés ne serait pas une sauvegarde complète. */
   const payload = {format:'kinball_backup', version:1, exportedAt:new Date().toISOString(),
-                   teams:TEAMS_DB, matches:[].concat(MATCHES_DB, DELETED_MATCHES)};
+                   teams:[].concat(TEAMS_DB, DELETED_TEAMS), matches:[].concat(MATCHES_DB, DELETED_MATCHES)};
   if(typeof KBSite !== 'undefined' && KBSite.sauvegardeV2) KBSite.sauvegardeV2(payload); /* MIGRATION M06 */
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   await saveFile('kinball_sauvegarde_'+todayStr()+'.json', blob);
@@ -6083,7 +6168,7 @@ async function handleImportFile(event){
   }
   const kbImport = (typeof KBSite !== 'undefined' && KBSite.importDebut) ? await KBSite.importDebut(payload) : null; /* MIGRATION M06 */
 
-  const existingTeamIds = new Set(TEAMS_DB.map(t=>t.id));
+  const existingTeamIds = new Set([].concat(TEAMS_DB, DELETED_TEAMS).map(t=>t.id));
   const existingMatchIds = new Set(MATCHES_DB.map(m=>m.id));
   let teamsAdded=0, teamsUpdated=0, matchesAdded=0, matchesUpdated=0, failed=0;
   const ecartes = {};   // raison → nombre

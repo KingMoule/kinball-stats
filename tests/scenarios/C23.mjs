@@ -158,7 +158,7 @@ export default async function ({ gabarit, check: check0 }) {
       }
     });
     /* 3. fin à la main */
-    await chk(`${P} · 3 · fin à la main (menu TERMINER, FIN PÉRIODE du format libre) puis ↶ pendant le message : état = before du dernier événement, stable 2 s ; historique vide : la période se termine`, async () => {
+    await chk(`${P} · 3 · fin à la main (menu TERMINER, FIN PÉRIODE du format libre) puis ↶ pendant le message : défait la fin de période seule (C26 · R6), état d'avant exactement, dernière action intacte, stable 2 s ; historique vide : ↶ défait aussi la fin de période`, async () => {
       for (const [nom, opts] of MODES) {
         /* menu TERMINER, 9/11, un événement dans l'historique */
         {
@@ -166,17 +166,20 @@ export default async function ({ gabarit, check: check0 }) {
           const pre = async app => { await app.lancer({ target: 'Gris', caught: true }); };
           await setup(a, { format: '9_11', scores: { Bleu: 3, Gris: 2, Noir: 1 }, poss: 'Bleu', prelude: pre });
           await instrument(a);
-          const B = await a.ev(() => JSON.parse(JSON.stringify(S.history[S.history.length - 1].before)));
+          const B = await a.ev(() => snapshotBefore());   // C26 · R6 : l'état juste avant la fin de période
           const hl = await a.ev(() => S.history.length);
           await PATHS.menu(a);
           await atMs(a, 480);
           assert((await a.ev(() => S.periodWins.Bleu)) === 1, 'période comptée pendant le message');
+          eq(await a.ev(() => S.history.length), hl + 1, `${nom} menu : la fin de période est un événement`);
+          eq(await a.ev(() => S.history[S.history.length - 1].type), 'fin_periode', `${nom} menu : type de l'événement`);
           const how = await tapUndo(a);
           await a.page.waitForTimeout(40);
           for (const phase of ['tout de suite', '2 s plus tard']) {
             if (phase !== 'tout de suite') await a.page.waitForTimeout(2000);
             const s = await a.ev(() => JSON.parse(JSON.stringify(S)));
-            eq(s.history.length, hl - 1, `${nom} menu (${how}) ${phase} : le dernier événement est défait`);
+            eq(s.history.length, hl, `${nom} menu (${how}) ${phase} : seule la fin de période est défaite, la dernière action reste`);
+            eq(s.history[s.history.length - 1].type, 'lancer', `${nom} menu (${how}) ${phase} : dernier événement`);
             for (const k of Object.keys(B)) {
               const exp = k === 'stopped' ? B[k] : B[k], got = k === 'stopped' ? (s.stopped !== false) : s[k];
               eq(got, exp, `${nom} menu ${phase} : ${k}`);
@@ -192,19 +195,19 @@ export default async function ({ gabarit, check: check0 }) {
           const pre = async app => { await app.lancer({ target: 'Gris', caught: true }); };
           await setup(a, { format: 'libre3', scores: { Bleu: 3, Gris: 1, Noir: 0 }, poss: 'Bleu', prelude: pre });
           await instrument(a);
-          const B = await a.ev(() => JSON.parse(JSON.stringify(S.history[S.history.length - 1].before)));
+          const B = await a.ev(() => snapshotBefore());
           const hl = await a.ev(() => S.history.length);
           await a.page.locator('[onclick="endPeriodByLeader()"]:visible').first().click();
           await atMs(a, 480);
           const how = await tapUndo(a);
           await a.page.waitForTimeout(2300);
           const s = await a.ev(() => JSON.parse(JSON.stringify(S)));
-          eq(s.history.length, hl - 1, `${nom} libre (${how}) : dernier événement défait`);
+          eq(s.history.length, hl, `${nom} libre (${how}) : seule la fin de période est défaite`);
           eq([s.period, s.scores, s.periodWins], [B.period, B.scores, B.periodWins], `${nom} libre : état = before`);
           eq(await peState(a), null, `${nom} libre : periodEndTimer`);
           await a.close(); apps.pop();
         }
-        /* historique vide : ↶ désactivé, la période se termine normalement */
+        /* historique vide : la fin de période est le premier événement ; ↶ la défait (C26 · R6) */
         {
           const a = await open(opts);
           await setup(a, { format: '9_11', scores: { Bleu: 2, Gris: 1, Noir: 0 }, poss: 'Bleu' });
@@ -215,7 +218,7 @@ export default async function ({ gabarit, check: check0 }) {
           const how = await tapUndo(a);
           await a.page.waitForTimeout(1500);
           const s = await a.ev(() => JSON.parse(JSON.stringify(S)));
-          eq([s.period, s.periodWins.Bleu, s.scores], [2, 1, { Bleu: 0, Gris: 0, Noir: 0 }], `${nom} historique vide (${how}) : la période se termine`);
+          eq([s.period, s.periodWins.Bleu, s.scores, s.history.length], [1, 0, { Bleu: 2, Gris: 1, Noir: 0 }, 0], `${nom} historique vide (${how}) : la fin de période est défaite`);
           await a.close(); apps.pop();
         }
       }
