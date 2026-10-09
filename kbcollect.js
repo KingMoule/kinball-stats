@@ -156,6 +156,11 @@
         vus[m.id] = 1;
         if (m.deleted) { if (marquerSuppression(m.id, m.deletedAt)) change = true; continue; }
         if (m.status !== 'completed') continue;                           // en cours : jamais
+        if (typeof m.authorId !== 'string' || !m.authorId) {              // sans auteur (importé) : jamais « le mien », jamais partagé (C25 · R22)
+          var sa = file[m.id];
+          if (sa && !sa.dejaPartage && sa.etat !== 'partage') { delete file[m.id]; change = true; }
+          continue;
+        }
         var e = file[m.id];
         if (e && e.suppr) { e.suppr = null; change = true; }              // rendu avant l'envoi de la marque
         var courant = m;
@@ -199,7 +204,7 @@
   function envoyerVersion(id, forcer) {
     var e = file[id], g = generation;
     var m = trouver(id);
-    if (!m || m.deleted || m.status !== 'completed') return Promise.resolve('saute');
+    if (!m || m.deleted || m.status !== 'completed' || !m.authorId) return Promise.resolve('saute');
     var clean = epurer(m);
     return sha256(JSON.stringify(clean)).then(function (h) {
       if (h !== e.empreinte) { encore = encore || 'accueil'; return 'saute'; }   // changé entre-temps : la prochaine passe recalcule

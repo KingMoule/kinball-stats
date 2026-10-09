@@ -1751,8 +1751,8 @@ function checkLocalBackups(){
     <div class="rec-sub">« ${escapeHtml(b.match.matchName || 'match')} » — ${(b.match.history||[]).length} action(s) conservée(s) sur cet appareil${
       serveur ? `, soit ${ecart} de plus que la version enregistrée` : ', absent du stockage de cet appareil'}.</div>
     <div class="rec-actions">
-      <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${b.match.id}')">Récupérer ce match</button>
-      <button class="ghost-btn" onclick="dismissLocalBackup('${b.match.id}')">Ignorer</button>
+      <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${jsArg(b.match.id)}')">Récupérer ce match</button>
+      <button class="ghost-btn" onclick="dismissLocalBackup('${jsArg(b.match.id)}')">Ignorer</button>
     </div>`;
 }
 function restoreLocalBackup(id){
@@ -1962,7 +1962,7 @@ function renderTeamPickers(){
   TEAMS.forEach(slot=>{
     const sel = document.getElementById('teamPick'+slot);
     const prevValue = sel.value;
-    sel.innerHTML = TEAMS_DB.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('') +
+    sel.innerHTML = TEAMS_DB.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('') +
       `<option value="__free__">— Nom libre —</option>`;
     if(TEAMS_DB.some(t=>t.id===prevValue) || prevValue==='__free__'){ sel.value = prevValue; }
     else if(TEAMS_DB.length){ sel.value = TEAMS_DB[Math.min(TEAMS.indexOf(slot), TEAMS_DB.length-1)].id; }
@@ -2056,7 +2056,7 @@ function renderLineupPicker(slot){
       ${l.length ? `<button type="button" class="lineup-clear" onclick="clearLineup('${slot}')">Aucun alignement</button>` : ''}
     </div>
     <div class="adv-player-grid">` + team.players.map(p=>
-      `<button type="button" class="adv-player-btn ${l.includes(p.id)?'selected':''}" onclick="toggleLineupPlayer('${slot}','${p.id}')">${escapeHtml(p.name)}</button>`
+      `<button type="button" class="adv-player-btn ${l.includes(p.id)?'selected':''}" onclick="toggleLineupPlayer('${slot}','${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
     ).join('') + `</div>` +
     (l.length===0 ? `<div class="lineup-note">Aucun joueur choisi : pas de stats individuelles pour cette équipe.</div>` : '');
 }
@@ -2219,7 +2219,7 @@ function openAdvancedDetailSheet(eventIndex){
     const selectedId = ev.details[which+'_player_id'];
     return `<div class="adv-section-label">${escapeHtml(S.names[team])} — ${label}</div>
       <div class="adv-player-grid">` + roster.map(p=>
-        `<button class="adv-player-btn ${selectedId===p.id?'selected':''}" onclick="setAdvancedPlayer(${eventIndex},'${which}','${p.id}')">${escapeHtml(p.name)}</button>`
+        `<button class="adv-player-btn ${selectedId===p.id?'selected':''}" onclick="setAdvancedPlayer(${eventIndex},'${which}','${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
       ).join('') + `</div>`;
   }
 
@@ -2420,12 +2420,12 @@ function renderLineupSheet(){
     // alignement oublié avant le coup d'envoi : on peut le définir maintenant
     html += `<div class="adv-section-label">Aucun alignement — choisissez les ${LINEUP_SIZE} joueurs sur le terrain (${lineupDraft.length}/${LINEUP_SIZE})</div>
       <div class="adv-player-grid">` + roster.map(p=>
-        `<button class="adv-player-btn ${lineupDraft.includes(p.id)?'selected':''}" onclick="toggleDraftPlayer('${p.id}')">${escapeHtml(p.name)}</button>`
+        `<button class="adv-player-btn ${lineupDraft.includes(p.id)?'selected':''}" onclick="toggleDraftPlayer('${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
       ).join('') + `</div>
       <button class="primary-btn" style="margin-top:14px" ${lineupDraft.length===LINEUP_SIZE?'':'disabled'} onclick="commitLineupDefinition()">CONFIRMER L'ALIGNEMENT</button>`;
   } else {
     const bench = roster.filter(p=>!lineup.includes(p.id));
-    const tok = (id, name, zone) => `<button type="button" class="sub-tok sub-${zone} ${zone==='on' && subOut===id ? 'out' : ''}" data-pid="${escapeHtml(id)}" data-zone="${zone}" ${zone==='on' ? `style="--tk:${TEAM_BG[team]}"` : ''} onclick="${zone==='on' ? 'pickSubOut' : 'pickSubIn'}('${id}')">${escapeHtml(name)}</button>`;
+    const tok = (id, name, zone) => `<button type="button" class="sub-tok sub-${zone} ${zone==='on' && subOut===id ? 'out' : ''}" data-pid="${escapeHtml(id)}" data-zone="${zone}" ${zone==='on' ? `style="--tk:${TEAM_BG[team]}"` : ''} onclick="${zone==='on' ? 'pickSubOut' : 'pickSubIn'}('${jsArg(id)}')">${escapeHtml(name)}</button>`;
     html += `<div class="sub-pitch"><div class="sub-pitch-label">SUR LE TERRAIN</div><div class="sub-on-grid">` +
         lineup.map(id=>tok(id, playerName(team,id), 'on')).join('') + `</div></div>
       <div class="sub-bench ${isNoir(team)}" style="background:${TEAM_BG[team]}; color:${team==='Gris' ? '#0B1220' : '#fff'}">
@@ -2761,7 +2761,7 @@ function radialPlayersMenu(team, players, allowTeam, title){
   let h = RD_VEIL + `<div class="rd-cap" style="left:${cx}px;top:${cy - R - D/2 - 22}px">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>`;
   players.forEach((p, i) => {
     const ang = (-135 + 90*i) * Math.PI / 180, x = cx + R*Math.cos(ang), y = cy + R*Math.sin(ang);
-    h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${p.id}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
+    h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${jsArg(p.id)}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
   });
   h += rdBtn('rd-disc unknown', cx - D/2, cy - D/2, D, D, "choosePlayer('')", '?', '', ' aria-label="Joueur inconnu"');
   if(allowTeam) h += rdBtn('rd-wide', cx - 75, cy + R + 54 - 22, 150, 44, `choosePlayer('${TEAM_FAULT}')`, 'FAUTE D’ÉQUIPE');
@@ -2974,7 +2974,7 @@ function askPlayer(team, title, cont, allowTeam){
   // non refermable d'un geste : l'action attend sa réponse (« ? » pour passer)
   openSheet(`<div class="sheet-title">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>
     <div class="player-pick-row">` +
-      players.map(p=>`<button class="player-pick ${isNoir(team)}" style="background:${TEAM_BG[team]}" onclick="choosePlayer('${p.id}')">${escapeHtml(p.name)}</button>`).join('') +
+      players.map(p=>`<button class="player-pick ${isNoir(team)}" style="background:${TEAM_BG[team]}" onclick="choosePlayer('${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`).join('') +
       (allowTeam ? `<button class="player-pick team-fault" onclick="choosePlayer('${TEAM_FAULT}')">FAUTE<br>D'ÉQUIPE</button>` : '') +
       `<button class="player-pick unknown" onclick="choosePlayer('')" aria-label="Joueur inconnu">?</button>
     </div>`, false);
@@ -3077,7 +3077,7 @@ function applyResult(team, caught, atk, pid, defIll){
   closeSheet();
   const evIndex = S.history.length-1;
   // Mode avancé : le lanceur est déjà connu, il ne reste que le receveur (pas pour une DÉF ILL).
-  flashMessage(`${S.names[team].toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team], (S.advancedMode && !defIll) ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
+  flashMessage(`${escapeHtml(S.names[team]).toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team], (S.advancedMode && !defIll) ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
   renderScoreboard();
 }
 function flashMessage(text,color,onDone){
@@ -4056,9 +4056,10 @@ function statTable(o){
   const head = cols.map(c=>{
     const active = c.key === sort.key;
     const arrow = active ? (sort.dir < 0 ? '▼' : '▲') : '▾';
-    const label = c.short ? `<span class="lg">${c.label}</span><span class="sm">${c.short}</span>` : c.label;
-    return `<th class="${active?'sorted':''}" onclick="sortTable('${scope}','${id}','${c.key}')"
-      title="Trier par ${c.label}">${label}<span class="ar">${arrow}</span></th>`;
+    /* Les en-têtes peuvent porter un nom d'équipe (texte libre) : toujours échappés. */
+    const label = c.short ? `<span class="lg">${escapeHtml(c.label)}</span><span class="sm">${escapeHtml(c.short)}</span>` : escapeHtml(c.label);
+    return `<th class="${active?'sorted':''}" onclick="sortTable('${scope}','${jsArg(id)}','${jsArg(c.key)}')"
+      title="Trier par ${escapeHtml(c.label)}">${label}<span class="ar">${arrow}</span></th>`;
   }).join('');
 
   const body = rows.map(r=>{
@@ -4076,7 +4077,7 @@ function statTable(o){
          aucun défilement horizontal qui n'existait pas avant), et le chiffre
          est exactement sous la valeur qu'il explique. */
       const detail = (showDetails && c.sub) ? `<small class="cell-sub">${c.sub(r)}</small>` : '';
-      return `<td class="${cls}">${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : v)}${detail}</td>`;
+      return `<td class="${cls}">${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : (typeof v === 'string' ? escapeHtml(v) : v))}${detail}</td>`;
     }).join('');
     return `<tr class="${r._click?'clickable':''}" ${r._click?`onclick="${r._click}"`:''}>${tds}</tr>`;
   }).join('');
@@ -4122,7 +4123,7 @@ function situationFilterHTML(current, fnName, labelPrefix){
   return `<div class="sit-filter">` +
     (labelPrefix ? `<span class="sit-label">${labelPrefix}</span>` : '') +
     [['all','Tout'],['arretee','Arrêtée'],['continue','Continue']].map(([id,label])=>
-      `<button class="sit-btn ${current===id?'active':''}" onclick="${fnName}('${id}')">${label}</button>`
+      `<button class="sit-btn ${current===id?'active':''}" onclick="${fnName}('${jsArg(id)}')">${label}</button>`
     ).join('') + `</div>`;
 }
 const SITUATIONS = [
@@ -4174,7 +4175,7 @@ function phaseOf(history, i, fmt){
 function phaseFilterHTML(current, fnName){
   return `<div class="sit-filter"><span class="sit-label">Phase :</span>` +
     [{id:'all',label:'Tout'}].concat(PHASES).map(p=>
-      `<button class="sit-btn ${current===p.id?'active':''}" onclick="${fnName}('${p.id}')">${p.label}</button>`
+      `<button class="sit-btn ${current===p.id?'active':''}" onclick="${fnName}('${jsArg(p.id)}')">${p.label}</button>`
     ).join('') + `</div>`;
 }
 function phaseLegendHTML(fmt){
@@ -4598,7 +4599,7 @@ function sectionTeamH2H(agg, teamId){
       const o = agg.h2h[key], st = agg.situations[key] || {};
       const blank = {attempts:0, successes:0};
       return {key, _name:o.name,
-        _click:`openTeamOppZoneDetail('${teamId}','${key.replace(/'/g,"\\'")}')`,
+        _click:`openTeamOppZoneDetail('${jsArg(teamId)}','${jsArg(key)}')`,
         c:{ off:{attempts:o.offAttempts, successes:o.offSuccesses},
             def:{attempts:o.defAttempts, successes:o.defSuccesses},
             off_arretee:st.off_arretee||blank, off_continue:st.off_continue||blank,
@@ -5438,6 +5439,13 @@ async function exportJSON(){
   await saveFile((S.matchName||'match_kinball')+'.json', blob);
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* Une valeur placée entre apostrophes dans un onclick construit par concaténation (identifiant, clé).
+   Tout caractère hors [A-Za-z0-9_-] devient \uXXXX : le texte obtenu est sûr à la fois pour l'attribut HTML
+   et pour la chaîne JavaScript, et le gestionnaire reçoit la valeur d'origine. */
+function jsArg(s){ return String(s).replace(/[^A-Za-z0-9_-]/g, c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')); }
+/* Forme permise d'un identifiant venu d'un fichier (équipe, joueur, match, auteur). Les identifiants créés par l'app
+   (uid : préfixe_base36) la respectent tous. */
+const RE_ID_SUR = /^[A-Za-z0-9_-]{1,80}$/;
 
 /* ==========================================================
    GESTION DES ÉQUIPES (écran d'accueil → "Gérer mes équipes")
@@ -5458,14 +5466,14 @@ function renderTeamManagerList(){
     scope:'team', id:'teamManager',
     defaultSort:{key:'nom', dir:1},
     rows: TEAMS_DB.map(t=>({t, _name:t.name, nb:t.players.length, matchs:matchsDe(t.id),
-                            _click: CAN_EDIT_TEAMS ? `openTeamEditor('${t.id}')` : null})),
+                            _click: CAN_EDIT_TEAMS ? `openTeamEditor('${jsArg(t.id)}')` : null})),
     cols:[
       {key:'nom',    label:'Équipe', val:r=>r.t.name, fmt:r=>escapeHtml(r.t.name)},
       {key:'joueurs',label:'Joueurs', short:'Jr', val:r=>r.nb},
       {key:'matchs', label:'Matchs joués', short:'M', val:r=>r.matchs,
-       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openMatchHistory('${r.t.id}')">${r.matchs}</button>` : '0'},
+       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openMatchHistory('${jsArg(r.t.id)}')">${r.matchs}</button>` : '0'},
       {key:'fiche',  label:'Statistiques', short:'Stats', val:r=>0,
-       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${r.t.id}')">Voir →</button>` : '—'},
+       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${jsArg(r.t.id)}')">Voir →</button>` : '—'},
     ],
     note: CAN_EDIT_TEAMS
       ? `${SORT_HINT} Touchez une ligne pour modifier l'équipe et son alignement.`
@@ -5565,7 +5573,7 @@ function renderMatchHistoryList(){
       dateStr: d.toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})
              + ' ' + d.toLocaleTimeString('fr-CA', {hour:'2-digit', minute:'2-digit'}),
       actions: (m.history||[]).length,
-      _click: `viewArchivedMatchStats('${m.id}')`,
+      _click: `viewArchivedMatchStats('${jsArg(m.id)}')`,
     };
   });
   /* Les noms arrivent de façon asynchrone : on rend tout de suite avec
@@ -5583,7 +5591,7 @@ function renderMatchHistoryList(){
        fmt:r=>matchTeams(r.m).map(t=>{
          const id = r.m.teamIds && r.m.teamIds[t];
          const name = escapeHtml(r.m.names[t]);
-         return id ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${id}')">${name}</button>` : name;
+         return id ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${jsArg(id)}')">${name}</button>` : name;
        }).join(' · ')},
       {key:'per', label:'Périodes', short:'Pér.', strong:true,
        val:r=>Math.max(...matchTeams(r.m).map(t=>(r.m.periodWins&&r.m.periodWins[t])||0)),
@@ -5600,7 +5608,7 @@ function renderMatchHistoryList(){
        fmt:r=>`<span class="status-badge ${r.m.status==='completed'?'done':'progress'}">${r.m.status==='completed'?'TERMINÉ':'EN COURS'}</span>`
              + (r.m.advancedMode?' <span class="status-badge" style="background:rgba(47,107,255,.18);color:var(--bleu-ink)">AVANCÉ</span>':'')},
       {key:'suppr', label:'', val:r=>0,
-       fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${r.m.id}')" aria-label="Supprimer ce match">🗑</button>`},
+       fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${jsArg(r.m.id)}')" aria-label="Supprimer ce match">🗑</button>`},
     ],
     note:`${SORT_HINT} « Périodes » = périodes gagnées (le résultat du match) ; « Score » = la période en cours, remise à zéro à chaque nouvelle période.`,
   });
@@ -5612,7 +5620,7 @@ function confirmDeleteMatch(id){
     <div class="empty" style="padding:0 0 16px">« ${escapeHtml(record.matchName)} » sortira de l'historique et des statistiques cumulées. Rien n'est effacé : vous pourrez le récupérer depuis la corbeille, dans Sauvegarde des données.</div>
     <div class="choice-row">
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
-      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteMatch('${id}')">METTRE À LA CORBEILLE</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteMatch('${jsArg(id)}')">METTRE À LA CORBEILLE</button>
     </div>`, true);
   armSheet();
 }
@@ -5633,7 +5641,7 @@ function renderTeamStatsPickerList(){
   }
   body.innerHTML = TEAMS_DB.map(t=>{
     const n = MATCHES_DB.filter(m=>TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===t.id)).length;
-    return `<div class="team-card" onclick="openTeamAggregate('${t.id}')">
+    return `<div class="team-card" onclick="openTeamAggregate('${jsArg(t.id)}')">
       <div>
         <div class="tc-name">${escapeHtml(t.name)}</div>
         <div class="tc-sub">${n} match${n>1?'s':''} joué${n>1?'s':''}</div>
@@ -5765,7 +5773,7 @@ function renderTeamOverview(){
     body.innerHTML = `<div class="empty">Aucun match joué pour le moment.<br>Le classement se remplit automatiquement au fil de vos matchs.</div>`;
     return;
   }
-  rows.forEach(r=>{ r._name = r.name; if(r.matchesPlayed) r._click = `openTeamAggregate('${r.id}')`; });
+  rows.forEach(r=>{ r._name = r.name; if(r.matchesPlayed) r._click = `openTeamAggregate('${jsArg(r.id)}')`; });
   body.innerHTML = statTable({
     scope:'team', id:'leaderboard',
     defaultSort:{key:'wins', dir:-1},
@@ -5850,8 +5858,8 @@ function renderTeamAggregate(teamId){
     <div class="as-name">${escapeHtml(agg.teamName)}</div>
     <div class="as-sub">${agg.matchesPlayed} match${agg.matchesPlayed>1?'s':''} joué${agg.matchesPlayed>1?'s':''} • ${agg.periodWins} période${agg.periodWins>1?'s':''} gagnée${agg.periodWins>1?'s':''}</div>
     <div class="agg-links">
-      <button class="ghost-btn" onclick="openMatchHistory('${teamId}')">Voir ses matchs →</button>
-      <button class="ghost-btn" onclick="openTeamEditor('${teamId}')">Modifier l'alignement →</button>
+      <button class="ghost-btn" onclick="openMatchHistory('${jsArg(teamId)}')">Voir ses matchs →</button>
+      <button class="ghost-btn" onclick="openTeamEditor('${jsArg(teamId)}')">Modifier l'alignement →</button>
     </div>
   </div>`;
 
@@ -5925,9 +5933,9 @@ function renderTrash(){
         {key:'par',  label:'Pris par', short:'Par', cls:'muted', val:r=>authorLabel(r.m.authorId), fmt:r=>authorLabel(r.m.authorId)},
         {key:'act',  label:'Actions', short:'Act.', cls:'sub', val:r=>(r.m.history||[]).length},
         {key:'rest', label:'', val:r=>0,
-         fmt:r=>`<button class="inline-link" onclick="doRestoreMatch('${r.m.id}')">Récupérer</button>`},
+         fmt:r=>`<button class="inline-link" onclick="doRestoreMatch('${jsArg(r.m.id)}')">Récupérer</button>`},
         {key:'suppr', label:'', val:r=>0,
-         fmt:r=>`<button class="row-delete" onclick="confirmPurgeMatch('${r.m.id}')" aria-label="Effacer définitivement">🗑</button>`},
+         fmt:r=>`<button class="row-delete" onclick="confirmPurgeMatch('${jsArg(r.m.id)}')" aria-label="Effacer définitivement">🗑</button>`},
       ],
       note:"« Récupérer » remet le match dans l'historique et dans les statistiques. La corbeille de quelqu'un d'autre ne peut être vidée que par lui.",
     });
@@ -5940,7 +5948,7 @@ function confirmPurgeMatch(id){
     <div class="empty" style="padding:0 0 16px">« ${escapeHtml(m.matchName || 'match')} » et ses ${(m.history||[]).length} action(s) seront effacés définitivement. Cette fois, c'est irréversible.</div>
     <div class="choice-row">
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
-      <button class="choice-btn" style="background:var(--red)" onclick="doPurgeMatch('${id}')">EFFACER</button>
+      <button class="choice-btn" style="background:var(--red)" onclick="doPurgeMatch('${jsArg(id)}')">EFFACER</button>
     </div>`, true);
 }
 async function doPurgeMatch(id){
@@ -6015,6 +6023,44 @@ async function dbSetMatchRaw(record){
   try{ await writeMatchDoc(record); return true; }
   catch(e){ console.error('Échec import match', e); return false; }
 }
+/* ---------- VALIDATION DE L'IMPORT (C25 · R4, R5) ----------
+   Un enregistrement mal formé est écarté et compté : il n'entre jamais en base. Chaque validateur rend null si
+   l'enregistrement est bon, sinon la raison (courte, au pluriel quand on la compte). Les champs ajoutés par
+   les versions récentes sont facultatifs : absents, ils passent ; présents, ils doivent avoir la bonne forme. */
+const estObjet = v => !!v && typeof v === 'object' && !Array.isArray(v);
+const estIdSur = v => typeof v === 'string' && RE_ID_SUR.test(v);
+const estNombre = v => typeof v === 'number' && isFinite(v);
+function raisonEquipe(t){
+  if(!estObjet(t)) return 'équipe illisible';
+  if(!estIdSur(t.id)) return 'identifiant invalide';
+  if(typeof t.name !== 'string') return 'nom d’équipe invalide';
+  if(!Array.isArray(t.players)) return 'joueurs mal formés';
+  if(t.players.some(p => !estObjet(p) || !estIdSur(p.id) || typeof p.name !== 'string')) return 'joueurs mal formés';
+  if(t.updatedAt !== undefined && !estNombre(t.updatedAt)) return 'date invalide';
+  return null;
+}
+function raisonMatch(m){
+  if(!estObjet(m)) return 'match illisible';
+  if(!estIdSur(m.id)) return 'identifiant invalide';
+  if(m.status !== 'in_progress' && m.status !== 'completed') return 'statut inconnu';
+  if(!Array.isArray(m.history) || m.history.some(e => !estObjet(e) || typeof e.type !== 'string'
+      || (e.details !== undefined && e.details !== null && !estObjet(e.details)))) return 'historique mal formé';
+  if(m.activeTeams !== undefined && !(Array.isArray(m.activeTeams) && m.activeTeams.length && m.activeTeams.every(t => TEAMS.includes(t)))) return 'équipes en jeu invalides';
+  const eq = matchTeams(m);
+  if(!estObjet(m.names) || eq.some(t => typeof m.names[t] !== 'string')) return 'noms mal formés';
+  if(!estObjet(m.scores) || eq.some(t => !estNombre(m.scores[t]))) return 'scores mal formés';
+  if(m.matchName !== undefined && typeof m.matchName !== 'string') return 'nom de match invalide';
+  if(m.periodWins !== undefined && (!estObjet(m.periodWins) || Object.values(m.periodWins).some(v => !estNombre(v)))) return 'périodes mal formées';
+  if(m.authorId !== undefined && m.authorId !== null && !estIdSur(m.authorId)) return 'auteur invalide';
+  if(m.teamIds !== undefined && (!estObjet(m.teamIds) || Object.values(m.teamIds).some(v => v !== null && !estIdSur(v)))) return 'équipes liées invalides';
+  if(m.rosters !== undefined && (!estObjet(m.rosters) || Object.values(m.rosters).some(l => !Array.isArray(l) || l.some(p => !estObjet(p) || !estIdSur(p.id) || typeof p.name !== 'string')))) return 'alignements mal formés';
+  for(const k of ['lineups','startingLineups']){
+    if(m[k] !== undefined && (!estObjet(m[k]) || Object.values(m[k]).some(l => !Array.isArray(l) || l.some(id => !estIdSur(id))))) return 'alignements mal formés';
+  }
+  if(m.createdAt !== undefined && m.createdAt !== null && !estNombre(m.createdAt)) return 'date invalide';
+  if(m.updatedAt !== undefined && m.updatedAt !== null && !estNombre(m.updatedAt)) return 'date invalide';
+  return null;
+}
 async function handleImportFile(event){
   const file = event.target.files && event.target.files[0];
   event.target.value = '';
@@ -6025,7 +6071,13 @@ async function handleImportFile(event){
   let payload;
   try{ payload = JSON.parse(await file.text()); }
   catch(e){ status.textContent = "Fichier invalide : ce n'est pas un JSON valide."; return; }
-  if(!payload || (!Array.isArray(payload.teams) && !Array.isArray(payload.matches))){
+  /* R3 : l'export « JSON — Tout le match » écrit l'état d'UN match (id + history) sans emballage. L'import l'accepte
+     tel quel et le traite comme une liste d'un match : les fichiers déjà exportés restent valables, l'export ne change pas. */
+  if(estObjet(payload) && !Array.isArray(payload.teams) && !Array.isArray(payload.matches) && typeof payload.id === 'string' && Array.isArray(payload.history)){
+    payload = {format:'kinball_match', matches:[payload]};
+  }
+  if(!estObjet(payload) || (payload.teams !== undefined && !Array.isArray(payload.teams)) || (payload.matches !== undefined && !Array.isArray(payload.matches))
+     || (!Array.isArray(payload.teams) && !Array.isArray(payload.matches))){
     status.textContent = "Fichier invalide : ce n'est pas une sauvegarde Kin-Ball reconnue.";
     return;
   }
@@ -6034,14 +6086,20 @@ async function handleImportFile(event){
   const existingTeamIds = new Set(TEAMS_DB.map(t=>t.id));
   const existingMatchIds = new Set(MATCHES_DB.map(m=>m.id));
   let teamsAdded=0, teamsUpdated=0, matchesAdded=0, matchesUpdated=0, failed=0;
+  const ecartes = {};   // raison → nombre
+  const ecarter = raison => { ecartes[raison] = (ecartes[raison]||0) + 1; };
 
   for(const t of (payload.teams||[])){
+    const raisonT = raisonEquipe(t);
+    if(raisonT){ ecarter(raisonT); continue; }
     if(kbImport && !kbImport.garder('team', t)) continue; /* MIGRATION M06 */
     const ok = await dbSetTeam(t);
     if(!ok){ failed++; continue; }
     if(existingTeamIds.has(t.id)) teamsUpdated++; else teamsAdded++;
   }
   for(const m of (payload.matches||[])){
+    const raisonM = raisonMatch(m);
+    if(raisonM){ ecarter(raisonM); continue; }
     if(kbImport && !kbImport.garder('match', m)) continue; /* MIGRATION M06 */
     const ok = await dbSetMatchRaw(m);
     if(!ok){ failed++; continue; }
@@ -6051,6 +6109,12 @@ async function handleImportFile(event){
   status.textContent =
     `Import terminé : ${teamsAdded} équipe(s) ajoutée(s), ${teamsUpdated} mise(s) à jour, ${matchesAdded} match(s) ajouté(s), ${matchesUpdated} mis à jour.` +
     (failed ? ` (${failed} échec(s) d'écriture)` : '');
+  const nEcartes = Object.values(ecartes).reduce((a,b)=>a+b, 0);
+  if(nEcartes){
+    const importes = teamsAdded + teamsUpdated + matchesAdded + matchesUpdated;
+    status.textContent += ` ${importes} importé${importes>1?'s':''}, ${nEcartes} écarté${nEcartes>1?'s':''} (`
+      + Object.keys(ecartes).map(k => ecartes[k] > 1 ? `${k} : ${ecartes[k]}` : k).join(' ; ') + ').';
+  }
   if(kbImport) kbImport.fin(status); /* MIGRATION M06 */
 }
 </script>
