@@ -459,7 +459,10 @@ export default async function ({ gabarit, check: check0 }) {
           /* les coordonnées normalisées dépendent de la taille du terrain au 1e-9 près : on arrondit à 1e-5 */
           const arr = o => JSON.parse(JSON.stringify(o), (k, v) => typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e5) / 1e5 : v);
           const c = arr(S); delete c.id; delete c.createdAt; delete c.updatedAt; delete c.sheetDismissable;
-          return { S: c, keys: Object.keys(S), rows: arr(buildActionRows()), saves: window.__saves };
+          delete c.authorId; c.history.forEach(e => { delete e.at; });   /* C28 : heure des événements, propre à chaque partie ; l'identité de l'appareil aussi */
+          const NOUV = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];   /* C28 : colonnes ajoutées en fin de ligne */
+          const rr = arr(buildActionRows()); rr.header = rr.header.filter(h => !NOUV.includes(h)); rr.rows.forEach(x => { NOUV.forEach(k => { delete x[k]; }); delete x['Saisi par']; });
+          return { S: c, keys: Object.keys(S), rows: rr, saves: window.__saves };
         });
         return out;
       };

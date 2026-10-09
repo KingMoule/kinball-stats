@@ -104,7 +104,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-05.1';
+  var VERSION_SITE = '2026-10-09.2';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -716,6 +716,7 @@
   KBSite.baseIncomplete = function () {
     if (!stockageActif) return false;
     try {
+      if (typeof lecturesEchouees !== 'undefined' && lecturesEchouees.size) return false;   // C27 · R1 : une lecture en échec ne fait pas attendre sans fin (l'app gère cet état à part)
       if (typeof DB === 'undefined' || !DB) return false;          // stockage injoignable : rien à attendre
       var ids = Object.keys(unsubOwnerItems);
       if (!ids.length) return true;

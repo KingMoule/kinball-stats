@@ -509,6 +509,136 @@ test('echecs', 'E3', 'lecture initiale en échec : le rappel « erreur » est ap
   eq(r.apres, [1], 'nouvel abonnement');
 });
 
+/* ---- C27 · R2 : connexion IndexedDB morte, rouverte une fois, opération rejouée ---- */
+const ESPION = () => {
+  window.__ouvertures = 0; window.__dbs = [];
+  const o = IDBFactory.prototype.open;
+  IDBFactory.prototype.open = function () { window.__ouvertures++; return o.apply(this, arguments); };
+  const t = IDBDatabase.prototype.transaction;
+  IDBDatabase.prototype.transaction = function () { if (!window.__dbs.includes(this)) window.__dbs.push(this); return t.apply(this, arguments); };
+};
+test('echecs', 'E4', 'connexion fermée sans prévenir (db.close() : le bogue iOS) : l\'écriture suivante rouvre une fois, réussit, une seule émission ; les écritures d\'après aussi', 'R2 · connexion fermée', async ({ open, reload }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/a').set({ v: 1 });
+    let n = 0; db.collection('c').onSnapshot(() => { n++; });
+    await new Promise(r => setTimeout(r, 80));
+    const base = n, out = { ouv0: window.__ouvertures };
+    window.__dbs[0].close();                                   // la connexion meurt, aucun événement
+    await db.doc('c/b').set({ v: 2 });                         // doit réussir (réouverture + rejeu)
+    await new Promise(r => setTimeout(r, 60));
+    out.emissions = n - base; out.ouv1 = window.__ouvertures;
+    await db.doc('c/c').set({ v: 3 }); await db.doc('c/a').delete();
+    out.ouv2 = window.__ouvertures;
+    out.get = (await db.doc('c/b').get()).data();
+    out.metaOk = (await KBLocal.meta.set('k', 7), await KBLocal.meta.get('k'));
+    return out;
+  });
+  eq(r.emissions, 1, 'une seule émission pour l\'écriture rejouée');
+  eq([r.ouv0, r.ouv1, r.ouv2], [1, 2, 2], 'une seule réouverture');
+  eq(r.get, { v: 2 }); eq(r.metaOk, 7);
+  await reload(p);
+  eq(await p.evaluate(async () => { const s = await new Promise(res => (async () => { (await KBLocal.use('db')).collection('c').onSnapshot(x => res(x.docs.map(d => d.id))); })()); return s; }), ['b', 'c'], 'écritures présentes après rechargement');
+});
+test('echecs', 'E5', 'événements « close » et « versionchange » : la connexion est oubliée, l\'opération suivante rouvre, aucun échec', 'R2 · close / versionchange', async ({ open }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/a').set({ v: 1 });
+    const out = {};
+    window.__dbs[0].dispatchEvent(new Event('close'));
+    await db.doc('c/b').set({ v: 2 }); out.apresClose = window.__ouvertures;
+    window.__dbs[window.__dbs.length - 1].dispatchEvent(new IDBVersionChangeEvent('versionchange', { oldVersion: 1, newVersion: 2 }));
+    await db.doc('c/c').set({ v: 3 }); out.apresVersion = window.__ouvertures;
+    out.docs = (await Promise.all(['a', 'b', 'c'].map(i => db.doc('c/' + i).get()))).map(d => d.exists);
+    return out;
+  });
+  eq([r.apresClose, r.apresVersion], [2, 3], 'une réouverture par événement');
+  eq(r.docs, [true, true, true]);
+});
+test('echecs', 'E6', 'transaction refusée (InvalidStateError, TransactionInactiveError) : rejouée une fois ; deux refus de suite : rejet, puis la prochaine écriture réussit sans recharger', 'R2 · transaction refusée', async ({ open }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/a').set({ v: 1 });
+    const out = {}, t0 = IDBDatabase.prototype.transaction;
+    const refuse = (nom, fois) => { let n = fois; IDBDatabase.prototype.transaction = function () { if (n-- > 0) throw new DOMException('refus simulé', nom); return t0.apply(this, arguments); }; };
+    const rendre = () => { IDBDatabase.prototype.transaction = t0; };
+    for (const nom of ['InvalidStateError', 'TransactionInactiveError']) {
+      refuse(nom, 1);
+      try { await db.doc('c/' + nom).set({ v: nom }); out[nom] = 'ok'; } catch (e) { out[nom] = 'rejet'; }
+      rendre();
+    }
+    out.ouvertures = window.__ouvertures;
+    refuse('InvalidStateError', 2);
+    try { await db.doc('c/deux').set({ v: 'x' }); out.deux = 'RÉSOLU'; } catch (e) { out.deux = 'rejet ' + e.name; }
+    rendre();
+    await db.doc('c/apres').set({ v: 'repris' });
+    out.apres = (await db.doc('c/apres').get()).data();
+    out.deuxAbsent = !(await db.doc('c/deux').get()).exists;
+    refuse('TransactionInactiveError', 1);
+    out.lecture = (await db.doc('c/a').get()).data();        // le miroir ne couvre pas c/a (aucun abonné) : vraie lecture rejouée
+    rendre();
+    refuse('InvalidStateError', 1);
+    await KBLocal.meta.set('m', 1); out.meta = await KBLocal.meta.get('m');
+    rendre();
+    return out;
+  });
+  eq([r.InvalidStateError, r.TransactionInactiveError], ['ok', 'ok'], 'un refus : rejoué');
+  eq(r.deux, 'rejet InvalidStateError', 'deux refus de suite : rejet');
+  eq(r.apres, { v: 'repris' }, 'écriture suivante');
+  eq(r.deuxAbsent, true); eq(r.lecture, { v: 1 }, 'lecture rejouée'); eq(r.meta, 1, 'meta rejoué');
+});
+test('echecs', 'E7', 'écriture en cours quand la connexion se ferme (événement close puis avortement) : rejouée sur une connexion neuve, une seule émission', 'R2 · écriture en cours', async ({ open }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/a').set({ v: 1 });
+    let n = 0; db.collection('c').onSnapshot(() => { n++; });
+    await new Promise(r => setTimeout(r, 80));
+    const base = n, put = IDBObjectStore.prototype.put;
+    let une = true;
+    IDBObjectStore.prototype.put = function () {
+      const rq = put.apply(this, arguments);
+      if (une) { une = false; this.transaction.db.dispatchEvent(new Event('close')); this.transaction.abort(); }
+      return rq;
+    };
+    let res; try { await db.doc('c/b').set({ v: 2 }); res = 'ok'; } catch (e) { res = 'rejet'; }
+    IDBObjectStore.prototype.put = put;
+    await new Promise(r => setTimeout(r, 60));
+    return { res, emissions: n - base, ouvertures: window.__ouvertures, b: (await db.doc('c/b').get()).data() };
+  });
+  eq(r, { res: 'ok', emissions: 1, ouvertures: 2, b: { v: 2 } });
+});
+test('echecs', 'E8', 'lecture initiale refusée une fois (InvalidStateError) : rejouée, l\'abonnement livre ses documents ; l\'échec persistant appelle toujours le rappel « erreur », et un abonnement ultérieur marche', 'R2 · lecture initiale', async ({ open }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/x').set({ v: 1 });
+    const out = {}, o = IDBIndex.prototype.getAll;
+    let fois = 1;
+    IDBIndex.prototype.getAll = function () { if (fois-- > 0) throw new DOMException('refus', 'InvalidStateError'); return o.apply(this, arguments); };
+    const ev = { next: [], err: 0 };
+    db.collection('c').onSnapshot(s => ev.next.push(s.docs.length), () => { ev.err++; });
+    await new Promise(r => setTimeout(r, 200));
+    out.unRefus = ev; out.ouvertures = window.__ouvertures;
+    IDBIndex.prototype.getAll = function () { throw new DOMException('refus', 'InvalidStateError'); };
+    const ev2 = { next: 0, err: 0 };
+    db.collection('d').onSnapshot(() => { ev2.next++; }, () => { ev2.err++; });
+    await new Promise(r => setTimeout(r, 200));
+    out.persistant = ev2;
+    IDBIndex.prototype.getAll = o;
+    const apres = []; db.collection('d').onSnapshot(s => apres.push(s.docs.length));
+    await new Promise(r => setTimeout(r, 150));
+    out.apres = apres;
+    return out;
+  });
+  eq(r.unRefus, { next: [1], err: 0 }, 'un refus : rejoué');
+  eq(r.persistant, { next: 0, err: 1 }, 'échec persistant : erreur rendue');
+  eq(r.apres, [0], 'abonnement ultérieur');
+});
+
 /* ============================================================
    GROUPE 4 — Identité (user)
    ============================================================ */

@@ -79,7 +79,7 @@ export default async function ({ gabarit, check }) {
     const app = await launch(gabarit);
     const p = app.page;
     try {
-      await check(`${P}·3 équipe créée, modifiée, rechargée : présente ; supprimée : absente`, async () => {
+      await check(`${P}·3 équipe créée, modifiée, rechargée : présente ; supprimée : à la corbeille (hors des choix, récupérable), puis effacée pour de bon`, async () => {
         await attendreBase(p);
         await p.evaluate(() => { navHome(); openTeamEditor(null); });
         await p.fill('#teamEditorName', 'Faucons');
@@ -100,13 +100,24 @@ export default async function ({ gabarit, check }) {
         await recharger(p);
         await p.waitForFunction(() => TEAMS_DB.length === 1);
         eq(await p.evaluate(() => TEAMS_DB[0].name), 'Faucons B', 'nom modifié après rechargement');
-        /* suppression */
+        /* suppression (C26 · R9 : confirmation armée, corbeille, puis effacement pour de bon) */
         await p.evaluate((i) => openTeamEditor(i), id);
         await p.locator('[onclick="deleteTeamEditor()"]').click();
+        await p.waitForFunction(() => { const b = document.querySelector('#sheet .armed'); return b && !b.disabled; }, null, { timeout: 4000, polling: 20 });
+        await p.locator(`#sheet [onclick="doDeleteTeam('${id}')"]`).click();
         await p.waitForFunction(() => TEAMS_DB.length === 0);
         await recharger(p);
         await p.waitForTimeout(300);
-        eq(await p.evaluate(() => TEAMS_DB.length), 0, 'équipe supprimée absente après rechargement');
+        eq(await p.evaluate(() => [TEAMS_DB.length, DELETED_TEAMS.length]), [0, 1], 'équipe à la corbeille après rechargement : hors des choix, récupérable');
+        eq((await lireBase(p)).filter(r => r.path.startsWith('teams/')).length, 1, 'document teams/ gardé (deleted:true)');
+        await p.evaluate(() => { navHome(); openBackup(); });
+        await p.locator(`#trashSection [onclick="confirmPurgeTeam('${id}')"]`).click();
+        await p.waitForFunction(() => !document.querySelector('#sheet .armed').disabled, null, { timeout: 4000, polling: 20 });
+        await p.locator(`#sheet [onclick="doPurgeTeam('${id}')"]`).click();
+        await p.waitForFunction(() => DELETED_TEAMS.length === 0);
+        await recharger(p);
+        await p.waitForTimeout(300);
+        eq(await p.evaluate(() => [TEAMS_DB.length, DELETED_TEAMS.length]), [0, 0], 'équipe effacée pour de bon après rechargement');
         eq((await lireBase(p)).filter(r => r.path.startsWith('teams/')).length, 0, 'documents teams/ dans la base');
         assert(app.errors.length === 0, app.errors.join(' | '));
       });
