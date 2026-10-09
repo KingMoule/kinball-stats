@@ -31,7 +31,7 @@ const EXCLUS_DOSSIERS = ['tests/', 'amont/', 'outils/', 'sim/', 'collecte/', '.g
 function estExclu(rel) {
   if (EXCLUS_DOSSIERS.some(d => rel.startsWith(d))) return true;
   const nom = rel.split('/').pop();
-  if (nom.startsWith('.')) return true;
+  if (rel.split('/').some(s => s.startsWith('.'))) return true;   // fichiers et dossiers cachés (.github, .claude…) : hors du site
   if (/\.(md|txt)$/i.test(nom)) return true;
   return rel === 'sw.js';
 }

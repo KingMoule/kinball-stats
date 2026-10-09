@@ -78,6 +78,10 @@ export default async function ({ gabarit, check }) {
     const app = await launch(gabarit, { url });
     const p = app.page;
     let charges = 0;
+    /* R4 : launch() rend la main à « domcontentloaded » ; l'événement load du PREMIER chargement peut arriver après
+       (sous charge, polices et xlsx tardent) et était alors compté comme un rechargement. On l'attend avant de compter.
+       Le témoin window.__temoin prouve toujours, indépendamment, qu'aucun rechargement n'a eu lieu. */
+    await p.waitForLoadState('load');
     p.on('load', () => charges++);
     try {
       await check(`${P}·1 premier chargement : service worker actif, cache = liste de précache, aucun rechargement`, async () => {
