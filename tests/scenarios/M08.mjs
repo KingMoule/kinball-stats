@@ -383,6 +383,7 @@ export default async function ({ gabarit, check }) {
         mode.v = 'panne';
         const id9 = await matchTermine(B, 'm9_' + gabarit, 9);
         await attendreEtat(p, /4 partagés, 1 en attente/);
+        await repos(p);   // harnais-banc : « 1 en attente » s'affiche dès la mise en file, AVANT la fin du premier essai ; sous charge, l'essai n'était pas encore noté
         const e1 = (await etat(p)).file[id9];
         eq([e1.etat, e1.essais >= 1], ['attente', true], 'entrée en attente, essai noté');
         eq(await p.evaluate(() => dbSyncState), 'ok', 'le badge de synchronisation n\'est pas touché');

@@ -11,17 +11,24 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 /* Racine du dépôt, résolue par rapport à l'emplacement de ce fichier (tests/lib.mjs). */
 export const DEPOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-let playwright;
+let playwright, reqPw = require;
 try { playwright = require('playwright'); }
 catch (e) {
   /* Playwright : d'abord NODE_PATH, puis le chemin d'installation global actuel. */
   const essais = [...(process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.npm-global', 'lib', 'node_modules')];
   for (const d of essais) {
-    try { playwright = createRequire(path.join(d, '/'))('playwright'); break; } catch {}
+    try { reqPw = createRequire(path.join(d, '/')); playwright = reqPw('playwright'); break; } catch {}
   }
   if (!playwright) throw new Error('Playwright introuvable (NODE_PATH ou chemin global)');
 }
 const { chromium } = playwright;
+/* Versions de l'outillage (empreinte du banc, tests/empreinte.mjs) ; sans lancer de navigateur. */
+export const OUTIL = (() => {
+  let v = '?', c = '?';
+  try { v = reqPw('playwright/package.json').version; } catch {}
+  try { c = chromium.executablePath(); } catch {}
+  return { playwright: v, chromium: c };
+})();
 
 /* Fichier testé : index.html du dépôt, sauf si KINBALL_HTML est donné. */
 export const HTML = process.env.KINBALL_HTML || path.join(DEPOT, 'index.html');
@@ -45,12 +52,12 @@ export const GABARITS = {
 export const TEAMS = ['Bleu', 'Gris', 'Noir'];
 
 const SCALE = Number(process.env.KINBALL_TIMESCALE || 20);
-const INIT = (scale) => {
+const INIT = ([scale, lo]) => {
   window.__timers = 0;
   const st = window.setTimeout.bind(window), ct = window.clearTimeout.bind(window);
   const live = new Set();
   window.setTimeout = (fn, d, ...a) => {
-    if (!(typeof d === 'number' && d >= 400 && d < 1600)) return st(fn, d, ...a);
+    if (!(typeof d === 'number' && d >= lo && d < 1600)) return st(fn, d, ...a);
     const id = st(() => { if (live.delete(id)) window.__timers--; fn(...a); }, d / scale);
     live.add(id); window.__timers++;
     return id;
@@ -70,7 +77,10 @@ export async function launch(gabarit = 'tablette', opts = {}) {
      armement 500 ms) sont raccourcis d'un facteur SCALE (défaut 20) et suivis :
      l'ordre relatif des minuteries est conservé, et settle() attend qu'il n'en
      reste aucune. KINBALL_TIMESCALE=1 donne les vrais délais (plus lent). */
-  await page.addInitScript(INIT, opts.timescale || SCALE);   // C23 : opts.timescale = facteur de délais propre à cette page (1 = vrais délais)
+  /* Sans animation, la fermeture de la feuille (SHEET_CLOSE_MS 240 ms, couche radiale 120 ms) n'a rien à attendre à
+     l'écran : elle est raccourcie comme les autres délais (borne basse 100 ms au lieu de 400). Avec animation : inchangé. */
+  const lo = (process.env.KINBALL_ANIM || opts.anim) ? 400 : 100;
+  await page.addInitScript(INIT, [opts.timescale || SCALE, lo]);   // C23 : opts.timescale = facteur de délais propre à cette page (1 = vrais délais)
   /* C21 : réglage d'appareil « Saisie en match » écrit AVANT le chargement de la page. Le banc travaille en
      'feuille' (comportement d'origine, les 380 vérifications d'avant) ; launch(gabarit, { saisie: 'radiale' })
      ou KINBALL_SAISIE=radiale pour le menu radial ; { saisie: null } n'écrit rien (défaut de l'app). */
@@ -261,18 +271,27 @@ export class App {
 }
 
 /* ---------- Vérifications ---------- */
+/* Reporter : une ligne lisible par vérification, et, dans un processus fils de run.mjs (KINBALL_CHILD),
+   une ligne machine « @@CHECK {json} » que le parent agrège (affichage, resultat.json).
+   check(nom, fn, { known, knownErr, calme }) : `calme` = vérification qui mesure une durée réelle ; quand plusieurs
+   processus tournent (KINBALL_PHASE=parallele) elle est reportée à la phase finale « au calme » (KINBALL_PHASE=calme),
+   où seules les vérifications `calme` sont jouées. */
 export class Reporter {
-  constructor({ bail = false } = {}) { this.rows = []; this.bail = bail; this.fails = 0; this.known = 0; }
+  constructor({ bail = false } = {}) { this.rows = []; this.bail = bail; this.fails = 0; this.known = 0; this.reportees = 0; }
+  _emit(o) { if (process.env.KINBALL_CHILD) console.log('@@CHECK ' + JSON.stringify(o)); }
   async check(name, fn, opts = {}) {
+    const phase = process.env.KINBALL_PHASE;
+    if (phase === 'parallele' && opts.calme) { this.reportees++; if (process.env.KINBALL_CHILD) console.log('@@CALME ' + JSON.stringify({ nom: name })); return true; }
+    if (phase === 'calme' && !opts.calme) return true;
     const t0 = Date.now();
     let err = null;
     try { await fn(); } catch (e) { err = e; }
     const ms = Date.now() - t0;
-    if (!err) { this.rows.push({ name, ok: true }); console.log(`PASS  ${name}  (${ms} ms)`); return true; }
+    if (!err) { this.rows.push({ name, ok: true }); this._emit({ nom: name, etat: 'ok', ms }); if (!process.env.KINBALL_CHILD) console.log(`PASS  ${name}  (${ms} ms)`); return true; }
     const msg = String(err && err.message || err).split('\n')[0];
-    if (opts.known && (!opts.knownErr || err instanceof opts.knownErr)) { this.known++; this.rows.push({ name, ok: true, known: true }); console.log(`KNOWN ${name} — défaut connu : ${opts.known} [${msg}]`); return true; }
+    if (opts.known && (!opts.knownErr || err instanceof opts.knownErr)) { this.known++; this.rows.push({ name, ok: true, known: true }); this._emit({ nom: name, etat: 'known', ms, msg: opts.known + ' [' + msg + ']' }); if (!process.env.KINBALL_CHILD) console.log(`KNOWN ${name} — défaut connu : ${opts.known} [${msg}]`); return true; }
     this.fails++; this.rows.push({ name, ok: false, msg });
-    console.log(`FAIL  ${name}\n      ${msg}`);
+    this._emit({ nom: name, etat: 'fail', ms, msg }); if (!process.env.KINBALL_CHILD) console.log(`FAIL  ${name}\n      ${msg}`);
     if (this.bail) { const e = new Error('bail'); e.bail = true; throw e; }
     return false;
   }
