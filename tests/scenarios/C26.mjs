@@ -177,6 +177,27 @@ export default async function ({ gabarit, check }) {
     } finally { await app.close(); }
   }
 
+  /* ============ 2b : audit E3, les détails avancés d'un match terminé ============ */
+  {
+    const app = await launch(gabarit);
+    try {
+      await check(`${P}·8 audit E3 · setAdvancedPlayer et openAdvancedDetailSheet refusent un match terminé (rien n'est écrit)`, async () => {
+        await app.startMatch({ format: '9_11', withRosters: true });
+        await app.initialPossession('Bleu');
+        await app.lancer({ target: 'Gris', caught: false, player: 'Bleu_p1' });
+        await app.ev(() => { setAdvancedPlayer(0, 'attacker', 'Bleu_p2'); closeSheet(); });
+        eq(await app.ev(() => S.history[0].details.attacker_player_id), 'Bleu_p2', 'en cours de match : le détail se modifie');
+        await app.ev(() => { finishMatchNow(); closeSheet(); });
+        await app.settle();
+        const E0 = await etat(app);
+        await app.ev(() => { setAdvancedPlayer(0, 'attacker', 'Bleu_p3'); openAdvancedDetailSheet(0); });
+        eq(await app.ev(() => document.getElementById('sheet').classList.contains('open')), false, 'aucune feuille');
+        const d = diff(await etat(app), E0); assert(!d, 'match terminé modifié : ' + d);
+        eq(app.errors, [], 'aucune erreur de page');
+      });
+    } finally { await app.close(); }
+  }
+
   /* ============ 3 : R6, ↶ après une fin de période manuelle ============ */
   {
     await check(`${P}·3 R6 · ↶ après une fin de période manuelle (format libre, menu TERMINER, avec/sans vainqueur, pendant le message ou après) : défait cette fin seule, état d'avant exactement ; deux ↶ défont aussi l'action d'avant`, async () => {

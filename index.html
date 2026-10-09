@@ -2270,6 +2270,7 @@ function setCaptureMode(advanced){
     : "Rapide, pour suivre le match en direct.";
 }
 function openAdvancedDetailSheet(eventIndex){
+  if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3) : un match terminé n'accepte plus de détail
   const ev = S.history[eventIndex];
   if(!ev){ closeSheet(); renderScoreboard(); return; }
   const attackerTeam = ev.before && ev.before.possession;
@@ -2301,6 +2302,7 @@ function openAdvancedDetailSheet(eventIndex){
   openSheet(html, true);
 }
 function setAdvancedPlayer(eventIndex, which, playerId){
+  if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3)
   const ev = S.history[eventIndex];
   if(!ev) return;
   const team = which==='attacker' ? (ev.before && ev.before.possession) : ev.details.target;
@@ -5309,11 +5311,19 @@ const SIT_LABEL = {arretee:'Arrêtée', continue:'Continue'};
 /* C28 · R10 : deux équipes de même nom se distinguent dans l'export (« Laval », « Laval (2) ») : en-têtes de colonnes comme
    valeurs des colonnes d'équipe. La première garde son nom, l'ordre des équipes en jeu décide. */
 function nm(slot){
-  const base = (S.names && S.names[slot]) || slot;
-  const ordre = ATEAMS(), i = ordre.indexOf(slot);
-  let rang = 1;
-  for(let j=0; j<i; j++) if(((S.names && S.names[ordre[j]]) || ordre[j]) === base) rang++;
-  return rang > 1 ? base + ' (' + rang + ')' : base;
+  const ordre = ATEAMS(), brut = t => (S.names && S.names[t]) || t;
+  /* Un nom donné telle quelle à la première équipe qui le porte est réservé ; les autres homonymes reçoivent « (2) », « (3)… »
+     en sautant tout nom déjà pris, y compris celui d'une équipe plus loin dans l'ordre (« Laval », « Laval », « Laval (2) »). */
+  const pris = new Set(ordre.map(brut));
+  const vus = new Set(), noms = {};
+  ordre.forEach(t=>{
+    const base = brut(t);
+    if(!vus.has(base)){ vus.add(base); noms[t] = base; return; }
+    let k = 2, c = base + ' (' + k + ')';
+    while(pris.has(c)){ k++; c = base + ' (' + k + ')'; }
+    pris.add(c); noms[t] = c;
+  });
+  return noms[slot] !== undefined ? noms[slot] : brut(slot);
 }
 /* Date ISO 8601 (UTC, « Z ») d'un instant en millisecondes ; vide si absent. */
 function isoOuVide(ms){ return (typeof ms === 'number' && isFinite(ms)) ? new Date(ms).toISOString() : ''; }
@@ -5544,7 +5554,8 @@ function csvEscape(v){
   if(typeof v === 'number' && isFinite(v)) s = String(v).replace('.', ',');
   else {
     s = String(v===undefined||v===null?'':v);
-    if(/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    /* Un nombre ou une liste de nombres (« -0,042|0,4 », coordonnées négatives comprises) n'est pas un texte à protéger. */
+    if(/^[=+\-@\t\r]/.test(s) && !/^-?\d+([.,]\d+)?(\|-?\d+([.,]\d+)?)*$/.test(s)) s = "'" + s;
   }
   return /[;"\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }

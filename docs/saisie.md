@@ -75,7 +75,7 @@ Fin de période décidée à la main (TERMINER, ou le bouton FIN PÉRIODE des fo
 
 ### Match terminé
 
-Un match dont `status !== 'in_progress'` refuse tout geste de saisie (C26 · R7) : appui et glisser sur le terrain (`pointerdown` du terrain), `openLineupSheet`, `applySub`, `commitLineupDefinition`, `undo` (le bouton ↶ est aussi désactivé), `openFinishMenu`, `endPeriodByLeader`, `endPeriodManually`. La feuille « Et maintenant ? » de `finishMatchNow` n'est pas refermable d'un appui à côté : on en sort par VOIR LES STATS, NOUVEAU MATCH ou ACCUEIL.
+Un match dont `status !== 'in_progress'` refuse tout geste de saisie (C26 · R7) : appui et glisser sur le terrain (`pointerdown` du terrain), `openLineupSheet`, `applySub`, `commitLineupDefinition`, `setAdvancedPlayer`, `openAdvancedDetailSheet`, `undo` (le bouton ↶ est aussi désactivé), `openFinishMenu`, `endPeriodByLeader`, `endPeriodManually`. La feuille « Et maintenant ? » de `finishMatchNow` n'est pas refermable d'un appui à côté : on en sort par VOIR LES STATS, NOUVEAU MATCH ou ACCUEIL.
 
 ### Reprise à l'entrée de l'écran
 

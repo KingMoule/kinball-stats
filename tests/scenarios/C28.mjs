@@ -329,6 +329,34 @@ export default async function ({ gabarit, check }) {
     } finally { await app.close(); }
   });
 
+  await check(`${P}·11 audit E1 · une liste de coordonnées négatives du CSV brut n'est pas préfixée d'une apostrophe ; un vrai texte en = + - @ l'est toujours`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await jouer(app, {});
+      await app.ev(() => { S.history[0].details.start_norm = [-0.042, 0.4]; S.history[0].details.end_norm = [0.5, -0.25]; });
+      const brut = lireCSV((await telecharger(app, 'exportRawCSV()')).toString('utf8'));
+      const iS = brut[0].indexOf('start_norm'), iE = brut[0].indexOf('end_norm');
+      eq([brut[1][iS], brut[1][iE]], ['-0,042|0,4', '0,5|-0,25'], 'coordonnées négatives : ni apostrophe ni point');
+      const u = await app.ev(() => ({ a: csvEscape('-0,042|0,4'), b: csvEscape('-5'), c: csvEscape('-2+3'), d: csvEscape('=1+1'), e: csvEscape('+1'), f: csvEscape('@x'), g: csvEscape('-|0,4'), h: csvEscape('-0,5x') }));
+      eq([u.a, u.b], ['-0,042|0,4', '-5'], 'nombre et liste de nombres négatifs');
+      eq([u.c, u.d, u.e, u.f, u.g, u.h], ["'-2+3", "'=1+1", "'+1", "'@x", "'-|0,4", "'-0,5x"], 'vrais textes : apostrophe conservée');
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·12 audit E2 · le suffixe des homonymes ne tombe jamais sur le nom d'une autre équipe, dans tous les ordres (« Laval », « Laval », « Laval (2) »)`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await jouer(app, {});
+      for (const noms of [['Laval', 'Laval', 'Laval (2)'], ['Laval (2)', 'Laval', 'Laval'], ['Laval', 'Laval (2)', 'Laval'], ['Laval', 'Laval', 'Laval'], ['Laval (2)', 'Laval (2)', 'Laval (2)'], ['A', 'B', 'C']]) {
+        const r = await app.ev(n => { S.names = { Bleu: n[0], Gris: n[1], Noir: n[2] }; const b = buildActionRows(); return { ate: ATEAMS().map(nm), header: b.header, eq: teamSummaryAoa().slice(1).map(x => x[0]) }; }, noms);
+        eq(new Set(r.ate).size, 3, `noms distincts pour ${JSON.stringify(noms)} : ${JSON.stringify(r.ate)}`);
+        eq(r.header.filter((h, i) => r.header.indexOf(h) !== i), [], `aucun en-tête en double pour ${JSON.stringify(noms)}`);
+        eq(r.eq, r.ate, 'feuille Équipes : les mêmes noms');
+        eq(r.ate[noms.findIndex((n, i) => noms.indexOf(n) === i)], noms[0], 'la première équipe garde son nom');
+      }
+    } finally { await app.close(); }
+  });
+
   await check(`${P}·10 la collecte ne reçoit pas \`at\` : le contenu envoyé et son empreinte sont ceux d'avant`, async () => {
     const racine = path.dirname(HTML);
     const faux = await demarrer({});
