@@ -2532,7 +2532,7 @@ function applySub(team, outId, inId){
   if(lineup.length !== LINEUP_SIZE || !lineup.includes(outId) || lineup.includes(inId) || !roster.some(p=>p.id===inId)) return false;
   const before = snapshotBefore();
   S.lineups[team] = lineup.map(x => x===outId ? inId : x);
-  S.history.push({type:'changement', before, details:{
+  S.history.push({type:'changement', before, at:horodatage(), details:{
     team, player_out_id:outId, player_out_name:playerName(team, outId),
     player_in_id:inId, player_in_name:playerName(team, inId)
   }});
@@ -2625,7 +2625,7 @@ function commitLineupDefinition(){
   const team = lineupSheetTeam;
   const before = snapshotBefore();
   S.lineups[team] = lineupDraft.slice();
-  S.history.push({type:'alignement', before, details:{
+  S.history.push({type:'alignement', before, at:horodatage(), details:{
     team, lineup_ids:lineupDraft.join('|'), lineup_names:lineupDraft.map(id=>playerName(team,id)).join('|')
   }});
   lineupDraft = [];
@@ -2984,6 +2984,10 @@ function snapshotBefore(){
     lineups:S.lineups || {Bleu:[],Gris:[],Noir:[]}
   }));
 }
+/* C28 · R11 : heure de l'événement (ISO 8601, UTC), posée sur les NOUVEAUX événements seulement ; vide pour les anciens,
+   aucune migration. Champ de l'événement (comme `by`), jamais dans `before` ni dans `details` : snapshotBefore, l'annulation,
+   le moteur WP et les statistiques ne le lisent pas ; seul l'export Actions le reprend. */
+function horodatage(){ return new Date().toISOString(); }
 function beginEvent(type, details){
   pending = { type, details, before: snapshotBefore() };
 }
@@ -2999,6 +3003,7 @@ function commitEvent(extra){
   /* Stocké seulement si quelqu'un d'AUTRE que l'auteur du match saisit
      cette action : aujourd'hui jamais, donc aucun poids ajouté. */
   if(AUTHOR_ID && S.authorId && AUTHOR_ID !== S.authorId) pending.by = AUTHOR_ID;
+  pending.at = horodatage();
   S.history.push(pending);
   pending = null;
   save();
@@ -3210,7 +3215,7 @@ function finishPeriod(winner, manual){
      vainqueur ou null) : ↶ la défait seule et ramène exactement l'état d'avant, sans toucher à la dernière action.
      Les fins automatiques (seuil) restent portées par l'action qui les provoque. Rien n'est enregistré ici :
      save() part avec la fin du message, comme avant. */
-  if(manual) S.history.push({type:'fin_periode', before:snapshotBefore(), details:{winner:winner || null}});
+  if(manual) S.history.push({type:'fin_periode', before:snapshotBefore(), at:horodatage(), details:{winner:winner || null}});
   if(winner) S.periodWins[winner]+=1;
   const fmt = getFormat(S);
   const eliminated = S.eliminated;
@@ -5226,13 +5231,16 @@ function buildRawRows(){
   const beforeCols = Array.from(beforeKeys).sort();
   const detailCols = Array.from(detailKeys).sort();
   const header = ['event_index','event_type', ...beforeCols.map(k=>'before_'+k), ...detailCols];
+  /* Colonnes dont la valeur est une liste de nombres (coordonnées) : le CSV y écrit aussi les décimales à la virgule. */
+  const listes = new Set();
+  const liste = v => Array.isArray(v) && v.length > 0 && v.every(n => typeof n === 'number');
   const rows = S.history.map((ev,i)=>{
     const row = {event_index:i+1, event_type:ev.type};
-    beforeCols.forEach(k=> row['before_'+k] = flattenValue(befores[i][k]));
-    detailCols.forEach(k=> row[k] = flattenValue(ev.details ? ev.details[k] : undefined));
+    beforeCols.forEach(k=>{ row['before_'+k] = flattenValue(befores[i][k]); if(liste(befores[i][k])) listes.add('before_'+k); });
+    detailCols.forEach(k=>{ const v = ev.details ? ev.details[k] : undefined; row[k] = flattenValue(v); if(liste(v)) listes.add(k); });
     return row;
   });
-  return {header, rows};
+  return {header, rows, listes};
 }
 function matchInfoRows(){
   const rosterStr = slot => (S.rosters && S.rosters[slot] || []).map(p=>p.name).join(' | ');
@@ -5250,6 +5258,8 @@ function matchInfoRows(){
     ["Périodes gagnées Bleu", S.periodWins.Bleu], ["Périodes gagnées Gris", S.periodWins.Gris], ["Périodes gagnées Noir", S.periodWins.Noir],
     ["Nombre d'événements", S.history.length],
     ['Stats prises par', S.authorId ? plainAuthor(S.authorId) : '—'],
+    ['ID du match', S.id || ''],
+    ['Date du match', isoOuVide(S.createdAt)],
   ];
 }
 /* ---------- ENREGISTREMENT DE FICHIER ----------
@@ -5296,7 +5306,17 @@ async function saveFile(filename, blob){
 const EV_LABEL = {lancer:'Lancer', faute_directe:'Faute directe', reprise:'Reprise de jeu',
                   changement:'Changement', alignement:'Alignement', fin_periode:'Fin de période'};
 const SIT_LABEL = {arretee:'Arrêtée', continue:'Continue'};
-function nm(slot){ return (S.names && S.names[slot]) || slot; }
+/* C28 · R10 : deux équipes de même nom se distinguent dans l'export (« Laval », « Laval (2) ») : en-têtes de colonnes comme
+   valeurs des colonnes d'équipe. La première garde son nom, l'ordre des équipes en jeu décide. */
+function nm(slot){
+  const base = (S.names && S.names[slot]) || slot;
+  const ordre = ATEAMS(), i = ordre.indexOf(slot);
+  let rang = 1;
+  for(let j=0; j<i; j++) if(((S.names && S.names[ordre[j]]) || ordre[j]) === base) rang++;
+  return rang > 1 ? base + ' (' + rang + ')' : base;
+}
+/* Date ISO 8601 (UTC, « Z ») d'un instant en millisecondes ; vide si absent. */
+function isoOuVide(ms){ return (typeof ms === 'number' && isFinite(ms)) ? new Date(ms).toISOString() : ''; }
 function zoneAt(pos){ return pos ? ZONE_LABEL[classifyZone(pos[0], pos[1])] : ''; }
 function r3(v){ return typeof v === 'number' ? Math.round(v*1000)/1000 : ''; }
 function pctNum(succ, att){ return att ? Math.round(1000*succ/att)/10 : ''; }
@@ -5309,7 +5329,9 @@ function buildActionRows(){
     'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
     ...teams.map(t=>'Score '+nm(t)+' avant'),
     ...teams.map(t=>'Sur le terrain — '+nm(t)),
-    'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+    'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
+    /* C28 : colonnes AJOUTÉES en fin de ligne (rien d'existant n'est renommé, retiré ni déplacé) */
+    'ID du match','Date du match','Heure de l’action','Code de faute'];
   const rows = S.history.map((ev,i)=>{
     const d = ev.details || {}, b = ev.before || {};
     const lin = b.lineups || {};
@@ -5348,6 +5370,10 @@ function buildActionRows(){
       'Saisi par': ev.by ? plainAuthor(ev.by) : (S.authorId ? plainAuthor(S.authorId) : ''),
       'Duel en cours': b.duelActive ? 'Oui' : 'Non',
       'Équipe éliminée': b.eliminated ? nm(b.eliminated) : '',
+      'ID du match': S.id || '',
+      'Date du match': isoOuVide(S.createdAt),
+      'Heure de l’action': typeof ev.at === 'string' ? ev.at : '',
+      'Code de faute': d.fault_type || '',
     };
     teams.forEach(t=>{ row['Score '+nm(t)+' avant'] = (b.scores && b.scores[t] !== undefined) ? b.scores[t] : ''; });
     teams.forEach(t=>{ row['Sur le terrain — '+nm(t)] = est(t); });
@@ -5463,8 +5489,8 @@ async function exportCSV(){
 async function exportRawCSV(){
   await warmAuthorProfiles();
   if(!S.history.length){ closeSheet(); return; }
-  const {header, rows} = buildRawRows();
-  const blob = new Blob(['﻿' + toCSV(header, rows)], {type:'text/csv;charset=utf-8;'});
+  const {header, rows, listes} = buildRawRows();
+  const blob = new Blob(['﻿' + toCSV(header, rows, listes)], {type:'text/csv;charset=utf-8;'});
   closeSheet();
   await saveFile((S.matchName||'match_kinball')+'_brut.csv', blob);
 }
@@ -5508,13 +5534,27 @@ function openExportMenu(){
       <b>JSON — sauvegarde complète</b><small>Tout le match, réimportable</small></button>`, true);
 }
 
+/* Une cellule de CSV (C28 · R10, R11). Séparateur de colonnes « ; » (Excel en français), donc :
+   - un nombre décimal s'écrit avec une virgule (« 0,45 ») ; un entier n'a pas de point ;
+   - un texte qui commence par = + - @ (ou une tabulation, un retour chariot) est précédé d'une apostrophe : Excel ne le prend
+     pas pour une formule ;
+   - guillemets si la valeur contient « ; », « " », un saut de ligne ou un retour chariot. */
 function csvEscape(v){
-  const s = String(v===undefined||v===null?'':v);
-  return /[;"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  let s;
+  if(typeof v === 'number' && isFinite(v)) s = String(v).replace('.', ',');
+  else {
+    s = String(v===undefined||v===null?'':v);
+    if(/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  }
+  return /[;"\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
-function toCSV(header, rows){
-  const lines = [header.join(';')];
-  rows.forEach(r => lines.push(header.map(h=>csvEscape(r[h])).join(';')));
+/* `listes` : colonnes dont le texte est une liste de nombres séparés par « | » (coordonnées) — décimales à la virgule aussi. */
+function toCSV(header, rows, listes){
+  const lines = [header.map(csvEscape).join(';')];
+  rows.forEach(r => lines.push(header.map(h=>{
+    const v = r[h];
+    return csvEscape(listes && listes.has(h) && typeof v === 'string' ? v.replace(/\./g, ',') : v);
+  }).join(';')));
   return lines.join('\r\n');
 }
 async function exportJSON(){

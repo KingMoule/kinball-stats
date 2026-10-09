@@ -533,8 +533,11 @@ export default async function ({ gabarit, check: check0 }) {
         const out = await a.ev(() => {
           const arr = o => JSON.parse(JSON.stringify(o), (k, v) => typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e5) / 1e5 : v);
           const c = arr(S); delete c.id; delete c.createdAt; delete c.updatedAt; delete c.sheetDismissable;
+          c.history.forEach(e => { delete e.at; });   /* C28 : heure des événements, propre à chaque partie */
+          const NOUV = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];   /* C28 : colonnes ajoutées en fin de ligne */
+          const rr = arr(buildActionRows()); rr.header = rr.header.filter(h => !NOUV.includes(h)); rr.rows.forEach(x => NOUV.forEach(k => { delete x[k]; }));
           const j = JSON.stringify(S);
-          return { S: c, keys: Object.keys(S), rows: arr(buildActionRows()), saves: window.__saves, fuite: /"WP"|periodEndTimer|minK|lastPoss/.test(j) };
+          return { S: c, keys: Object.keys(S), rows: rr, saves: window.__saves, fuite: /"WP"|periodEndTimer|minK|lastPoss/.test(j) };
         });
         await a.close(); apps.pop();
         return out;

@@ -8,7 +8,7 @@ Un match référence une équipe sans la modifier : `rosters` est une copie, don
 
 ### L'historique
 
-`S.history` est le cœur : un tableau d'événements `{type, before, details}`, plus `by` quand l'auteur de l'action diffère de celui du match (jamais en pratique : une seule personne saisit un match).
+`S.history` est le cœur : un tableau d'événements `{type, before, details}`, plus `by` quand l'auteur de l'action diffère de celui du match (jamais en pratique : une seule personne saisit un match), plus `at` (heure ISO 8601 UTC de l'enregistrement, C28 ; absent des événements d'avant, sans migration ; propre à l'événement, jamais dans `before` ni `details`).
 
 - `before` : instantané de l'état juste avant l'événement (`snapshotBefore()` : `scores`, `possession`, `period`, `periodWins`, `eliminated`, `duelActive`, `awaitingDuelStart`, `awaitingInitial`, `stopped`, `lineups`). C'est ce qui permet ↶ : restaurer `before` et retirer l'événement. C'est aussi ce que lisent les phases, les statistiques de présence et le +/-.
 - `details` : ce qui est propre à l'événement.

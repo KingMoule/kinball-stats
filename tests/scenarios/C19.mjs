@@ -182,8 +182,9 @@ export default async function ({ gabarit, check }) {
       await app.startMatch({ format: '9_11', withRosters: true }); await app.initialPossession('Bleu');
       await app.ev(() => { openLineupSheet('Bleu'); pickSubOut('Bleu_p1'); pickSubIn('Bleu_p5'); closeLineupSheet(); });
       const A = await app.ev(probe);
-      eq(R.header, A.header, 'en-tête (ensemble des colonnes) identique à la version d\'avant');
-      eq(R.motif[0], A.motif[0], 'colonnes remplies d\'une ligne de changement identiques à la version d\'avant');
+      eq(R.header.slice(0, A.header.length), A.header, 'en-tête (ensemble des colonnes) identique à la version d\'avant (C28 : seules des colonnes sont ajoutées en fin de ligne)');
+      eq(R.header.slice(A.header.length), ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'], 'colonnes ajoutées par C28, en fin de ligne');
+      eq(R.motif[0].slice(0, A.motif[0].length), A.motif[0], 'colonnes remplies d\'une ligne de changement identiques à la version d\'avant (hors colonnes ajoutées par C28)');
       eq(R.types[0], A.types[0], 'type d\'action identique à la version d\'avant');
       await app.page.goto('file://' + HTML, { waitUntil: 'domcontentloaded' });
       await app.page.waitForFunction(() => typeof startMatch === 'function' && typeof S !== 'undefined');

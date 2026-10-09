@@ -75,6 +75,8 @@
   function epurer(m) {
     var c = JSON.parse(JSON.stringify(m));
     nettoyer(c);
+    /* C28 : l'heure des événements (`at`, ajoutée aux nouveaux événements) ne part pas : le contenu de l'envoi, son empreinte et la page de confidentialité restent ce qu'ils étaient. */
+    if (Array.isArray(c.history)) c.history.forEach(function (e) { if (e && typeof e === 'object') delete e.at; });
     return c;
   }
   function sha256(texte) {
