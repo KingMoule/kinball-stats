@@ -1,6 +1,12 @@
 # Banc d'essai Kin-Ball Stats
 
-## Lancer et attendre
+## Qui joue quoi
+
+- **Le banc complet se joue en CI** (`.github/workflows/banc.yml`) et son résultat se lit par `node outils/ci-banc.mjs`. Un agent ne le lance pas dans sa session : voir `docs/processus.md`.
+- **Pendant le travail : `node tests/rapide.mjs`.** Il lit les fichiers modifiés depuis `origin/main` (et, pour `index.html`, les sections touchées d'après `git diff` et `outils/carte.mjs`), en déduit les suites par la table `tests/rapide.json`, puis les joue sur la tablette (smoke et undo toujours). `--liste` montre le plan ; `--suites C21,C26` choisit ; `--tel` ou `--tous` change de gabarit ; `--fond` lance en arrière-plan (puis `node tests/attendre.mjs`). La table est indicative : un passage rapide vert ne remplace pas la CI.
+- **Résumé de la CI** : `node tests/resume-ci.mjs` écrit un résumé Markdown de `resultat.json` ; la CI l'envoie dans l'onglet « Summary » du passage.
+
+## Lancer et attendre (passage local)
 
 ```bash
 cd <dépôt>; export NODE_PATH=/home/claude/.npm-global/lib/node_modules KINBALL_SORTIE=/tmp/kb-sortie
@@ -16,7 +22,8 @@ Passage complet : environ 17 min. Un seul banc à la fois sur la machine.
 - `KINBALL_GABARIT=tablette|telephone` : un seul gabarit.
 - `KINBALL_PARTS=n` : n processus par gabarit (défaut 1). Avec 2, le passage dure environ 11 min mais n'est pas stable : voir `tests/docs/lib.md`.
 - `KINBALL_VERBEUX=1` : affiche aussi les PASS et les sorties des scénarios.
-- `KINBALL_CACHE=1` : si un passage complet de même empreinte existe dans `~/.cache/kinball-banc/`, son résultat est affiché et rien n'est lancé.
+- `KINBALL_CACHE=1` : si un passage complet de même empreinte existe dans `~/.cache/kinball-banc/`, son résultat est affiché et rien n'est lancé ; sinon le banc tourne.
+- `KINBALL_CACHE=seul` : comme `1`, mais sans résultat de même empreinte rien ne tourne (code 3). Pour lire sans jamais payer un passage.
 - `KINBALL_HTML=<copie>` : tester une autre version, par exemple pour le contrôle négatif.
 - `KINBALL_AVANT=<dossier>` : versions d'avant. Sans elles, certaines vérifications sont KNOWN.
 - `KINBALL_SORTIE=<dossier>` : mesures, captures et `resultat.json`, jamais dans le dépôt.

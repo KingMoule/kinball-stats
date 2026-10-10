@@ -61,9 +61,14 @@ function resume(r, { cache } = {}) {
   return lignes.join('\n');
 }
 
-/* KINBALL_CACHE=1 : même empreinte déjà jouée → on relit son résultat, rien n'est lancé. */
-if (process.env.KINBALL_CACHE === '1') {
+/* KINBALL_CACHE=1 : même empreinte déjà jouée → on relit son résultat, rien n'est lancé ; sinon le banc tourne.
+   KINBALL_CACHE=seul : idem, mais sans résultat de même empreinte rien ne tourne (code 3) : pour lire sans jamais payer un passage. */
+if (process.env.KINBALL_CACHE === '1' || process.env.KINBALL_CACHE === 'seul') {
   const f = path.join(CACHE, emp.hash + '.json');
+  if (!fs.existsSync(f) && process.env.KINBALL_CACHE === 'seul') {
+    console.log(`AUCUN RÉSULTAT en cache pour l'empreinte ${emp.hash} : le banc complet n'a pas été joué sur cet état. Rien n'a été lancé. La CI le joue (outils/ci-banc.mjs) ; pendant le travail : node tests/rapide.mjs.`);
+    process.exit(3);
+  }
   if (fs.existsSync(f)) {
     const r = JSON.parse(fs.readFileSync(f, 'utf8'));
     for (const e of r.echecs) console.log(`FAIL  ${e.nom}\n      ${e.message}`);
