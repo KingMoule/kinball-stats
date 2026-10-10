@@ -3,8 +3,10 @@
      node outils/ci-banc.mjs --branche main     dernier passage d'une autre branche (sans exiger le même commit)
      node outils/ci-banc.mjs --sha <sha>        un commit précis
      node outils/ci-banc.mjs --attendre         attend la fin (jusqu'à 9 min par appel ; relancer si code 2)
-   Sortie : le résumé court (total, échecs avec leur message, lien du passage). Le détail complet est dans l'artefact
-   « banc-resultat » du passage (resultat.json), téléchargé ici dans un dossier temporaire.
+   Sortie : le résumé court (total, échecs avec leur message, lien du passage), lu dans les annotations du passage par
+   l'API de GitHub (la CI les écrit : tests/resume-ci.mjs --annotations). Les dix premiers échecs y figurent ; le détail
+   complet est dans l'artefact « banc-resultat » (resultat.json), qu'on tente de télécharger seulement si les annotations
+   manquent : un environnement à sortie restreinte peut refuser ce serveur de stockage.
    Code de sortie : 0 vert, 1 rouge, 2 pas de passage ou encore en cours, 3 impossible de joindre GitHub.
    Demande « gh » configuré (gh auth login). Si GH_TOKEN est présent mais invalide, on réessaie sans lui. */
 import { spawnSync } from 'node:child_process';
@@ -48,15 +50,36 @@ for (;;) {
   sh('sleep', ['20']);
 }
 
+const ok = run.conclusion === 'success';
+/* Annotations du passage (API de GitHub) : « BANC RÉSUMÉ » (notice) et « BANC FAIL » (error). */
+const notes = [];
+const jobs = gh(['run', 'view', String(run.databaseId), '--json', 'jobs']);
+if (jobs.status === 0) {
+  for (const j of JSON.parse(jobs.stdout || '{"jobs":[]}').jobs) {
+    const a = gh(['api', `repos/{owner}/{repo}/check-runs/${j.databaseId}/annotations`, '--paginate', '--jq', '.[] | {t: .title, m: .message, l: .annotation_level}']);
+    if (a.status === 0) for (const l of a.stdout.split('\n').filter(Boolean)) { try { notes.push(JSON.parse(l)); } catch {} }
+  }
+}
+const resume = notes.find(n => /^BANC (RÉSUMÉ|SANS RÉSULTAT)/.test(n.t || ''));
+const echecs = notes.filter(n => n.t === 'BANC FAIL');
+if (resume) {
+  console.log(`${resume.m}${resume.t === 'BANC RÉSUMÉ' ? ` [CI, commit ${run.headSha.slice(0, 8)}]` : ''}`);
+  for (const e of echecs) console.log(`FAIL  ${e.m}`);
+  console.log(`Passage : ${run.url}`);
+  process.exit(ok ? 0 : 1);
+}
+
+/* Pas d'annotation du banc : échec avant le banc, ou passage d'une version antérieure du workflow. */
+const autres = notes.filter(n => n.l === 'failure' || n.l === 'error').map(n => n.m).slice(0, 3);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-ci-'));
 const d = gh(['run', 'download', String(run.databaseId), '--name', 'banc-resultat', '--dir', tmp]);
 const f = path.join(tmp, 'resultat.json');
-if (d.status !== 0 || !fs.existsSync(f)) {
-  fin(`${run.conclusion === 'success' ? 'OK' : 'ÉCHEC'} — passage CI ${run.conclusion} mais sans resultat.json (installation ou lancement en échec) : ${run.url}`, run.conclusion === 'success' ? 0 : 1);
+if (d.status === 0 && fs.existsSync(f)) {
+  const r = JSON.parse(fs.readFileSync(f, 'utf8'));
+  console.log(`${r.echecs.length ? 'ÉCHEC' : 'OK'} — ${r.ok}/${r.total} vérifications passées, ${r.echecs.length} échec(s)${r.known.length ? `, ${r.known.length} défaut(s) connu(s)` : ''} en ${r.duree_s} s (CI, commit ${run.headSha.slice(0, 8)}, artefact)`);
+  for (const e of r.echecs.slice(0, 20)) console.log(`FAIL  ${e.nom}\n      ${String(e.message).slice(0, 400)}`);
+  console.log(`Passage : ${run.url}\nRésultat complet : ${f}`);
+  process.exit(r.code ? 1 : 0);
 }
-const r = JSON.parse(fs.readFileSync(f, 'utf8'));
-console.log(`${r.echecs.length ? 'ÉCHEC' : 'OK'} — ${r.ok}/${r.total} vérifications passées, ${r.echecs.length} échec(s)${r.known.length ? `, ${r.known.length} défaut(s) connu(s)` : ''} en ${r.duree_s} s (CI, commit ${run.headSha.slice(0, 8)}, ${r.complet ? 'passage complet' : 'passage partiel'}${r.depuis_cache ? ', relu depuis le cache' : ''})`);
-for (const e of r.echecs.slice(0, 20)) console.log(`FAIL  ${e.nom}\n      ${String(e.message).slice(0, 400)}`);
-if (r.echecs.length > 20) console.log(`… et ${r.echecs.length - 20} autre(s) : voir ${f}`);
-console.log(`Passage : ${run.url}\nRésultat complet : ${f}`);
-process.exit(r.code ? 1 : 0);
+console.log(`${ok ? 'OK' : 'ÉCHEC'} — passage CI ${run.conclusion}, sans annotation du banc${autres.length ? ' (' + autres.join(' ; ') + ')' : ''}. Résultat illisible d'ici (artefact : ${(d.stderr || '').trim().split('\n')[0].replace(/\?.*$/, '').slice(0, 120) || 'absent'}). Journal : ${run.url}`);
+process.exit(ok ? 0 : 1);

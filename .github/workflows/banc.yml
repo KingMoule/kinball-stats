@@ -102,9 +102,13 @@ jobs:
       - name: Banc d'essai
         run: KINBALL_CACHE=1 node tests/run.mjs
 
+      # Le résumé va dans l'onglet « Summary » ; le résumé et les échecs vont aussi en annotations, que outils/ci-banc.mjs
+      # lit par l'API de GitHub (journaux et artefacts ne se téléchargent pas depuis un environnement à sortie restreinte).
       - name: Résumé du passage
         if: always()
-        run: node tests/resume-ci.mjs >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          node tests/resume-ci.mjs >> "$GITHUB_STEP_SUMMARY"
+          node tests/resume-ci.mjs --annotations
 
       - name: Garder le résultat
         if: always()

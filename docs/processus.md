@@ -56,5 +56,6 @@ Autotest : `bash .claude/hooks/test-hooks.sh`. Une définition ou un hook ajout�
 ## Limites connues
 
 - La CI n'a pas été éprouvée avant son premier passage. Les vérifications sensibles au temps peuvent échouer sur un exécuteur partagé : relancer le passage (« Re-run failed jobs ») avant de conclure à une régression ; si le même échec se répète, il est réel ou à marquer `{ calme: true }`.
+- Journaux et artefacts d'un passage se téléchargent depuis les serveurs de stockage de GitHub, que la politique d'une organisation ou d'une session peut refuser (constaté le 2026-10-10 : 403 sur `productionresultssa1.blob.core.windows.net`). `ci-banc.mjs` lit donc des **annotations** (`api.github.com`) : le résumé et les dix premiers échecs. Au-delà, ou pour le détail, ouvrir le passage dans GitHub (onglet *Summary*, artefact `banc-resultat`).
 - La CI n'a pas de dossier `KINBALL_AVANT` : les vérifications qui comparent avec une sauvegarde « d'avant » y sont **KNOWN** (non bloquantes), pas jouées. Les contrôles négatifs restent à faire à la main.
 - Le coût en minutes GitHub Actions dépend du forfait du dépôt.
