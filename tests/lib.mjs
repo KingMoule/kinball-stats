@@ -251,6 +251,20 @@ export class App {
     await this.page.waitForFunction(() => typeof undoBlockedUntil === 'undefined' || Date.now() >= undoBlockedUntil + 10, null, { timeout: 4000, polling: 10 });
     await this.page.locator('#undoBtn:visible, #undoBtnPhone:visible').first().click({ timeout: 4000, noWaitAfter: true });
     await this.settle();
+    await this.fieldStable();
+  }
+  /* Après un ↶ (renderScoreboard), le terrain garde UNE image (environ 20 ms) une mise en page périmée (tablette : 251,128 en
+     678 px au lieu de 234,95 en 711 ; téléphone : 16 px plus bas), puis saute à la bonne. Un appui dans cette fenêtre est lu comme
+     un glisser : la position change entre pointerdown et pointerup (fieldPoint relit le rectangle à chaque événement). Personne ne
+     peut taper 20 ms après un appui sur ↶, mais le banc, lui, le fait sur une machine rapide (constaté en CI : undo, 3e action).
+     On attend donc que le rectangle du terrain soit identique sur trois images de suite (environ 50 ms). */
+  async fieldStable() {
+    await this.page.waitForFunction(() => {
+      const r = document.getElementById('field').getBoundingClientRect(), k = [r.x, r.y, r.width, r.height].map(v => Math.round(v * 10) / 10).join();
+      if (window.__fieldKey === k) { window.__fieldN++; } else { window.__fieldKey = k; window.__fieldN = 0; }
+      return window.__fieldN >= 2;
+    }, null, { polling: 'raf', timeout: 3000 });
+    await this.page.evaluate(() => { window.__fieldKey = null; window.__fieldN = 0; });
   }
   /* ↶ placé DANS la feuille (feuille du duel) : bouton `undo()` de #sheet. */
   async undoInSheet() { await this.clickSheet('undo()'); await this.settle(); }

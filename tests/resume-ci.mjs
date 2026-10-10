@@ -1,7 +1,7 @@
 /* Résumé du dernier resultat.json pour une exécution GitHub Actions :
      node tests/resume-ci.mjs >> "$GITHUB_STEP_SUMMARY"    résumé Markdown (onglet « Summary »)
      node tests/resume-ci.mjs --annotations                 commandes de workflow : un « notice » BANC RÉSUMÉ et, pour les
-                                                            dix premiers échecs, des « error » BANC FAIL ; outils/ci-banc.mjs
+                                                            29 premiers échecs, des « error », « warning » ou « notice » BANC FAIL ; outils/ci-banc.mjs
                                                             les lit par l'API de GitHub (un journal ou un artefact ne se
                                                             télécharge pas depuis un environnement à sortie restreinte)
    Lit KINBALL_SORTIE (même défaut que le banc). Ne lance rien et ne lit que ce fichier. */
@@ -22,8 +22,9 @@ catch {
 }
 
 if (annotations) {
-  cmd('notice', 'BANC RÉSUMÉ', `${r.echecs.length ? 'ÉCHEC' : 'OK'} — ${r.ok}/${r.total} vérifications passées, ${r.echecs.length} échec(s)${r.known.length ? `, ${r.known.length} défaut(s) connu(s)` : ''} en ${r.duree_s} s (${r.complet ? 'passage complet' : 'passage partiel'}${r.depuis_cache ? ', relu depuis le cache' : ''}, empreinte ${r.empreinte})${r.echecs.length > 10 ? `. ${r.echecs.length - 10} échec(s) de plus : voir l'artefact banc-resultat` : ''}${r.interrompus && r.interrompus.length ? `. Processus interrompus : ${r.interrompus.join(', ')}` : ''}`);
-  for (const e of r.echecs.slice(0, 10)) cmd('error', 'BANC FAIL', `${String(e.nom).slice(0, 200)} : ${String(e.message).replace(/\s+/g, ' ').slice(0, 500)}`);
+  cmd('notice', 'BANC RÉSUMÉ', `${r.echecs.length ? 'ÉCHEC' : 'OK'} — ${r.ok}/${r.total} vérifications passées, ${r.echecs.length} échec(s)${r.known.length ? `, ${r.known.length} défaut(s) connu(s)` : ''} en ${r.duree_s} s (${r.complet ? 'passage complet' : 'passage partiel'}${r.depuis_cache ? ', relu depuis le cache' : ''}, empreinte ${r.empreinte})${r.echecs.length > 29 ? `. ${r.echecs.length - 29} échec(s) de plus : voir l'artefact banc-resultat` : ''}${r.interrompus && r.interrompus.length ? `. Processus interrompus : ${r.interrompus.join(', ')}` : ''}`);
+  /* GitHub garde au plus 10 annotations de chaque niveau par étape : 10 errors, puis 10 warnings, puis 9 notices (+ le résumé). */
+  r.echecs.slice(0, 29).forEach((e, i) => cmd(i < 10 ? 'error' : i < 20 ? 'warning' : 'notice', 'BANC FAIL', `${String(e.nom).slice(0, 200)} : ${String(e.message).replace(/\s+/g, ' ').slice(0, 500)}`));
   process.exit(0);
 }
 const nette = (s, n) => String(s).replace(/\r?\n+/g, ' ⏎ ').replace(/`/g, "'").replace(/\|/g, '/').slice(0, n);

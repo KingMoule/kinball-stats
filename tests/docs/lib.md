@@ -56,3 +56,7 @@ Tout passage complet (sans `KINBALL_ONLY`, `KINBALL_GABARIT`, `KINBALL_BAIL` ni 
 - M04·1 : attend le `load` du premier chargement avant de compter les rechargements.
 - C13B·11 : attend que la base soit prête avant d'injecter le match à reprendre, puis vérifie que la reprise a eu lieu.
 - C13B·13 : en phase au calme. Une mesure qui dépasse 50 ms est refaite sur une page neuve, au plus 2 fois ; chaque essai doit tenir toutes les bornes.
+
+## Terrain stable après ↶ (`App.fieldStable`, constaté en CI le 2026-10-10)
+
+Après un ↶ (`renderScoreboard`), le terrain garde une image (environ 20 ms) une mise en page périmée (tablette : 251,128 en 678 px au lieu de 234,95 en 711 ; téléphone : 16 px plus bas), puis saute à la bonne. `fieldPoint()` relit le rectangle à chaque événement : un appui dans cette fenêtre change de position entre `pointerdown` et `pointerup` et l'app le lit comme un glisser (la faute rejouée devient un lancer). Personne ne peut taper 20 ms après un ↶, mais le banc le fait sur une machine rapide : `undo` échouait en CI à la 3e action. `App.undo()` attend donc, après `settle()`, que le rectangle de `#field` soit identique sur trois images de suite. Reproduit en local : sans l'attente, 3 appuis sur 12 devenaient des glisser ; avec, aucun.
