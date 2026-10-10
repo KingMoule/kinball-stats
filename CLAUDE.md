@@ -12,6 +12,7 @@
 - Le bouton d'annulation dans une feuille appelle `undo()`.
 
 ## Banc et machine (2 cœurs)
+En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus.md` font foi.
 - **Le banc complet se joue en CI**, jamais dans ta session (`.github/workflows/banc.yml`, cache par empreinte). Tu pousses ta branche, puis `node outils/ci-banc.mjs` donne le résultat (`--attendre` : jusqu'à 9 min par appel). Ne sonde pas.
 - **En travail** : `node tests/rapide.mjs` joue les suites touchées par ton diff, sur la tablette (`--liste` : le plan ; `--fond` au-delà de 8 min). Une suite : `KINBALL_ONLY=<id>[,smoke,undo]`. Un rapide vert ne remplace pas la CI.
 - Un seul banc à la fois sur la machine. Une commande dure au plus 10 min : un passage long se lance par `(setsid nohup … &)`, puis `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
