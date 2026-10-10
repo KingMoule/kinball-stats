@@ -90,6 +90,13 @@ export async function launch(gabarit = 'tablette', opts = {}) {
   if (saisie) await page.addInitScript((v) => { try { if (!sessionStorage.getItem('__saisieInit')) { sessionStorage.setItem('__saisieInit', '1'); if (localStorage.getItem('kinball.saisie') === null) localStorage.setItem('kinball.saisie', v); } } catch (e) {} }, saisie);
   await page.goto(opts.url || ('file://' + (opts.html || HTML)), { waitUntil: 'domcontentloaded' });   // M03 : opts.url (page servie en http) / opts.html (copie de l'app)
   await page.waitForFunction(() => typeof startMatch === 'function' && typeof S !== 'undefined');
+  /* DIAGNOSTIC : journal des événements du pointeur sur #field, avec l'état des gardes AVANT le gestionnaire de l'app. */
+  await page.evaluate(() => {
+    window.__log = []; const f = document.getElementById('field');
+    const g = () => { try { return JSON.stringify({ open: document.getElementById('sheet').classList.contains('open'), rad: radialBusy(), st: S.status, ai: !!S.awaitingInitial, ad: !!S.awaitingDuelStart, pe: !!periodEndTimer, dr: dragging, ds: dragStart ? [Math.round(dragStart.x), Math.round(dragStart.y)] : null }); } catch (x) { return 'ERR ' + x.message; } };
+    for (const k of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture']) f.addEventListener(k, e => window.__log.push(k + '@' + Math.round(performance.now()) + ' (' + Math.round(e.clientX) + ',' + Math.round(e.clientY) + ') ' + g()), true);
+    const r = f.getBoundingClientRect(); window.__log.push('rect0 ' + [r.x, r.y, r.width, r.height].map(Math.round).join(','));
+  });
   /* Sans animation de la feuille par défaut ; on la garde avec KINBALL_ANIM=1
      ou launch(gabarit, { anim: true }) (le scénario C22 en a besoin : c'est
      pendant la descente de 220 ms que les appuis fantômes se produisent). */
@@ -162,7 +169,7 @@ export class App {
       }, s, { timeout: 4000, polling: 10 });
     } catch (e) {
       const st = await this.page.evaluate((s) => { const sh = document.getElementById('sheet'); const g = n => { try { return eval(n); } catch (x) { return 'ERR'; } };
-        return JSON.stringify({ open: sh.classList.contains('open'), closing: sh.classList.contains('closing'), anims: sh.getAnimations({ subtree: true }).length, html: sh.innerHTML.slice(0, 120).replace(/\s+/g, ' '), btn: !!document.querySelector(s), pending: g('!!pending'), periodEndTimer: g('!!periodEndTimer'), radialBusy: g('radialBusy()'), status: S.status, hist: S.history.length, awInit: S.awaitingInitial, awDuel: S.awaitingDuelStart, dragging: g('dragging'), tapAge: g('Date.now()-sheetLastTap.t'), undoBlockedIn: g('undoBlockedUntil-Date.now()'), timers: window.__timers, saisie: g('saisieMode()') }); }, s).catch(x => 'evaluate: ' + x.message);
+        return JSON.stringify({ open: sh.classList.contains('open'), closing: sh.classList.contains('closing'), anims: sh.getAnimations({ subtree: true }).length, html: sh.innerHTML.slice(0, 120).replace(/\s+/g, ' '), btn: !!document.querySelector(s), pending: g('!!pending'), periodEndTimer: g('!!periodEndTimer'), radialBusy: g('radialBusy()'), status: S.status, hist: S.history.length, awInit: S.awaitingInitial, awDuel: S.awaitingDuelStart, dragging: g('dragging'), tapAge: g('Date.now()-sheetLastTap.t'), undoBlockedIn: g('undoBlockedUntil-Date.now()'), timers: window.__timers, saisie: g('saisieMode()'), rect: (() => { const r = document.getElementById('field').getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(','); })(), log: (window.__log || []).slice(-9) }); }, s).catch(x => 'evaluate: ' + x.message);
       throw new Error('clickSheet(' + call + ') : ' + String(e.message).split('\n')[0] + ' | ÉTAT ' + st);
     }
     await this.page.locator(s).first().click({ timeout: 4000, noWaitAfter: true });
