@@ -11,7 +11,7 @@
    Captures dans SORTIE/captures/C20/. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { launch, assert, eq, SORTIE, exigerAvant } from '../lib.mjs';
+import { launch, assert, eq, SORTIE, exigerAvant, KNOWN_AVANT } from '../lib.mjs';
 
 export const gabarits = ['tablette', 'telephone'];
 const AVANT_NOM = 'kinball.C20.avant.html';
@@ -187,5 +187,5 @@ export default async function ({ gabarit, check }) {
     };
     const a = await run({ html: ref }), b = await run({});
     eq(b.saves, a.saves, 'nombre de save()'); eq(b.st, a.st, 'S'); eq(b.rows, a.rows, 'export');
-  });
+  }, KNOWN_AVANT);
 }

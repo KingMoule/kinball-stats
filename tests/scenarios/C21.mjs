@@ -14,7 +14,7 @@
    Captures dans SORTIE/captures/C21/. Contrôle négatif : KINBALL_HTML=<avant>/kinball.C21.avant.html KINBALL_ONLY=C21 node tests/run.mjs */
 import fs from 'node:fs';
 import path from 'node:path';
-import { launch, assert, eq, SORTIE, exigerAvant } from '../lib.mjs';
+import { launch, assert, eq, SORTIE, exigerAvant, KNOWN_AVANT } from '../lib.mjs';
 import { runFuzz } from '../fuzz.mjs';
 
 export const gabarits = ['tablette', 'telephone'];
@@ -657,7 +657,7 @@ export default async function ({ gabarit, check: checkTout }) {
     eq(b.saves, a.saves, 'nombre de save()'); eq(b.st, a.st, 'S'); eq(b.rows, a.rows, 'export');
     const a2 = await matchJoue(gabarit, { html: ref }, { rosters: false }), b2 = await matchJoue(gabarit, { saisie: 'feuille' }, { rosters: false });
     eq(b2.saves, a2.saves, 'sans alignement : save()'); eq(b2.st, a2.st, 'sans alignement : S'); eq(b2.rows, a2.rows, 'sans alignement : export');
-  });
+  }, KNOWN_AVANT);
 
   await check(`${P}·9b mêmes gestes en mode radial : S et export identiques à ceux du mode feuille (sans alignement aussi)`, async () => {
     const f = await matchJoue(gabarit, { saisie: 'feuille' }, { rosters: false }), r = await matchJoue(gabarit, { saisie: 'radiale' }, { rosters: false });

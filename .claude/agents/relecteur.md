@@ -14,7 +14,7 @@ Tu fais une revue transversale du dépôt Kin-Ball Stats, en lecture seule : tu 
 - **Incohérences entre chantiers.** Deux mécanismes pour la même chose, ou des règles contradictoires entre tablette et téléphone.
 - **Dette des tests.** Vérifications redondantes, attentes fixes fragiles, vérifications sensibles à la charge non marquées `{ calme: true }`, critères non couverts.
 
-Ne lance pas le banc complet. Pour une preuve, au plus un passage ciblé `KINBALL_ONLY=<id>`, et seulement si aucun autre banc ne tourne. Pour l'état du banc, lis le dernier `resultat.json`.
+Ne lance pas le banc complet : c'est la CI. Pour l'état du banc, `node outils/ci-banc.mjs --branche main` (ou la branche relue). Pour une preuve, au plus un passage ciblé `node tests/rapide.mjs --suites <id>`, et seulement si aucun autre banc ne tourne.
 
 ## Rapport
 En réponse finale :

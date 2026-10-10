@@ -1,0 +1,135 @@
+# Banc d'essai complet, joué par GitHub et non dans la session d'un agent : le modèle ne lit que le résultat.
+# Le résultat d'un passage est rangé dans un cache par empreinte (tests/empreinte.mjs) : une PR qui ne change
+# que la documentation, ou un commit déjà joué, relit le résultat au lieu de rejouer les 17 à 20 minutes du banc.
+name: Banc d'essai
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'tests/docs/**'
+      - 'tests/README.md'
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - 'README.md'
+      - 'MIGRATION.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'tests/docs/**'
+      - 'tests/README.md'
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - 'README.md'
+      - 'MIGRATION.md'
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: 'Suites à jouer, séparées par des virgules (KINBALL_ONLY). Vide : passage complet.'
+        required: false
+        default: ''
+      gabarit:
+        description: 'tablette ou telephone (KINBALL_GABARIT). Vide : les deux.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Un seul passage à la fois par branche, sans annuler celui qui tourne. Le filtre « paths-ignore » d'une PR juge la PR
+# entière : un push de documentation sur une PR qui change du code relance donc le workflow. En annulant, ce push
+# aurait tué un passage de 20 minutes ; sans annuler, il attend et relit le cache du premier (même empreinte).
+# GitHub ne garde qu'un passage en attente : le plus récent remplace le précédent.
+concurrency:
+  group: banc-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Même version que celle du banc en local (empreinte : un changement de version invalide le cache).
+  PLAYWRIGHT_VERSION: '1.56.0'
+
+jobs:
+  banc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Playwright (paquet npm seulement) : l'empreinte a besoin de sa version et du chemin de Chromium, pas du navigateur.
+      # La sortie du banc reste hors du dépôt, sinon elle entrerait dans l'empreinte.
+      - name: Installer Playwright et fixer les chemins
+        env:
+          SUITES: ${{ inputs.suites }}
+          GABARIT: ${{ inputs.gabarit }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"
+          {
+            echo "NODE_PATH=$RUNNER_TEMP/pw/node_modules"
+            echo "KINBALL_SORTIE=$RUNNER_TEMP/kb-sortie"
+          } >> "$GITHUB_ENV"
+          # Une variable vide changerait l'empreinte : on ne les pose que si elles sont données.
+          [ -n "$SUITES" ] && echo "KINBALL_ONLY=$SUITES" >> "$GITHUB_ENV"
+          [ -n "$GABARIT" ] && echo "KINBALL_GABARIT=$GABARIT" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Calculer l'empreinte du passage
+        id: emp
+        run: |
+          h=$(node --input-type=module -e "import('./tests/empreinte.mjs').then(m => console.log(m.empreinte().hash))")
+          echo "hash=$h" >> "$GITHUB_OUTPUT"
+          echo "Empreinte : $h"
+
+      - name: Chercher un résultat déjà joué (même empreinte)
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/kinball-banc
+          key: banc-${{ steps.emp.outputs.hash }}
+
+      - name: Installer Chromium (seulement si le banc doit tourner)
+        if: steps.cache.outputs.cache-hit != 'true'
+        # Ici, et seulement en CI : sur la machine de développement, ne jamais lancer « playwright install ».
+        run: '"$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium'
+
+      # KINBALL_CACHE=1 : empreinte déjà jouée → relecture du résultat ; sinon le banc tourne une fois.
+      - name: Banc d'essai
+        run: KINBALL_CACHE=1 node tests/run.mjs
+
+      # Le résumé va dans l'onglet « Summary » ; le résumé et les échecs vont aussi en annotations, que outils/ci-banc.mjs
+      # lit par l'API de GitHub (journaux et artefacts ne se téléchargent pas depuis un environnement à sortie restreinte).
+      - name: Résumé du passage
+        if: always()
+        run: |
+          node tests/resume-ci.mjs >> "$GITHUB_STEP_SUMMARY"
+          node tests/resume-ci.mjs --annotations
+
+      - name: Garder le résultat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banc-resultat
+          path: |
+            ${{ runner.temp }}/kb-sortie/resultat.json
+            ${{ runner.temp }}/kb-sortie/verifications.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Un passage vert et complet est rangé dans le cache par run.mjs ; on ne l'enregistre que s'il est nouveau.
+      - name: Un résultat neuf à ranger ?
+        id: a_ranger
+        if: success() && steps.cache.outputs.cache-hit != 'true'
+        run: '[ -f "$HOME/.cache/kinball-banc/${{ steps.emp.outputs.hash }}.json" ] && echo "oui=true" >> "$GITHUB_OUTPUT" || exit 0'
+
+      - name: Ranger le résultat dans le cache
+        if: steps.a_ranger.outputs.oui == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/kinball-banc
+          key: banc-${{ steps.emp.outputs.hash }}

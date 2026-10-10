@@ -11,19 +11,24 @@
 - Les règles CSS du téléphone sont préfixées `.phone`.
 - Le bouton d'annulation dans une feuille appelle `undo()`.
 
-## Machine (2 cœurs)
-- Un seul banc à la fois sur la machine.
-- Une commande dure au plus 10 min : le banc se lance par `(setsid nohup node tests/run.mjs > <journal> 2>&1 < /dev/null &)`, puis on attend avec `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
-- On lit `node tests/attendre.mjs` ou `resultat.json`, jamais le journal en entier par `cat`.
+## Banc et machine (2 cœurs)
+En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus.md` font foi.
+- **Le banc complet se joue en CI**, jamais dans ta session (`.github/workflows/banc.yml`, cache par empreinte). Tu pousses ta branche, puis `node outils/ci-banc.mjs` donne le résultat (`--attendre` : jusqu'à 9 min par appel). Ne sonde pas.
+- **En travail** : `node tests/rapide.mjs` joue les suites touchées par ton diff, sur la tablette (`--liste` : le plan ; `--fond` au-delà de 8 min). Une suite : `KINBALL_ONLY=<id>[,smoke,undo]`. Un rapide vert ne remplace pas la CI.
+- Un seul banc à la fois sur la machine. Une commande dure au plus 10 min : un passage long se lance par `(setsid nohup … &)`, puis `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
+- On lit `node tests/attendre.mjs` ou `resultat.json`, jamais le journal en entier. `KINBALL_CACHE=seul node tests/run.mjs` relit un passage déjà joué, sans rien lancer.
 - On tue un processus par son PID, jamais avec `pkill -f` (cela tue aussi le shell) ; un hook le refuse.
-- `NODE_PATH=/home/claude/.npm-global/lib/node_modules` ; ne lance jamais `playwright install`. `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
+- `NODE_PATH=/home/claude/.npm-global/lib/node_modules` ; ne lance jamais `playwright install` (réservé à la CI). `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
+
+## Lecture du code
+- Ne lis jamais `index.html` en entier (354 Ko, environ 95 000 tokens) : `node outils/carte.mjs <regex>`, puis Read avec `offset` et `limit`. Un hook le refuse.
 
 ## Publication
 - Après modification d'un fichier du site (index.html, kb*.js, sw.js, polices, icônes, manifest, vendor) : lance `node outils/check-release.mjs --ecrire`, puis `node outils/check-release.mjs` doit passer. Sinon M04·8 est rouge.
-- `gh pr create` ne marche pas ici : passe par `gh api repos/KingMoule/kinball-stats/pulls -f title=… -f head=… -f base=main -f body=…`.
-- Un agent ne fusionne jamais une PR.
+- **Toute PR s'ouvre avec `base: main`** ; un hook le vérifie. `gh pr create --base main …`, ou `gh api repos/KingMoule/kinball-stats/pulls -f title=… -f head=… -f base=main -f body=…`.
+- Un agent ne fusionne jamais une PR et ne committe jamais sur `main`.
 
 ## Où trouver la doc
-- `docs/README.md` : architecture et guide.
+- `docs/README.md` : architecture et guide. `docs/processus.md` : qui joue le banc, niveau d'audit, modèles, hygiène de session.
 - `tests/README.md` : banc ; détail par suite dans `tests/docs/<id>.md`.
 - `node outils/carte.mjs [regex]` : carte « fonction → ligne » du code (ex. `wp`, `saisie`, `^undo`).

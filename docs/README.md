@@ -16,6 +16,7 @@ Le code fait foi sur ces documents. Quand un fait de cette documentation ne corr
 | le déploiement, le service worker, la version du site, la collecte facultative, une PR | `site.md` |
 | le pourquoi d'un choix existant (avant de le remettre en cause) | `decisions.md` |
 | le banc d'essai (lancer, attendre, ajouter une suite) | `tests/README.md`, puis `tests/docs/<id>.md` |
+| qui joue le banc, le niveau d'audit d'un chantier, le choix du modèle, la consommation de tokens | `processus.md` |
 
 Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la machine, publication).
 
@@ -23,6 +24,8 @@ Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la 
 
 - `node outils/carte.mjs [regex]` : carte « fonction → ligne » à jour de `index.html` et de `kbsite.js` (par exemple `node outils/carte.mjs wp`). Les documents citent des noms de fonctions, jamais des numéros de ligne.
 - `node outils/check-release.mjs [--ecrire]` : version et empreinte du site (voir `site.md`).
+- `node outils/ci-banc.mjs [--attendre]` : résultat du banc complet joué par la CI pour le commit courant (voir `processus.md`).
+- `node tests/rapide.mjs [--liste]` : banc rapide, les suites touchées par le diff.
 - `node sim/simtest.mjs` : tests du moteur de simulation (doit afficher « TOUT PASSE »).
 
 ## Ce qui n'est pas ici
