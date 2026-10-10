@@ -121,7 +121,13 @@ await cas('3 · amont modifié sur une accroche : conflits listés avec leur acc
   const idxTxt = lire(path.join(dst, 'index.html')).toString('utf8').split('\n');
   const iM06 = idxTxt.findIndex(l => l.includes('KBSite.sauvegardeV2(payload)'));
   ok(iM06 > 0, 'accroche M06 introuvable');
-  const voisine = idxTxt[iM06 - 1];
+  /* Une ligne voisine de l'accroche, présente une seule fois dans la base amont (les chantiers peuvent avoir retouché la ligne juste au-dessus). */
+  let voisine = null;
+  for (let k = iM06 - 1; k >= Math.max(0, iM06 - 60) && !voisine; k--) {
+    const l = idxTxt[k];
+    if (l.trim().length > 12 && BASE.split(l + '\n').length === 2) voisine = l;
+  }
+  ok(voisine !== null, 'aucune ligne voisine de l\'accroche M06 commune avec la base amont');
   let nouveau = remplacer(BASE, "await window.claude.use('db') : null; }", "await window.claude.use('db', {v:2}) : null; }", 'use db');
   nouveau = remplacer(nouveau, voisine + '\n', voisine + ' /* changé par l\'amont */\n', 'ligne voisine de M06');
   const f = ecrireNouveau(TMP, 'conflit.html', nouveau);
