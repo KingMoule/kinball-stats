@@ -288,7 +288,7 @@ export class Reporter {
     try { await fn(); } catch (e) { err = e; }
     const ms = Date.now() - t0;
     if (!err) { this.rows.push({ name, ok: true }); this._emit({ nom: name, etat: 'ok', ms }); if (!process.env.KINBALL_CHILD) console.log(`PASS  ${name}  (${ms} ms)`); return true; }
-    const msg = String(err && err.message || err).split('\n')[0];
+    const msg = String((err && err.stack) || err).split('\n').filter(l => !/node_modules|node:internal/.test(l)).slice(0, 8).join(' ⏎ ');
     if (opts.known && (!opts.knownErr || err instanceof opts.knownErr)) { this.known++; this.rows.push({ name, ok: true, known: true }); this._emit({ nom: name, etat: 'known', ms, msg: opts.known + ' [' + msg + ']' }); if (!process.env.KINBALL_CHILD) console.log(`KNOWN ${name} — défaut connu : ${opts.known} [${msg}]`); return true; }
     this.fails++; this.rows.push({ name, ok: false, msg });
     this._emit({ nom: name, etat: 'fail', ms, msg }); if (!process.env.KINBALL_CHILD) console.log(`FAIL  ${name}\n      ${msg}`);

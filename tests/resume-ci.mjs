@@ -23,7 +23,7 @@ catch {
 
 if (annotations) {
   cmd('notice', 'BANC RÉSUMÉ', `${r.echecs.length ? 'ÉCHEC' : 'OK'} — ${r.ok}/${r.total} vérifications passées, ${r.echecs.length} échec(s)${r.known.length ? `, ${r.known.length} défaut(s) connu(s)` : ''} en ${r.duree_s} s (${r.complet ? 'passage complet' : 'passage partiel'}${r.depuis_cache ? ', relu depuis le cache' : ''}, empreinte ${r.empreinte})${r.echecs.length > 10 ? `. ${r.echecs.length - 10} échec(s) de plus : voir l'artefact banc-resultat` : ''}${r.interrompus && r.interrompus.length ? `. Processus interrompus : ${r.interrompus.join(', ')}` : ''}`);
-  for (const e of r.echecs.slice(0, 10)) cmd('error', 'BANC FAIL', `${String(e.nom).slice(0, 200)} : ${String(e.message).replace(/\s+/g, ' ').slice(0, 500)}`);
+  for (const e of r.echecs.slice(0, 10)) cmd('error', 'BANC FAIL', `${String(e.nom).slice(0, 200)} : ${String(e.message).replace(/\s+/g, ' ').slice(0, 1500)}`);
   process.exit(0);
 }
 const nette = (s, n) => String(s).replace(/\r?\n+/g, ' ⏎ ').replace(/`/g, "'").replace(/\|/g, '/').slice(0, n);

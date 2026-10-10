@@ -4,36 +4,8 @@
 name: Banc d'essai
 
 on:
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'tests/docs/**'
-      - 'tests/README.md'
-      - '.claude/**'
-      - 'CLAUDE.md'
-      - 'README.md'
-      - 'MIGRATION.md'
   push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'tests/docs/**'
-      - 'tests/README.md'
-      - '.claude/**'
-      - 'CLAUDE.md'
-      - 'README.md'
-      - 'MIGRATION.md'
-  workflow_dispatch:
-    inputs:
-      suites:
-        description: 'Suites à jouer, séparées par des virgules (KINBALL_ONLY). Vide : passage complet.'
-        required: false
-        default: ''
-      gabarit:
-        description: 'tablette ou telephone (KINBALL_GABARIT). Vide : les deux.'
-        required: false
-        default: ''
+    branches: [ci-diag]
 
 permissions:
   contents: read
@@ -47,6 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  KINBALL_ONLY: 'smoke,undo'
   # Même version que celle du banc en local (empreinte : un changement de version invalide le cache).
   PLAYWRIGHT_VERSION: '1.56.0'
 
