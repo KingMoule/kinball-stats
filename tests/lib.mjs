@@ -149,16 +149,22 @@ export class App {
      une ancienne copie. */
   async clickSheet(call) {
     const s = sel.sheetBtn(call);
-    await this.page.waitForFunction((s) => {
-      const b = document.querySelector(s); if (!b) return false;
-      const sh = b.closest('#radial') || document.getElementById('sheet');
-      if (!sh.classList.contains('open') || sh.classList.contains('closing') || sh.getAnimations({ subtree: true }).length) return false;
-      if (typeof sheetLastTap !== 'undefined' && typeof SHEET_DOUBLE_MS !== 'undefined') {
-        const r = b.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
-        if (Date.now() - sheetLastTap.t < SHEET_DOUBLE_MS + 20 && Math.hypot(x - sheetLastTap.x, y - sheetLastTap.y) < SHEET_DOUBLE_PX + 4) return false;
-      }
-      return true;
-    }, s, { timeout: 4000, polling: 10 });
+    try {
+      await this.page.waitForFunction((s) => {
+        const b = document.querySelector(s); if (!b) return false;
+        const sh = b.closest('#radial') || document.getElementById('sheet');
+        if (!sh.classList.contains('open') || sh.classList.contains('closing') || sh.getAnimations({ subtree: true }).length) return false;
+        if (typeof sheetLastTap !== 'undefined' && typeof SHEET_DOUBLE_MS !== 'undefined') {
+          const r = b.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+          if (Date.now() - sheetLastTap.t < SHEET_DOUBLE_MS + 20 && Math.hypot(x - sheetLastTap.x, y - sheetLastTap.y) < SHEET_DOUBLE_PX + 4) return false;
+        }
+        return true;
+      }, s, { timeout: 4000, polling: 10 });
+    } catch (e) {
+      const st = await this.page.evaluate((s) => { const sh = document.getElementById('sheet'); const g = n => { try { return eval(n); } catch (x) { return 'ERR'; } };
+        return JSON.stringify({ open: sh.classList.contains('open'), closing: sh.classList.contains('closing'), anims: sh.getAnimations({ subtree: true }).length, html: sh.innerHTML.slice(0, 120).replace(/\s+/g, ' '), btn: !!document.querySelector(s), pending: g('!!pending'), periodEndTimer: g('!!periodEndTimer'), radialBusy: g('radialBusy()'), status: S.status, hist: S.history.length, awInit: S.awaitingInitial, awDuel: S.awaitingDuelStart, dragging: g('dragging'), tapAge: g('Date.now()-sheetLastTap.t'), undoBlockedIn: g('undoBlockedUntil-Date.now()'), timers: window.__timers, saisie: g('saisieMode()') }); }, s).catch(x => 'evaluate: ' + x.message);
+      throw new Error('clickSheet(' + call + ') : ' + String(e.message).split('\n')[0] + ' | ÉTAT ' + st);
+    }
     await this.page.locator(s).first().click({ timeout: 4000, noWaitAfter: true });
   }
 
