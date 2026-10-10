@@ -12,6 +12,7 @@ Le banc est un script : il ne consomme aucun token. Les tokens partent dans les 
 
 - **Un agent ne lance jamais le banc complet** (`node tests/run.mjs` sans filtre) et ne l'attend pas par sondage. Un passage complet local, quand la CI est indisponible, est une décision de l'utilisateur.
 - **Le cache par empreinte** (voir `tests/empreinte.mjs`) fait qu'un commit déjà joué, ou une PR qui ne change que la documentation, relit un résultat au lieu de rejouer 17 à 20 minutes. Une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `MIGRATION.md` ou `tests/README.md` ne déclenche pas la CI (`ci-banc.mjs` répond alors « aucun passage » : c'est normal). `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md` et `tests/README.md` n'entrent pas non plus dans l'empreinte.
+- Un push n'annule pas le passage en cours (le filtre des PR juge la PR entière : un push de documentation relancerait le workflow et tuerait 20 minutes de banc). Le passage suivant attend, puis relit le cache si l'empreinte n'a pas changé.
 - `KINBALL_CACHE=seul node tests/run.mjs` relit un passage local déjà joué sans jamais lancer le banc (code 3 s'il n'existe pas).
 - La table `tests/rapide.json` (fichier ou section de `index.html` → suites) est **indicative**. Quand la CI révèle qu'une suite manquait au passage rapide, on corrige la table.
 

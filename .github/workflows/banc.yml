@@ -38,10 +38,13 @@ on:
 permissions:
   contents: read
 
-# Un nouveau commit sur la même branche annule le passage en cours : on ne paie que le dernier.
+# Un seul passage à la fois par branche, sans annuler celui qui tourne. Le filtre « paths-ignore » d'une PR juge la PR
+# entière : un push de documentation sur une PR qui change du code relance donc le workflow. En annulant, ce push
+# aurait tué un passage de 20 minutes ; sans annuler, il attend et relit le cache du premier (même empreinte).
+# GitHub ne garde qu'un passage en attente : le plus récent remplace le précédent.
 concurrency:
   group: banc-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   # Même version que celle du banc en local (empreinte : un changement de version invalide le cache).
