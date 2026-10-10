@@ -47,7 +47,7 @@ async function toDuelStart(app) {
   await waitSheet(app, 'undo()');
   assert(await app.awaitingDuel(), 'la feuille du duel devait être attendue');
 }
-const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete c.createdAt; delete c.matchName; delete c.authorId; return c; };   /* authorId : identité locale propre à chaque navigateur */
+const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete c.createdAt; delete c.matchName; delete c.authorId; (c.history || []).forEach(e => { delete e.at; }); return c; };   /* authorId : identité locale propre à chaque navigateur */
 
 export default async function ({ gabarit, check }) {
   fs.mkdirSync(CAPT, { recursive: true });

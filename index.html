@@ -1306,12 +1306,15 @@ function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+Math.ran
 let TEAMS_DB = [];
 let MATCHES_DB = [];
 let DELETED_MATCHES = [];   // à la corbeille : retirés de l'historique, pas effacés
+let DELETED_TEAMS = [];     // équipes à la corbeille (C26 · R9) : hors des choix, récupérables ; leurs matchs passés gardent leur fiche
 let DB = null;
 let dbAvailable = null; // null = pas encore su, true/false = résolu
 let dbReadyResolve;
 const dbReady = new Promise(res=>{ dbReadyResolve = res; });
 
 function getTeam(id){ return TEAMS_DB.find(t=>t.id===id) || null; }
+/* Active ou à la corbeille : pour afficher le nom et la fiche d'une équipe dont des matchs passés gardent la trace. */
+function getTeamAny(id){ return getTeam(id) || DELETED_TEAMS.find(t=>t.id===id) || null; }
 function getMatchRecord(id){ return MATCHES_DB.find(m=>m.id===id) || null; }
 
 /* ---------- INDICATEUR DE SYNCHRONISATION ----------
@@ -1325,6 +1328,37 @@ let dbSyncState = 'ok'; // 'ok' | 'saving' | 'error'
    l'appelle immédiatement quand le stockage est injoignable, sans passer
    par le moindre await. */
 let backupChecked = false;
+/* C27 · R1 : une LECTURE du stockage qui échoue (abonnement en erreur) n'est jamais prise pour « rien en base ».
+   La clé de la lecture ('teams', 'matches', 'items:<auteur>') entre dans `lecturesEchouees` tant qu'elle n'a pas
+   réussi ; l'app relit avec des délais croissants. Pendant ce temps : bandeau d'accueil, copie de secours proposée
+   avec un avertissement (comparaison impossible, donc « Récupérer » attend), et plus aucune attente sans fin. */
+const lecturesEchouees = new Set();
+const RELECTURE_MS = [1500, 5000, 15000, 30000];
+const relectures = {};
+function lectureEchouee(cle, relancer){
+  lecturesEchouees.add(cle);
+  majBanniereLecture();
+  const k = relectures[cle] = (relectures[cle] || 0) + 1;
+  setTimeout(relancer, RELECTURE_MS[Math.min(k-1, RELECTURE_MS.length-1)]);
+  checkLocalBackups();
+}
+function lectureReussie(cle){
+  if(!lecturesEchouees.delete(cle)) return;
+  relectures[cle] = 0;
+  majBanniereLecture();
+}
+function majBanniereLecture(){
+  const b = document.getElementById('dbUnavailable');
+  if(!b) return;
+  if(lecturesEchouees.size){
+    if(b.dataset.texte === undefined) b.dataset.texte = b.textContent;
+    b.textContent = "La lecture du stockage de cet appareil a échoué : vos équipes et vos matchs peuvent ne pas s'afficher pour l'instant. Rien n'est effacé, l'app réessaie. Ne relancez pas de match tant que ce message est là ; exportez ce qui est en cours si besoin.";
+    b.style.display = 'block';
+  } else if(b.dataset.texte !== undefined){
+    b.textContent = b.dataset.texte; delete b.dataset.texte;
+    b.style.display = dbAvailable ? 'none' : 'block';
+  }
+}
 function setSyncState(state){
   dbSyncState = state;
   const badge = document.getElementById('syncBadge');
@@ -1370,14 +1404,18 @@ function subscribeTeams(){
   if(unsubTeams || !DB) return;
   unsubTeams = DB.collection('teams').onSnapshot(
     snap => {
-      TEAMS_DB = snap.docs.map(d=>d.data());
+      lectureReussie('teams');
+      const toutes = snap.docs.map(d=>d.data());
+      TEAMS_DB = toutes.filter(t => t && !t.deleted);
+      DELETED_TEAMS = toutes.filter(t => t && t.deleted);
       setSyncState('ok');
       renderTeamPickers();
+      if(isVisible('backup')) renderTrash();
       if(isVisible('teamManager')) renderTeamManagerList();
       if(isVisible('teamStatsPicker')) renderTeamStatsPickerList();
       if(isVisible('teamOverview')) renderTeamOverview();
     },
-    err => { console.error('Abonnement équipes interrompu', err); setSyncState('error'); }
+    err => { console.error('Abonnement équipes interrompu', err); setSyncState('error'); unsubTeams = null; lectureEchouee('teams', subscribeTeams); }
   );
 }
 function subscribeMatches(){
@@ -1387,6 +1425,7 @@ function subscribeMatches(){
       /* Cette collection contient deux sortes de documents : les anciens
          matchs à plat (ils ont un `history`) et les fiches d'auteur de la
          nouvelle structure (elles n'en ont pas). */
+      lectureReussie('matches');
       const docs = snap.docs.map(d=>({id:d.id, data:d.data()}));
       legacyMatches = docs.filter(d => d.data && Array.isArray(d.data.history)).map(d=>d.data);
       const auteurs = docs.filter(d => !(d.data && Array.isArray(d.data.history))).map(d=>d.id);
@@ -1403,14 +1442,24 @@ function subscribeMatches(){
       rebuildMatches();
       migrateLegacyMatches();
     },
-    err => { console.error('Abonnement matchs interrompu', err); setSyncState('error'); }
+    err => {
+      console.error('Abonnement matchs interrompu', err); setSyncState('error');
+      unsubMatchOwners = null;
+      lectureEchouee('matches', subscribeMatches);
+      /* La liste des auteurs est illisible : on lit au moins mon propre espace, où sont mes matchs. */
+      subscribeOwnerMatches(myMatchesOwner());
+    }
   );
 }
 function subscribeOwnerMatches(ownerId){
   if(!DB || unsubOwnerItems[ownerId]) return;
   unsubOwnerItems[ownerId] = DB.collection(matchesPathOf(ownerId)).onSnapshot(
-    snap => { matchesByOwner[ownerId] = snap.docs.map(d=>d.data()); rebuildMatches(); },
-    err => { console.error('Abonnement des matchs de '+ownerId+' interrompu', err); }
+    snap => { lectureReussie('items:'+ownerId); matchesByOwner[ownerId] = snap.docs.map(d=>d.data()); rebuildMatches(); },
+    err => {
+      console.error('Abonnement des matchs de '+ownerId+' interrompu', err);
+      delete unsubOwnerItems[ownerId];
+      lectureEchouee('items:'+ownerId, ()=>subscribeOwnerMatches(ownerId));
+    }
   );
 }
 /* MATCHES_DB reste ce que tout le reste de l'app lit : la réunion de tous
@@ -1529,6 +1578,20 @@ async function dbSetTeam(team){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
   try{ await DB.collection('teams').doc(team.id).set(team); setSyncState('ok'); return true; }
   catch(e){ console.error('Échec de sauvegarde de l\'équipe', e); setSyncState('error'); return false; }
+}
+/* C26 · R9 : « supprimer » une équipe l'écrit deleted:true (comme un match) ; seul « Effacer pour de bon » appelle dbDeleteTeam. */
+async function dbTrashTeam(id){
+  await dbReady; if(!DB){ setSyncState('error'); return false; }
+  const t = getTeam(id);
+  if(!t) return false;
+  return dbSetTeam(Object.assign({}, t, {deleted:true, deletedAt:Date.now(), deletedBy:AUTHOR_ID || null, updatedAt:Date.now()}));
+}
+async function dbRestoreTeam(id){
+  await dbReady; if(!DB){ setSyncState('error'); return false; }
+  const t = DELETED_TEAMS.find(x=>x.id===id);
+  if(!t) return false;
+  const copie = Object.assign({}, t, {updatedAt:Date.now()}); delete copie.deleted; delete copie.deletedAt; delete copie.deletedBy;
+  return dbSetTeam(copie);
 }
 async function dbDeleteTeam(id){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
@@ -1730,8 +1793,9 @@ function openSyncSheet(){
    ce match compte. */
 function checkLocalBackups(){
   if(backupChecked) return;
-  if(window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()) return; /* MIGRATION M11 : rien ne se décide avant le premier instantané des matchs de chaque auteur */
-  backupChecked = true;
+  const illisible = lecturesEchouees.size > 0;   // C27 · R1 : lecture en panne = la copie reste proposée, avec un avertissement, et la décision est reprise à la prochaine lecture réussie
+  if(!illisible && window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()) return; /* MIGRATION M11 : rien ne se décide avant le premier instantané des matchs de chaque auteur */
+  if(!illisible) backupChecked = true;
   const candidats = listLocalBackups().filter(b=>{
     if(window.KBSite && KBSite.copieObsolete && KBSite.copieObsolete(b)) return false; /* MIGRATION M11 : copie plus ancienne que la corbeille */
     const serveur = getMatchRecord(b.match.id);
@@ -1750,14 +1814,19 @@ function checkLocalBackups(){
   box.innerHTML = `<div class="rec-title">Un match n'avait pas été sauvegardé</div>
     <div class="rec-sub">« ${escapeHtml(b.match.matchName || 'match')} » — ${(b.match.history||[]).length} action(s) conservée(s) sur cet appareil${
       serveur ? `, soit ${ecart} de plus que la version enregistrée` : ', absent du stockage de cet appareil'}.</div>
+    ${illisible ? `<div class="rec-sub" style="color:var(--red)">Le stockage de cet appareil n'a pas pu être lu pour l'instant : la copie est gardée, rien n'est perdu. L'app réessaie la lecture ; « Récupérer » fonctionnera dès qu'elle sera revenue.</div>` : ''}
     <div class="rec-actions">
-      <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${b.match.id}')">Récupérer ce match</button>
-      <button class="ghost-btn" onclick="dismissLocalBackup('${b.match.id}')">Ignorer</button>
+      <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${jsArg(b.match.id)}')">Récupérer ce match</button>
+      <button class="ghost-btn" onclick="dismissLocalBackup('${jsArg(b.match.id)}')">Ignorer</button>
     </div>`;
 }
 function restoreLocalBackup(id){
   const b = listLocalBackups().find(x=>x.match.id===id);
   if(!b) return;
+  if(lecturesEchouees.size){   // C27 · R1 : impossible de comparer avec ce qui est enregistré tant que la lecture est en panne
+    openSheet(`<div class="sheet-title">COPIE NON RÉCUPÉRÉE</div><div class="msg-center" style="font-size:16px; padding:6px 0 12px">Le stockage de cet appareil n'a pas pu être lu pour l'instant. La copie est gardée et l'app réessaie : vous pourrez la récupérer dès que la lecture sera revenue.</div><button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>`, true);
+    return;
+  }
   if(window.KBSite && KBSite.copieRefusee && KBSite.copieRefusee(b)) return; /* MIGRATION M11 : jamais d'écrasement d'un match plus récent */
   exitArchiveView();
   S = JSON.parse(JSON.stringify(b.match));
@@ -1962,10 +2031,10 @@ function renderTeamPickers(){
   TEAMS.forEach(slot=>{
     const sel = document.getElementById('teamPick'+slot);
     const prevValue = sel.value;
-    sel.innerHTML = TEAMS_DB.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('') +
+    sel.innerHTML = TEAMS_DB.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('') +
       `<option value="__free__">— Nom libre —</option>`;
     if(TEAMS_DB.some(t=>t.id===prevValue) || prevValue==='__free__'){ sel.value = prevValue; }
-    else if(TEAMS_DB.length){ sel.value = TEAMS_DB[Math.min(TEAMS.indexOf(slot), TEAMS_DB.length-1)].id; }
+    else if(TEAMS_DB.length > TEAMS.indexOf(slot)){ sel.value = TEAMS_DB[TEAMS.indexOf(slot)].id; }   // C26 · R20 : jamais la même équipe d'office pour deux couleurs (nom libre quand il n'y en a pas assez)
     else { sel.value = '__free__'; }
     onTeamPickChange(slot, true);
   });
@@ -2056,7 +2125,7 @@ function renderLineupPicker(slot){
       ${l.length ? `<button type="button" class="lineup-clear" onclick="clearLineup('${slot}')">Aucun alignement</button>` : ''}
     </div>
     <div class="adv-player-grid">` + team.players.map(p=>
-      `<button type="button" class="adv-player-btn ${l.includes(p.id)?'selected':''}" onclick="toggleLineupPlayer('${slot}','${p.id}')">${escapeHtml(p.name)}</button>`
+      `<button type="button" class="adv-player-btn ${l.includes(p.id)?'selected':''}" onclick="toggleLineupPlayer('${slot}','${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
     ).join('') + `</div>` +
     (l.length===0 ? `<div class="lineup-note">Aucun joueur choisi : pas de stats individuelles pour cette équipe.</div>` : '');
 }
@@ -2201,6 +2270,7 @@ function setCaptureMode(advanced){
     : "Rapide, pour suivre le match en direct.";
 }
 function openAdvancedDetailSheet(eventIndex){
+  if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3) : un match terminé n'accepte plus de détail
   const ev = S.history[eventIndex];
   if(!ev){ closeSheet(); renderScoreboard(); return; }
   const attackerTeam = ev.before && ev.before.possession;
@@ -2219,7 +2289,7 @@ function openAdvancedDetailSheet(eventIndex){
     const selectedId = ev.details[which+'_player_id'];
     return `<div class="adv-section-label">${escapeHtml(S.names[team])} — ${label}</div>
       <div class="adv-player-grid">` + roster.map(p=>
-        `<button class="adv-player-btn ${selectedId===p.id?'selected':''}" onclick="setAdvancedPlayer(${eventIndex},'${which}','${p.id}')">${escapeHtml(p.name)}</button>`
+        `<button class="adv-player-btn ${selectedId===p.id?'selected':''}" onclick="setAdvancedPlayer(${eventIndex},'${which}','${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
       ).join('') + `</div>`;
   }
 
@@ -2232,6 +2302,7 @@ function openAdvancedDetailSheet(eventIndex){
   openSheet(html, true);
 }
 function setAdvancedPlayer(eventIndex, which, playerId){
+  if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3)
   const ev = S.history[eventIndex];
   if(!ev) return;
   const team = which==='attacker' ? (ev.before && ev.before.possession) : ev.details.target;
@@ -2263,7 +2334,7 @@ function finishMatchNow(){
       <button class="choice-btn" style="background:var(--bleu)" onclick="closeSheet(); openStats()">VOIR LES STATS</button>
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet(); navHome(); openNewMatch()">NOUVEAU MATCH</button>
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet(); navHome()">ACCUEIL</button>
-    </div>`, true);
+    </div>`, false);   // C26 · R7 : non refermable d'un appui à côté (on ne revient pas sur le terrain d'un match terminé)
 }
 
 function startMatch(){
@@ -2273,6 +2344,16 @@ function startMatch(){
   const fmtChk = FORMATS[pendingFormatId] || FORMATS[DEFAULT_FORMAT];
   const playing = fmtChk.teams===2 ? TEAMS.filter(t=>t!==pendingExcludedTeam) : TEAMS.slice();
   playing.forEach(syncPendingLineup);
+  /* C26 · R20 : la même équipe enregistrée ne peut pas occuper deux couleurs. */
+  const errDoublon = document.getElementById('newMatchError');
+  for(let i=0; i<playing.length; i++) for(let k=i+1; k<playing.length; k++){
+    const a = document.getElementById('teamPick'+playing[i]).value, b = document.getElementById('teamPick'+playing[k]).value;
+    if(a !== '__free__' && a === b){
+      const memeEquipe = getTeam(a);
+      errDoublon.textContent = `« ${memeEquipe ? memeEquipe.name : 'Cette équipe'} » est choisie pour deux couleurs (${playing[i]} et ${playing[k]}). Choisissez une autre équipe pour l'une des deux, ou un nom libre.`;
+      return;
+    }
+  }
   const incomplete = playing.filter(t => { const n = pendingLineups[t].length; return n!==0 && n!==LINEUP_SIZE; });
   const errBox = document.getElementById('newMatchError');
   if(incomplete.length){
@@ -2358,7 +2439,7 @@ function renderScoreboard(){
   const finPeriodeHTML = libre
     ? `<button class="icon-btn periode" onclick="endPeriodByLeader()">FIN<br>PÉRIODE</button>` : '';
   const controlsHTML =
-    `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
+    `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
      ${finPeriodeHTML}
      <button class="icon-btn finish" onclick="openFinishMenu()">TERMINER</button>
      <button class="icon-btn" onclick="goHome()" aria-label="Accueil">⌂</button>
@@ -2369,7 +2450,7 @@ function renderScoreboard(){
   sb.classList.toggle('two-teams', ATEAMS().length===2);
   const mb = document.getElementById('matchBar');
   mb.innerHTML = IS_PHONE
-    ? `<button class="mb-btn mb-undo" id="undoBtnPhone" onclick="undoTap()" ${S.history.length?'':'disabled'}><span class="mb-ico">↶</span>Annuler</button>
+    ? `<button class="mb-btn mb-undo" id="undoBtnPhone" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'}><span class="mb-ico">↶</span>Annuler</button>
        ${libre ? `<button class="mb-btn mb-periode" onclick="endPeriodByLeader()"><span class="mb-ico">⏱</span>Fin pér.</button>` : ''}
        <button class="mb-btn" onclick="openStats()"><span class="mb-ico">▦</span>Stats</button>
        <button class="mb-btn" onclick="goHome()"><span class="mb-ico">⌂</span>Accueil</button>
@@ -2399,7 +2480,7 @@ function renderScoreboard(){
    changement est un événement de l'historique : Annuler le défait. */
 let lineupSheetTeam = null, subOut = null, lineupDraft = [];
 function openLineupSheet(team){
-  if(viewingArchive || !S.id) return;
+  if(viewingArchive || !S.id || S.status !== 'in_progress') return;   // C26 · R7
   // jamais par-dessus une étape de jeu en cours (possession, résultat, faute…)
   if(pending || S.awaitingInitial || S.awaitingDuelStart || periodEndTimer) return;
   if(radialBusy()) return;   // C21 : jamais pendant une saisie radiale
@@ -2420,12 +2501,12 @@ function renderLineupSheet(){
     // alignement oublié avant le coup d'envoi : on peut le définir maintenant
     html += `<div class="adv-section-label">Aucun alignement — choisissez les ${LINEUP_SIZE} joueurs sur le terrain (${lineupDraft.length}/${LINEUP_SIZE})</div>
       <div class="adv-player-grid">` + roster.map(p=>
-        `<button class="adv-player-btn ${lineupDraft.includes(p.id)?'selected':''}" onclick="toggleDraftPlayer('${p.id}')">${escapeHtml(p.name)}</button>`
+        `<button class="adv-player-btn ${lineupDraft.includes(p.id)?'selected':''}" onclick="toggleDraftPlayer('${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`
       ).join('') + `</div>
       <button class="primary-btn" style="margin-top:14px" ${lineupDraft.length===LINEUP_SIZE?'':'disabled'} onclick="commitLineupDefinition()">CONFIRMER L'ALIGNEMENT</button>`;
   } else {
     const bench = roster.filter(p=>!lineup.includes(p.id));
-    const tok = (id, name, zone) => `<button type="button" class="sub-tok sub-${zone} ${zone==='on' && subOut===id ? 'out' : ''}" data-pid="${escapeHtml(id)}" data-zone="${zone}" ${zone==='on' ? `style="--tk:${TEAM_BG[team]}"` : ''} onclick="${zone==='on' ? 'pickSubOut' : 'pickSubIn'}('${id}')">${escapeHtml(name)}</button>`;
+    const tok = (id, name, zone) => `<button type="button" class="sub-tok sub-${zone} ${zone==='on' && subOut===id ? 'out' : ''}" data-pid="${escapeHtml(id)}" data-zone="${zone}" ${zone==='on' ? `style="--tk:${TEAM_BG[team]}"` : ''} onclick="${zone==='on' ? 'pickSubOut' : 'pickSubIn'}('${jsArg(id)}')">${escapeHtml(name)}</button>`;
     html += `<div class="sub-pitch"><div class="sub-pitch-label">SUR LE TERRAIN</div><div class="sub-on-grid">` +
         lineup.map(id=>tok(id, playerName(team,id), 'on')).join('') + `</div></div>
       <div class="sub-bench ${isNoir(team)}" style="background:${TEAM_BG[team]}; color:${team==='Gris' ? '#0B1220' : '#fff'}">
@@ -2447,13 +2528,13 @@ function pickSubOut(id){ subOut = (subOut===id ? null : id); renderLineupSheet()
 /* Un échange = un événement « changement » (même forme pour le toucher-toucher
    et le glisser). Refuse sans rien changer si l'échange n'est pas valide. */
 function applySub(team, outId, inId){
-  if(!lineupSheetTeam || team !== lineupSheetTeam) return false;
+  if(!lineupSheetTeam || team !== lineupSheetTeam || S.status !== 'in_progress') return false;
   const lineup = lineupOf(team);
   const roster = (S.rosters && S.rosters[team]) || [];
   if(lineup.length !== LINEUP_SIZE || !lineup.includes(outId) || lineup.includes(inId) || !roster.some(p=>p.id===inId)) return false;
   const before = snapshotBefore();
   S.lineups[team] = lineup.map(x => x===outId ? inId : x);
-  S.history.push({type:'changement', before, details:{
+  S.history.push({type:'changement', before, at:horodatage(), details:{
     team, player_out_id:outId, player_out_name:playerName(team, outId),
     player_in_id:inId, player_in_name:playerName(team, inId)
   }});
@@ -2541,12 +2622,12 @@ function toggleDraftPlayer(id){
   renderLineupSheet();
 }
 function commitLineupDefinition(){
-  if(!lineupSheetTeam) return;
+  if(!lineupSheetTeam || S.status !== 'in_progress') return;
   if(lineupDraft.length !== LINEUP_SIZE) return;
   const team = lineupSheetTeam;
   const before = snapshotBefore();
   S.lineups[team] = lineupDraft.slice();
-  S.history.push({type:'alignement', before, details:{
+  S.history.push({type:'alignement', before, at:horodatage(), details:{
     team, lineup_ids:lineupDraft.join('|'), lineup_names:lineupDraft.map(id=>playerName(team,id)).join('|')
   }});
   lineupDraft = [];
@@ -2761,7 +2842,7 @@ function radialPlayersMenu(team, players, allowTeam, title){
   let h = RD_VEIL + `<div class="rd-cap" style="left:${cx}px;top:${cy - R - D/2 - 22}px">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>`;
   players.forEach((p, i) => {
     const ang = (-135 + 90*i) * Math.PI / 180, x = cx + R*Math.cos(ang), y = cy + R*Math.sin(ang);
-    h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${p.id}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
+    h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${jsArg(p.id)}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
   });
   h += rdBtn('rd-disc unknown', cx - D/2, cy - D/2, D, D, "choosePlayer('')", '?', '', ' aria-label="Joueur inconnu"');
   if(allowTeam) h += rdBtn('rd-wide', cx - 75, cy + R + 54 - 22, 150, 44, `choosePlayer('${TEAM_FAULT}')`, 'FAUTE D’ÉQUIPE');
@@ -2862,6 +2943,7 @@ function drawDrag(p1,p2){
   </svg>`;
 }
 field.addEventListener('pointerdown', e=>{
+  if(S.status !== 'in_progress') return;   // C26 · R7 : un match terminé n'accepte plus aucune action
   if(document.getElementById('sheet').classList.contains('open')) return;
   if(radialBusy()) return;              // C21 : couche radiale ouverte (ou en train de se fermer)
   if(S.awaitingInitial||S.awaitingDuelStart) return;
@@ -2904,6 +2986,10 @@ function snapshotBefore(){
     lineups:S.lineups || {Bleu:[],Gris:[],Noir:[]}
   }));
 }
+/* C28 · R11 : heure de l'événement (ISO 8601, UTC), posée sur les NOUVEAUX événements seulement ; vide pour les anciens,
+   aucune migration. Champ de l'événement (comme `by`), jamais dans `before` ni dans `details` : snapshotBefore, l'annulation,
+   le moteur WP et les statistiques ne le lisent pas ; seul l'export Actions le reprend. */
+function horodatage(){ return new Date().toISOString(); }
 function beginEvent(type, details){
   pending = { type, details, before: snapshotBefore() };
 }
@@ -2919,6 +3005,7 @@ function commitEvent(extra){
   /* Stocké seulement si quelqu'un d'AUTRE que l'auteur du match saisit
      cette action : aujourd'hui jamais, donc aucun poids ajouté. */
   if(AUTHOR_ID && S.authorId && AUTHOR_ID !== S.authorId) pending.by = AUTHOR_ID;
+  pending.at = horodatage();
   S.history.push(pending);
   pending = null;
   save();
@@ -2974,7 +3061,7 @@ function askPlayer(team, title, cont, allowTeam){
   // non refermable d'un geste : l'action attend sa réponse (« ? » pour passer)
   openSheet(`<div class="sheet-title">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>
     <div class="player-pick-row">` +
-      players.map(p=>`<button class="player-pick ${isNoir(team)}" style="background:${TEAM_BG[team]}" onclick="choosePlayer('${p.id}')">${escapeHtml(p.name)}</button>`).join('') +
+      players.map(p=>`<button class="player-pick ${isNoir(team)}" style="background:${TEAM_BG[team]}" onclick="choosePlayer('${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`).join('') +
       (allowTeam ? `<button class="player-pick team-fault" onclick="choosePlayer('${TEAM_FAULT}')">FAUTE<br>D'ÉQUIPE</button>` : '') +
       `<button class="player-pick unknown" onclick="choosePlayer('')" aria-label="Joueur inconnu">?</button>
     </div>`, false);
@@ -3077,7 +3164,7 @@ function applyResult(team, caught, atk, pid, defIll){
   closeSheet();
   const evIndex = S.history.length-1;
   // Mode avancé : le lanceur est déjà connu, il ne reste que le receveur (pas pour une DÉF ILL).
-  flashMessage(`${S.names[team].toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team], (S.advancedMode && !defIll) ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
+  flashMessage(`${escapeHtml(S.names[team]).toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team], (S.advancedMode && !defIll) ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
   renderScoreboard();
 }
 function flashMessage(text,color,onDone){
@@ -3124,8 +3211,13 @@ function checkPeriodState(){
 }
 /* `winner` peut être null : en format libre, une période peut se terminer
    sans vainqueur désigné. */
-function finishPeriod(winner){
+function finishPeriod(winner, manual){
   if(periodEndTimer) return;            // C23 : une seule fin de période à la fois
+  /* C26 · R6 : une fin de période décidée à la main est un événement de l'historique (fin_periode, avec le
+     vainqueur ou null) : ↶ la défait seule et ramène exactement l'état d'avant, sans toucher à la dernière action.
+     Les fins automatiques (seuil) restent portées par l'action qui les provoque. Rien n'est enregistré ici :
+     save() part avec la fin du message, comme avant. */
+  if(manual) S.history.push({type:'fin_periode', before:snapshotBefore(), at:horodatage(), details:{winner:winner || null}});
   if(winner) S.periodWins[winner]+=1;
   const fmt = getFormat(S);
   const eliminated = S.eliminated;
@@ -3150,7 +3242,7 @@ function finishPeriod(winner){
 /* Fin de période déclenchée à la main — indispensable en format libre, et
    utile partout ailleurs (période écourtée, temps de pratique limité). */
 function openFinishMenu(){
-  if(!S.id) return;
+  if(!S.id || S.status !== 'in_progress') return;   // C26 · R7
   if(radialBusy()) return;   // C21 : la couche radiale ne recouvre pas le ruban, mais une saisie en cours passe avant TERMINER
   const teams = ATEAMS().filter(t=>t!==S.eliminated);
   openSheet(`<div class="sheet-title">TERMINER</div>
@@ -3254,13 +3346,13 @@ async function restoreDiscarded(){
    au moment où on appuie. Si deux équipes sont à égalité en tête, l'app ne
    peut pas trancher à la place de l'arbitre : elle demande. */
 function endPeriodByLeader(){
-  if(!S.id || pending || S.awaitingInitial || S.awaitingDuelStart) return;
+  if(!S.id || S.status !== 'in_progress' || pending || S.awaitingInitial || S.awaitingDuelStart) return;
   const enJeu = ATEAMS().filter(t => t !== S.eliminated);
   const max = Math.max(...enJeu.map(t => S.scores[t]));
   const meneurs = enJeu.filter(t => S.scores[t] === max);
   if(meneurs.length === 1){
     closeSheet();
-    finishPeriod(meneurs[0]);
+    finishPeriod(meneurs[0], true);
     return;
   }
   openSheet(`<div class="sheet-title">FIN DE PÉRIODE — ÉGALITÉ</div>
@@ -3274,7 +3366,8 @@ function endPeriodByLeader(){
 }
 function endPeriodManually(team){
   closeSheet();
-  finishPeriod(team || null);
+  if(S.status !== 'in_progress') return;   // C26 · R7
+  finishPeriod(team || null, true);
 }
 
 function undoTap(){
@@ -3282,7 +3375,7 @@ function undoTap(){
   undo();
 }
 function undo(){
-  if(pending || !S.history.length) return;
+  if(pending || !S.history.length || S.status !== 'in_progress') return;   // C26 · R7 : ↶ refusé sur un match terminé
   if(periodEndTimer){ clearTimeout(periodEndTimer); periodEndTimer = null; }   // C23 : annuler pendant la fin de période l'annule aussi
   pendingPeriodWinner = null;
   const ev = S.history.pop();
@@ -4056,9 +4149,10 @@ function statTable(o){
   const head = cols.map(c=>{
     const active = c.key === sort.key;
     const arrow = active ? (sort.dir < 0 ? '▼' : '▲') : '▾';
-    const label = c.short ? `<span class="lg">${c.label}</span><span class="sm">${c.short}</span>` : c.label;
-    return `<th class="${active?'sorted':''}" onclick="sortTable('${scope}','${id}','${c.key}')"
-      title="Trier par ${c.label}">${label}<span class="ar">${arrow}</span></th>`;
+    /* Les en-têtes peuvent porter un nom d'équipe (texte libre) : toujours échappés. */
+    const label = c.short ? `<span class="lg">${escapeHtml(c.label)}</span><span class="sm">${escapeHtml(c.short)}</span>` : escapeHtml(c.label);
+    return `<th class="${active?'sorted':''}" onclick="sortTable('${scope}','${jsArg(id)}','${jsArg(c.key)}')"
+      title="Trier par ${escapeHtml(c.label)}">${label}<span class="ar">${arrow}</span></th>`;
   }).join('');
 
   const body = rows.map(r=>{
@@ -4076,7 +4170,7 @@ function statTable(o){
          aucun défilement horizontal qui n'existait pas avant), et le chiffre
          est exactement sous la valeur qu'il explique. */
       const detail = (showDetails && c.sub) ? `<small class="cell-sub">${c.sub(r)}</small>` : '';
-      return `<td class="${cls}">${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : v)}${detail}</td>`;
+      return `<td class="${cls}">${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : (typeof v === 'string' ? escapeHtml(v) : v))}${detail}</td>`;
     }).join('');
     return `<tr class="${r._click?'clickable':''}" ${r._click?`onclick="${r._click}"`:''}>${tds}</tr>`;
   }).join('');
@@ -4122,7 +4216,7 @@ function situationFilterHTML(current, fnName, labelPrefix){
   return `<div class="sit-filter">` +
     (labelPrefix ? `<span class="sit-label">${labelPrefix}</span>` : '') +
     [['all','Tout'],['arretee','Arrêtée'],['continue','Continue']].map(([id,label])=>
-      `<button class="sit-btn ${current===id?'active':''}" onclick="${fnName}('${id}')">${label}</button>`
+      `<button class="sit-btn ${current===id?'active':''}" onclick="${fnName}('${jsArg(id)}')">${label}</button>`
     ).join('') + `</div>`;
 }
 const SITUATIONS = [
@@ -4139,7 +4233,7 @@ function situationOf(history, i){
   const per = ev.before && ev.before.period;
   for(let k = i-1; k >= 0; k--){
     const p = history[k];
-    if(p.type === 'reprise' || p.type === 'faute_directe') return 'arretee';
+    if(p.type === 'reprise' || p.type === 'faute_directe' || p.type === 'fin_periode') return 'arretee';   // une nouvelle période repart toujours à l'arrêt
     if(p.type === 'lancer'){
       const pp = p.before && p.before.period;
       if(per !== undefined && pp !== undefined && pp !== per) return 'arretee';  // période différente
@@ -4174,7 +4268,7 @@ function phaseOf(history, i, fmt){
 function phaseFilterHTML(current, fnName){
   return `<div class="sit-filter"><span class="sit-label">Phase :</span>` +
     [{id:'all',label:'Tout'}].concat(PHASES).map(p=>
-      `<button class="sit-btn ${current===p.id?'active':''}" onclick="${fnName}('${p.id}')">${p.label}</button>`
+      `<button class="sit-btn ${current===p.id?'active':''}" onclick="${fnName}('${jsArg(p.id)}')">${p.label}</button>`
     ).join('') + `</div>`;
 }
 function phaseLegendHTML(fmt){
@@ -4373,7 +4467,7 @@ function sectionMatchPlayers(){
   return html;
 }
 function sectionTeamPlayers(agg, teamId){
-  const team = getTeam(teamId);
+  const team = getTeamAny(teamId);
   const nameOf = id => ((team && team.players) || []).find(p=>p.id===id)?.name;
   const acc = {};
   const extra = {unattributed:0, teamFaults:0, unknownFaults:0};
@@ -4598,7 +4692,7 @@ function sectionTeamH2H(agg, teamId){
       const o = agg.h2h[key], st = agg.situations[key] || {};
       const blank = {attempts:0, successes:0};
       return {key, _name:o.name,
-        _click:`openTeamOppZoneDetail('${teamId}','${key.replace(/'/g,"\\'")}')`,
+        _click:`openTeamOppZoneDetail('${jsArg(teamId)}','${jsArg(key)}')`,
         c:{ off:{attempts:o.offAttempts, successes:o.offSuccesses},
             def:{attempts:o.defAttempts, successes:o.defSuccesses},
             off_arretee:st.off_arretee||blank, off_continue:st.off_continue||blank,
@@ -5139,13 +5233,16 @@ function buildRawRows(){
   const beforeCols = Array.from(beforeKeys).sort();
   const detailCols = Array.from(detailKeys).sort();
   const header = ['event_index','event_type', ...beforeCols.map(k=>'before_'+k), ...detailCols];
+  /* Colonnes dont la valeur est une liste de nombres (coordonnées) : le CSV y écrit aussi les décimales à la virgule. */
+  const listes = new Set();
+  const liste = v => Array.isArray(v) && v.length > 0 && v.every(n => typeof n === 'number');
   const rows = S.history.map((ev,i)=>{
     const row = {event_index:i+1, event_type:ev.type};
-    beforeCols.forEach(k=> row['before_'+k] = flattenValue(befores[i][k]));
-    detailCols.forEach(k=> row[k] = flattenValue(ev.details ? ev.details[k] : undefined));
+    beforeCols.forEach(k=>{ row['before_'+k] = flattenValue(befores[i][k]); if(liste(befores[i][k])) listes.add('before_'+k); });
+    detailCols.forEach(k=>{ const v = ev.details ? ev.details[k] : undefined; row[k] = flattenValue(v); if(liste(v)) listes.add(k); });
     return row;
   });
-  return {header, rows};
+  return {header, rows, listes};
 }
 function matchInfoRows(){
   const rosterStr = slot => (S.rosters && S.rosters[slot] || []).map(p=>p.name).join(' | ');
@@ -5163,6 +5260,8 @@ function matchInfoRows(){
     ["Périodes gagnées Bleu", S.periodWins.Bleu], ["Périodes gagnées Gris", S.periodWins.Gris], ["Périodes gagnées Noir", S.periodWins.Noir],
     ["Nombre d'événements", S.history.length],
     ['Stats prises par', S.authorId ? plainAuthor(S.authorId) : '—'],
+    ['ID du match', S.id || ''],
+    ['Date du match', isoOuVide(S.createdAt)],
   ];
 }
 /* ---------- ENREGISTREMENT DE FICHIER ----------
@@ -5207,9 +5306,27 @@ async function saveFile(filename, blob){
    un fichier ouvert trois mois plus tard doit rester lisible seul.
    ========================================================== */
 const EV_LABEL = {lancer:'Lancer', faute_directe:'Faute directe', reprise:'Reprise de jeu',
-                  changement:'Changement', alignement:'Alignement'};
+                  changement:'Changement', alignement:'Alignement', fin_periode:'Fin de période'};
 const SIT_LABEL = {arretee:'Arrêtée', continue:'Continue'};
-function nm(slot){ return (S.names && S.names[slot]) || slot; }
+/* C28 · R10 : deux équipes de même nom se distinguent dans l'export (« Laval », « Laval (2) ») : en-têtes de colonnes comme
+   valeurs des colonnes d'équipe. La première garde son nom, l'ordre des équipes en jeu décide. */
+function nm(slot){
+  const ordre = ATEAMS(), brut = t => (S.names && S.names[t]) || t;
+  /* Un nom donné telle quelle à la première équipe qui le porte est réservé ; les autres homonymes reçoivent « (2) », « (3)… »
+     en sautant tout nom déjà pris, y compris celui d'une équipe plus loin dans l'ordre (« Laval », « Laval », « Laval (2) »). */
+  const pris = new Set(ordre.map(brut));
+  const vus = new Set(), noms = {};
+  ordre.forEach(t=>{
+    const base = brut(t);
+    if(!vus.has(base)){ vus.add(base); noms[t] = base; return; }
+    let k = 2, c = base + ' (' + k + ')';
+    while(pris.has(c)){ k++; c = base + ' (' + k + ')'; }
+    pris.add(c); noms[t] = c;
+  });
+  return noms[slot] !== undefined ? noms[slot] : brut(slot);
+}
+/* Date ISO 8601 (UTC, « Z ») d'un instant en millisecondes ; vide si absent. */
+function isoOuVide(ms){ return (typeof ms === 'number' && isFinite(ms)) ? new Date(ms).toISOString() : ''; }
 function zoneAt(pos){ return pos ? ZONE_LABEL[classifyZone(pos[0], pos[1])] : ''; }
 function r3(v){ return typeof v === 'number' ? Math.round(v*1000)/1000 : ''; }
 function pctNum(succ, att){ return att ? Math.round(1000*succ/att)/10 : ''; }
@@ -5222,7 +5339,9 @@ function buildActionRows(){
     'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
     ...teams.map(t=>'Score '+nm(t)+' avant'),
     ...teams.map(t=>'Sur le terrain — '+nm(t)),
-    'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+    'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
+    /* C28 : colonnes AJOUTÉES en fin de ligne (rien d'existant n'est renommé, retiré ni déplacé) */
+    'ID du match','Date du match','Heure de l’action','Code de faute'];
   const rows = S.history.map((ev,i)=>{
     const d = ev.details || {}, b = ev.before || {};
     const lin = b.lineups || {};
@@ -5235,7 +5354,7 @@ function buildActionRows(){
       'Équipe en possession': b.possession ? nm(b.possession) : '',
       'Équipe attaquante': d.attacker ? nm(d.attacker) : (ev.type==='faute_directe' && b.possession ? nm(b.possession) : ''),
       'Équipe ciblée': d.target ? nm(d.target) : '',
-      'Résultat': d.result === 'échappé' ? 'Échappé' : (d.result === 'attrapé' ? 'Attrapé' : ''),
+      'Résultat': d.result === 'échappé' ? 'Échappé' : (d.result === 'attrapé' ? 'Attrapé' : (ev.type==='fin_periode' ? (d.winner ? 'Période gagnée par '+nm(d.winner) : 'Période sans vainqueur') : '')),
       /* Arrêtée ou continue : la distinction qui sépare une relance sur
          place (faute, ballon échappé, début de période) d'une relance après
          avoir attrapé, où l'équipe a pu se déplacer. */
@@ -5261,6 +5380,10 @@ function buildActionRows(){
       'Saisi par': ev.by ? plainAuthor(ev.by) : (S.authorId ? plainAuthor(S.authorId) : ''),
       'Duel en cours': b.duelActive ? 'Oui' : 'Non',
       'Équipe éliminée': b.eliminated ? nm(b.eliminated) : '',
+      'ID du match': S.id || '',
+      'Date du match': isoOuVide(S.createdAt),
+      'Heure de l’action': typeof ev.at === 'string' ? ev.at : '',
+      'Code de faute': d.fault_type || '',
     };
     teams.forEach(t=>{ row['Score '+nm(t)+' avant'] = (b.scores && b.scores[t] !== undefined) ? b.scores[t] : ''; });
     teams.forEach(t=>{ row['Sur le terrain — '+nm(t)] = est(t); });
@@ -5376,8 +5499,8 @@ async function exportCSV(){
 async function exportRawCSV(){
   await warmAuthorProfiles();
   if(!S.history.length){ closeSheet(); return; }
-  const {header, rows} = buildRawRows();
-  const blob = new Blob(['﻿' + toCSV(header, rows)], {type:'text/csv;charset=utf-8;'});
+  const {header, rows, listes} = buildRawRows();
+  const blob = new Blob(['﻿' + toCSV(header, rows, listes)], {type:'text/csv;charset=utf-8;'});
   closeSheet();
   await saveFile((S.matchName||'match_kinball')+'_brut.csv', blob);
 }
@@ -5421,13 +5544,28 @@ function openExportMenu(){
       <b>JSON — sauvegarde complète</b><small>Tout le match, réimportable</small></button>`, true);
 }
 
+/* Une cellule de CSV (C28 · R10, R11). Séparateur de colonnes « ; » (Excel en français), donc :
+   - un nombre décimal s'écrit avec une virgule (« 0,45 ») ; un entier n'a pas de point ;
+   - un texte qui commence par = + - @ (ou une tabulation, un retour chariot) est précédé d'une apostrophe : Excel ne le prend
+     pas pour une formule ;
+   - guillemets si la valeur contient « ; », « " », un saut de ligne ou un retour chariot. */
 function csvEscape(v){
-  const s = String(v===undefined||v===null?'':v);
-  return /[;"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  let s;
+  if(typeof v === 'number' && isFinite(v)) s = String(v).replace('.', ',');
+  else {
+    s = String(v===undefined||v===null?'':v);
+    /* Un nombre ou une liste de nombres (« -0,042|0,4 », coordonnées négatives comprises) n'est pas un texte à protéger. */
+    if(/^[=+\-@\t\r]/.test(s) && !/^-?\d+([.,]\d+)?(\|-?\d+([.,]\d+)?)*$/.test(s)) s = "'" + s;
+  }
+  return /[;"\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
-function toCSV(header, rows){
-  const lines = [header.join(';')];
-  rows.forEach(r => lines.push(header.map(h=>csvEscape(r[h])).join(';')));
+/* `listes` : colonnes dont le texte est une liste de nombres séparés par « | » (coordonnées) — décimales à la virgule aussi. */
+function toCSV(header, rows, listes){
+  const lines = [header.map(csvEscape).join(';')];
+  rows.forEach(r => lines.push(header.map(h=>{
+    const v = r[h];
+    return csvEscape(listes && listes.has(h) && typeof v === 'string' ? v.replace(/\./g, ',') : v);
+  }).join(';')));
   return lines.join('\r\n');
 }
 async function exportJSON(){
@@ -5438,6 +5576,13 @@ async function exportJSON(){
   await saveFile((S.matchName||'match_kinball')+'.json', blob);
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* Une valeur placée entre apostrophes dans un onclick construit par concaténation (identifiant, clé).
+   Tout caractère hors [A-Za-z0-9_-] devient \uXXXX : le texte obtenu est sûr à la fois pour l'attribut HTML
+   et pour la chaîne JavaScript, et le gestionnaire reçoit la valeur d'origine. */
+function jsArg(s){ return String(s).replace(/[^A-Za-z0-9_-]/g, c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')); }
+/* Forme permise d'un identifiant venu d'un fichier (équipe, joueur, match, auteur). Les identifiants créés par l'app
+   (uid : préfixe_base36) la respectent tous. */
+const RE_ID_SUR = /^[A-Za-z0-9_-]{1,80}$/;
 
 /* ==========================================================
    GESTION DES ÉQUIPES (écran d'accueil → "Gérer mes équipes")
@@ -5458,14 +5603,14 @@ function renderTeamManagerList(){
     scope:'team', id:'teamManager',
     defaultSort:{key:'nom', dir:1},
     rows: TEAMS_DB.map(t=>({t, _name:t.name, nb:t.players.length, matchs:matchsDe(t.id),
-                            _click: CAN_EDIT_TEAMS ? `openTeamEditor('${t.id}')` : null})),
+                            _click: CAN_EDIT_TEAMS ? `openTeamEditor('${jsArg(t.id)}')` : null})),
     cols:[
       {key:'nom',    label:'Équipe', val:r=>r.t.name, fmt:r=>escapeHtml(r.t.name)},
       {key:'joueurs',label:'Joueurs', short:'Jr', val:r=>r.nb},
       {key:'matchs', label:'Matchs joués', short:'M', val:r=>r.matchs,
-       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openMatchHistory('${r.t.id}')">${r.matchs}</button>` : '0'},
+       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openMatchHistory('${jsArg(r.t.id)}')">${r.matchs}</button>` : '0'},
       {key:'fiche',  label:'Statistiques', short:'Stats', val:r=>0,
-       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${r.t.id}')">Voir →</button>` : '—'},
+       fmt:r=>r.matchs ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${jsArg(r.t.id)}')">Voir →</button>` : '—'},
     ],
     note: CAN_EDIT_TEAMS
       ? `${SORT_HINT} Touchez une ligne pour modifier l'équipe et son alignement.`
@@ -5484,14 +5629,17 @@ function openTeamEditor(teamId){
   const rows = document.getElementById('playerRows');
   rows.innerHTML = '';
   const players = team ? team.players : [];
-  if(players.length){ players.forEach(p=>addPlayerRow(p.name)); }
+  if(players.length){ players.forEach(p=>addPlayerRow(p.name, p.id)); }
   else { addPlayerRow(); addPlayerRow(); }
 }
 function closeTeamEditor(){ navBack(); }
-function addPlayerRow(name){
+/* C26 · R8 : l'identifiant d'un joueur existant est posé sur sa LIGNE (data-pid), pas retrouvé par son nom :
+   renommer garde l'identifiant, deux homonymes gardent chacun le leur. Une ligne neuve n'en a pas. */
+function addPlayerRow(name, pid){
   const rows = document.getElementById('playerRows');
   const row = document.createElement('div');
   row.className = 'player-row';
+  if(pid) row.dataset.pid = pid;
   row.innerHTML = `<input type="text" placeholder="Nom du joueur" value="${name?escapeHtml(name):''}">
     <button class="player-remove" onclick="this.parentElement.remove()">✕</button>`;
   rows.appendChild(row);
@@ -5499,16 +5647,13 @@ function addPlayerRow(name){
 async function saveTeamEditor(){
   const name = document.getElementById('teamEditorName').value.trim();
   if(!name){ document.getElementById('teamEditorName').focus(); return; }
-  const playerInputs = document.querySelectorAll('#playerRows .player-row input');
+  const playerRows = document.querySelectorAll('#playerRows .player-row');
   // Clone : l'équipe existante vient de TEAMS_DB (alimenté par onSnapshot), on ne mute jamais ça en place.
   const existingTeam = editingTeamId ? JSON.parse(JSON.stringify(getTeam(editingTeamId) || {})) : null;
-  const players = Array.from(playerInputs)
-    .map(inp=>inp.value.trim())
-    .filter(n=>n)
-    .map(n=>{
-      const existing = existingTeam && existingTeam.players && existingTeam.players.find(p=>p.name===n);
-      return {id: existing?existing.id:uid('p'), name:n};
-    });
+  const players = Array.from(playerRows)
+    .map(row=>({pid: row.dataset.pid || null, name: row.querySelector('input').value.trim()}))
+    .filter(x=>x.name)
+    .map(x=>({id: x.pid || uid('p'), name:x.name}));
 
   const team = editingTeamId
     ? {...existingTeam, id: editingTeamId, name, players, updatedAt: Date.now()}
@@ -5517,11 +5662,23 @@ async function saveTeamEditor(){
   closeTeamEditor();          // navigation immédiate ; la liste se rafraîchit via l'abonnement onSnapshot
   await dbSetTeam(team);
 }
-async function deleteTeamEditor(){
+/* C26 · R9 : même protection que pour un match (confirmation armée avec le nom, puis mise à la corbeille récupérable). */
+function deleteTeamEditor(){
   if(!editingTeamId) return;
-  const id = editingTeamId;
-  closeTeamEditor();
-  await dbDeleteTeam(id);
+  const t = getTeam(editingTeamId);
+  if(!t) return;
+  openSheet(`<div class="sheet-title">METTRE L'ÉQUIPE À LA CORBEILLE</div>
+    <div class="empty" style="padding:0 0 16px">« ${escapeHtml(t.name)} » (${t.players.length} joueur${t.players.length>1?'s':''}) ne sera plus proposée dans les choix de match. Rien n'est effacé : vous pourrez la récupérer depuis la corbeille, dans Sauvegarde des données. Les matchs déjà joués gardent son nom et sa fiche.</div>
+    <div class="choice-row">
+      <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteTeam('${jsArg(t.id)}')">METTRE À LA CORBEILLE</button>
+    </div>`, true);
+  armSheet();
+}
+async function doDeleteTeam(id){
+  closeSheet();
+  if(editingTeamId === id){ editingTeamId = null; closeTeamEditor(); }
+  await dbTrashTeam(id);
 }
 
 /* ==========================================================
@@ -5544,7 +5701,7 @@ function renderMatchHistoryList(){
   let list = [...MATCHES_DB];
   let head = '';
   if(historyFilterTeamId){
-    const team = getTeam(historyFilterTeamId);
+    const team = getTeamAny(historyFilterTeamId);
     list = list.filter(m => TEAMS.some(slot => m.teamIds && m.teamIds[slot]===historyFilterTeamId));
     head = `<div class="filter-chip">
       <span>Matchs de <b>${escapeHtml(team ? team.name : '?')}</b></span>
@@ -5565,7 +5722,7 @@ function renderMatchHistoryList(){
       dateStr: d.toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})
              + ' ' + d.toLocaleTimeString('fr-CA', {hour:'2-digit', minute:'2-digit'}),
       actions: (m.history||[]).length,
-      _click: `viewArchivedMatchStats('${m.id}')`,
+      _click: `viewArchivedMatchStats('${jsArg(m.id)}')`,
     };
   });
   /* Les noms arrivent de façon asynchrone : on rend tout de suite avec
@@ -5583,7 +5740,7 @@ function renderMatchHistoryList(){
        fmt:r=>matchTeams(r.m).map(t=>{
          const id = r.m.teamIds && r.m.teamIds[t];
          const name = escapeHtml(r.m.names[t]);
-         return id ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${id}')">${name}</button>` : name;
+         return id ? `<button class="inline-link" onclick="event.stopPropagation(); openTeamAggregate('${jsArg(id)}')">${name}</button>` : name;
        }).join(' · ')},
       {key:'per', label:'Périodes', short:'Pér.', strong:true,
        val:r=>Math.max(...matchTeams(r.m).map(t=>(r.m.periodWins&&r.m.periodWins[t])||0)),
@@ -5600,7 +5757,7 @@ function renderMatchHistoryList(){
        fmt:r=>`<span class="status-badge ${r.m.status==='completed'?'done':'progress'}">${r.m.status==='completed'?'TERMINÉ':'EN COURS'}</span>`
              + (r.m.advancedMode?' <span class="status-badge" style="background:rgba(47,107,255,.18);color:var(--bleu-ink)">AVANCÉ</span>':'')},
       {key:'suppr', label:'', val:r=>0,
-       fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${r.m.id}')" aria-label="Supprimer ce match">🗑</button>`},
+       fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${jsArg(r.m.id)}')" aria-label="Supprimer ce match">🗑</button>`},
     ],
     note:`${SORT_HINT} « Périodes » = périodes gagnées (le résultat du match) ; « Score » = la période en cours, remise à zéro à chaque nouvelle période.`,
   });
@@ -5612,7 +5769,7 @@ function confirmDeleteMatch(id){
     <div class="empty" style="padding:0 0 16px">« ${escapeHtml(record.matchName)} » sortira de l'historique et des statistiques cumulées. Rien n'est effacé : vous pourrez le récupérer depuis la corbeille, dans Sauvegarde des données.</div>
     <div class="choice-row">
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
-      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteMatch('${id}')">METTRE À LA CORBEILLE</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doDeleteMatch('${jsArg(id)}')">METTRE À LA CORBEILLE</button>
     </div>`, true);
   armSheet();
 }
@@ -5633,7 +5790,7 @@ function renderTeamStatsPickerList(){
   }
   body.innerHTML = TEAMS_DB.map(t=>{
     const n = MATCHES_DB.filter(m=>TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===t.id)).length;
-    return `<div class="team-card" onclick="openTeamAggregate('${t.id}')">
+    return `<div class="team-card" onclick="openTeamAggregate('${jsArg(t.id)}')">
       <div>
         <div class="tc-name">${escapeHtml(t.name)}</div>
         <div class="tc-sub">${n} match${n>1?'s':''} joué${n>1?'s':''}</div>
@@ -5650,7 +5807,7 @@ function renderTeamStatsPickerList(){
    match par match et additionné, avec la couleur de chaque match traduite
    vers l'identité d'équipe permanente via teamIds. */
 function computeTeamAggregate(teamId){
-  const team = getTeam(teamId);
+  const team = getTeamAny(teamId);
   const teamName = team ? team.name : '?';
   const matches = MATCHES_DB.filter(m => TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===teamId));
 
@@ -5765,7 +5922,7 @@ function renderTeamOverview(){
     body.innerHTML = `<div class="empty">Aucun match joué pour le moment.<br>Le classement se remplit automatiquement au fil de vos matchs.</div>`;
     return;
   }
-  rows.forEach(r=>{ r._name = r.name; if(r.matchesPlayed) r._click = `openTeamAggregate('${r.id}')`; });
+  rows.forEach(r=>{ r._name = r.name; if(r.matchesPlayed) r._click = `openTeamAggregate('${jsArg(r.id)}')`; });
   body.innerHTML = statTable({
     scope:'team', id:'leaderboard',
     defaultSort:{key:'wins', dir:-1},
@@ -5850,9 +6007,10 @@ function renderTeamAggregate(teamId){
     <div class="as-name">${escapeHtml(agg.teamName)}</div>
     <div class="as-sub">${agg.matchesPlayed} match${agg.matchesPlayed>1?'s':''} joué${agg.matchesPlayed>1?'s':''} • ${agg.periodWins} période${agg.periodWins>1?'s':''} gagnée${agg.periodWins>1?'s':''}</div>
     <div class="agg-links">
-      <button class="ghost-btn" onclick="openMatchHistory('${teamId}')">Voir ses matchs →</button>
-      <button class="ghost-btn" onclick="openTeamEditor('${teamId}')">Modifier l'alignement →</button>
+      <button class="ghost-btn" onclick="openMatchHistory('${jsArg(teamId)}')">Voir ses matchs →</button>
+      ${getTeam(teamId) ? `<button class="ghost-btn" onclick="openTeamEditor('${jsArg(teamId)}')">Modifier l'alignement →</button>` : ''}
     </div>
+    ${getTeam(teamId) ? '' : `<div class="as-sub">Cette équipe est à la corbeille : récupérable depuis « Sauvegarde des données ».</div>`}
   </div>`;
 
   if(!agg.matchesPlayed){
@@ -5905,7 +6063,7 @@ function renderTrash(){
   const box = document.getElementById('trashSection');
   if(!box) return;
   statsRerender = renderTrash;
-  if(!DELETED_MATCHES.length){ box.innerHTML = ''; box.style.display = 'none'; return; }
+  if(!DELETED_MATCHES.length && !DELETED_TEAMS.length){ box.innerHTML = ''; box.style.display = 'none'; return; }
   box.style.display = 'block';
   const rows = DELETED_MATCHES.map(m=>{
     const d = new Date(m.deletedAt || m.updatedAt || 0);
@@ -5913,9 +6071,7 @@ function renderTrash(){
       dateStr: d.toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})};
   });
   resolveProfiles(rows.map(r=>r.m.authorId), renderTrash);
-  box.innerHTML = `<div class="section-title" style="margin-top:22px">Corbeille</div>
-    <div class="section-sub">Les matchs retirés de l'historique ne sont pas effacés. Ils restent ici, hors des statistiques, jusqu'à ce que vous les récupériez ou les effaciez pour de bon.</div>`
-    + statTable({
+  const matchsHTML = DELETED_MATCHES.length ? statTable({
       scope:'team', id:'trash',
       defaultSort:{key:'date', dir:-1},
       rows,
@@ -5925,12 +6081,49 @@ function renderTrash(){
         {key:'par',  label:'Pris par', short:'Par', cls:'muted', val:r=>authorLabel(r.m.authorId), fmt:r=>authorLabel(r.m.authorId)},
         {key:'act',  label:'Actions', short:'Act.', cls:'sub', val:r=>(r.m.history||[]).length},
         {key:'rest', label:'', val:r=>0,
-         fmt:r=>`<button class="inline-link" onclick="doRestoreMatch('${r.m.id}')">Récupérer</button>`},
+         fmt:r=>`<button class="inline-link" onclick="doRestoreMatch('${jsArg(r.m.id)}')">Récupérer</button>`},
         {key:'suppr', label:'', val:r=>0,
-         fmt:r=>`<button class="row-delete" onclick="confirmPurgeMatch('${r.m.id}')" aria-label="Effacer définitivement">🗑</button>`},
+         fmt:r=>`<button class="row-delete" onclick="confirmPurgeMatch('${jsArg(r.m.id)}')" aria-label="Effacer définitivement">🗑</button>`},
       ],
       note:"« Récupérer » remet le match dans l'historique et dans les statistiques. La corbeille de quelqu'un d'autre ne peut être vidée que par lui.",
-    });
+    }) : '';
+  /* C26 · R9 : les équipes retirées vivent dans la même corbeille. */
+  const equipesHTML = DELETED_TEAMS.length ? `<div class="section-sub" style="margin-top:14px">Équipes retirées : hors des choix de match, mais leurs matchs passés gardent leur nom et leur fiche.</div>`
+    + statTable({
+      scope:'team', id:'trashTeams',
+      defaultSort:{key:'date', dir:-1},
+      rows: DELETED_TEAMS.map(t=>({t, _name:t.name, quand:t.deletedAt || 0,
+        dateStr: new Date(t.deletedAt || t.updatedAt || 0).toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})})),
+      cols:[
+        {key:'nom',  label:'Équipe', val:r=>r._name, fmt:r=>escapeHtml(r._name)},
+        {key:'date', label:'Retirée le', val:r=>r.quand, fmt:r=>r.dateStr},
+        {key:'jr',   label:'Joueurs', short:'Jr', cls:'sub', val:r=>(r.t.players||[]).length},
+        {key:'rest', label:'', val:r=>0,
+         fmt:r=>CAN_EDIT_TEAMS ? `<button class="inline-link" onclick="doRestoreTeam('${jsArg(r.t.id)}')">Récupérer</button>` : ''},
+        {key:'suppr', label:'', val:r=>0,
+         fmt:r=>CAN_EDIT_TEAMS ? `<button class="row-delete" onclick="confirmPurgeTeam('${jsArg(r.t.id)}')" aria-label="Effacer définitivement">🗑</button>` : ''},
+      ],
+      note:"« Récupérer » remet l'équipe et son alignement dans les choix de match.",
+    }) : '';
+  box.innerHTML = `<div class="section-title" style="margin-top:22px">Corbeille</div>
+    <div class="section-sub">Les matchs et les équipes retirés ne sont pas effacés. Ils restent ici, hors des statistiques et des choix, jusqu'à ce que vous les récupériez ou les effaciez pour de bon.</div>`
+    + matchsHTML + equipesHTML;
+}
+async function doRestoreTeam(id){ await dbRestoreTeam(id); }
+function confirmPurgeTeam(id){
+  const t = DELETED_TEAMS.find(x=>x.id===id);
+  if(!t) return;
+  openSheet(`<div class="sheet-title">EFFACER POUR DE BON</div>
+    <div class="empty" style="padding:0 0 16px">« ${escapeHtml(t.name)} » et son alignement de ${(t.players||[]).length} joueur(s) seront effacés définitivement. Les matchs déjà joués gardent son nom mais perdent sa fiche. Cette fois, c'est irréversible.</div>
+    <div class="choice-row">
+      <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
+      <button class="choice-btn armed" style="background:var(--red)" onclick="doPurgeTeam('${jsArg(id)}')">EFFACER</button>
+    </div>`, true);
+  armSheet();
+}
+async function doPurgeTeam(id){
+  closeSheet();
+  if(DELETED_TEAMS.some(x=>x.id===id)) await dbDeleteTeam(id);
 }
 async function doRestoreMatch(id){ await dbRestoreMatch(id); }
 function confirmPurgeMatch(id){
@@ -5940,7 +6133,7 @@ function confirmPurgeMatch(id){
     <div class="empty" style="padding:0 0 16px">« ${escapeHtml(m.matchName || 'match')} » et ses ${(m.history||[]).length} action(s) seront effacés définitivement. Cette fois, c'est irréversible.</div>
     <div class="choice-row">
       <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">ANNULER</button>
-      <button class="choice-btn" style="background:var(--red)" onclick="doPurgeMatch('${id}')">EFFACER</button>
+      <button class="choice-btn" style="background:var(--red)" onclick="doPurgeMatch('${jsArg(id)}')">EFFACER</button>
     </div>`, true);
 }
 async function doPurgeMatch(id){
@@ -5980,7 +6173,7 @@ async function confirmArchiveOldMatches(days){
   const list = eligibleArchiveMatches(days);
   if(!list.length) return;
   status.textContent = 'Export en cours…';
-  const payload = {format:'kinball_archive', version:1, exportedAt:new Date().toISOString(), teams:TEAMS_DB, matches:list};
+  const payload = {format:'kinball_archive', version:1, exportedAt:new Date().toISOString(), teams:[].concat(TEAMS_DB, DELETED_TEAMS), matches:list};
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const ok = await saveFile('kinball_archive_'+todayStr()+'.json', blob);
   if(!ok){ status.textContent = "Export annulé : rien n'a été supprimé."; return; }
@@ -6001,7 +6194,7 @@ async function exportFullBackup(){
   /* La corbeille part avec : une sauvegarde qui oublierait les matchs
      retirés ne serait pas une sauvegarde complète. */
   const payload = {format:'kinball_backup', version:1, exportedAt:new Date().toISOString(),
-                   teams:TEAMS_DB, matches:[].concat(MATCHES_DB, DELETED_MATCHES)};
+                   teams:[].concat(TEAMS_DB, DELETED_TEAMS), matches:[].concat(MATCHES_DB, DELETED_MATCHES)};
   if(typeof KBSite !== 'undefined' && KBSite.sauvegardeV2) KBSite.sauvegardeV2(payload); /* MIGRATION M06 */
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   await saveFile('kinball_sauvegarde_'+todayStr()+'.json', blob);
@@ -6015,6 +6208,44 @@ async function dbSetMatchRaw(record){
   try{ await writeMatchDoc(record); return true; }
   catch(e){ console.error('Échec import match', e); return false; }
 }
+/* ---------- VALIDATION DE L'IMPORT (C25 · R4, R5) ----------
+   Un enregistrement mal formé est écarté et compté : il n'entre jamais en base. Chaque validateur rend null si
+   l'enregistrement est bon, sinon la raison (courte, au pluriel quand on la compte). Les champs ajoutés par
+   les versions récentes sont facultatifs : absents, ils passent ; présents, ils doivent avoir la bonne forme. */
+const estObjet = v => !!v && typeof v === 'object' && !Array.isArray(v);
+const estIdSur = v => typeof v === 'string' && RE_ID_SUR.test(v);
+const estNombre = v => typeof v === 'number' && isFinite(v);
+function raisonEquipe(t){
+  if(!estObjet(t)) return 'équipe illisible';
+  if(!estIdSur(t.id)) return 'identifiant invalide';
+  if(typeof t.name !== 'string') return 'nom d’équipe invalide';
+  if(!Array.isArray(t.players)) return 'joueurs mal formés';
+  if(t.players.some(p => !estObjet(p) || !estIdSur(p.id) || typeof p.name !== 'string')) return 'joueurs mal formés';
+  if(t.updatedAt !== undefined && !estNombre(t.updatedAt)) return 'date invalide';
+  return null;
+}
+function raisonMatch(m){
+  if(!estObjet(m)) return 'match illisible';
+  if(!estIdSur(m.id)) return 'identifiant invalide';
+  if(m.status !== 'in_progress' && m.status !== 'completed') return 'statut inconnu';
+  if(!Array.isArray(m.history) || m.history.some(e => !estObjet(e) || typeof e.type !== 'string'
+      || (e.details !== undefined && e.details !== null && !estObjet(e.details)))) return 'historique mal formé';
+  if(m.activeTeams !== undefined && !(Array.isArray(m.activeTeams) && m.activeTeams.length && m.activeTeams.every(t => TEAMS.includes(t)))) return 'équipes en jeu invalides';
+  const eq = matchTeams(m);
+  if(!estObjet(m.names) || eq.some(t => typeof m.names[t] !== 'string')) return 'noms mal formés';
+  if(!estObjet(m.scores) || eq.some(t => !estNombre(m.scores[t]))) return 'scores mal formés';
+  if(m.matchName !== undefined && typeof m.matchName !== 'string') return 'nom de match invalide';
+  if(m.periodWins !== undefined && (!estObjet(m.periodWins) || Object.values(m.periodWins).some(v => !estNombre(v)))) return 'périodes mal formées';
+  if(m.authorId !== undefined && m.authorId !== null && !estIdSur(m.authorId)) return 'auteur invalide';
+  if(m.teamIds !== undefined && (!estObjet(m.teamIds) || Object.values(m.teamIds).some(v => v !== null && !estIdSur(v)))) return 'équipes liées invalides';
+  if(m.rosters !== undefined && (!estObjet(m.rosters) || Object.values(m.rosters).some(l => !Array.isArray(l) || l.some(p => !estObjet(p) || !estIdSur(p.id) || typeof p.name !== 'string')))) return 'alignements mal formés';
+  for(const k of ['lineups','startingLineups']){
+    if(m[k] !== undefined && (!estObjet(m[k]) || Object.values(m[k]).some(l => !Array.isArray(l) || l.some(id => !estIdSur(id))))) return 'alignements mal formés';
+  }
+  if(m.createdAt !== undefined && m.createdAt !== null && !estNombre(m.createdAt)) return 'date invalide';
+  if(m.updatedAt !== undefined && m.updatedAt !== null && !estNombre(m.updatedAt)) return 'date invalide';
+  return null;
+}
 async function handleImportFile(event){
   const file = event.target.files && event.target.files[0];
   event.target.value = '';
@@ -6025,23 +6256,35 @@ async function handleImportFile(event){
   let payload;
   try{ payload = JSON.parse(await file.text()); }
   catch(e){ status.textContent = "Fichier invalide : ce n'est pas un JSON valide."; return; }
-  if(!payload || (!Array.isArray(payload.teams) && !Array.isArray(payload.matches))){
+  /* R3 : l'export « JSON — Tout le match » écrit l'état d'UN match (id + history) sans emballage. L'import l'accepte
+     tel quel et le traite comme une liste d'un match : les fichiers déjà exportés restent valables, l'export ne change pas. */
+  if(estObjet(payload) && !Array.isArray(payload.teams) && !Array.isArray(payload.matches) && typeof payload.id === 'string' && Array.isArray(payload.history)){
+    payload = {format:'kinball_match', matches:[payload]};
+  }
+  if(!estObjet(payload) || (payload.teams !== undefined && !Array.isArray(payload.teams)) || (payload.matches !== undefined && !Array.isArray(payload.matches))
+     || (!Array.isArray(payload.teams) && !Array.isArray(payload.matches))){
     status.textContent = "Fichier invalide : ce n'est pas une sauvegarde Kin-Ball reconnue.";
     return;
   }
   const kbImport = (typeof KBSite !== 'undefined' && KBSite.importDebut) ? await KBSite.importDebut(payload) : null; /* MIGRATION M06 */
 
-  const existingTeamIds = new Set(TEAMS_DB.map(t=>t.id));
+  const existingTeamIds = new Set([].concat(TEAMS_DB, DELETED_TEAMS).map(t=>t.id));
   const existingMatchIds = new Set(MATCHES_DB.map(m=>m.id));
   let teamsAdded=0, teamsUpdated=0, matchesAdded=0, matchesUpdated=0, failed=0;
+  const ecartes = {};   // raison → nombre
+  const ecarter = raison => { ecartes[raison] = (ecartes[raison]||0) + 1; };
 
   for(const t of (payload.teams||[])){
+    const raisonT = raisonEquipe(t);
+    if(raisonT){ ecarter(raisonT); continue; }
     if(kbImport && !kbImport.garder('team', t)) continue; /* MIGRATION M06 */
     const ok = await dbSetTeam(t);
     if(!ok){ failed++; continue; }
     if(existingTeamIds.has(t.id)) teamsUpdated++; else teamsAdded++;
   }
   for(const m of (payload.matches||[])){
+    const raisonM = raisonMatch(m);
+    if(raisonM){ ecarter(raisonM); continue; }
     if(kbImport && !kbImport.garder('match', m)) continue; /* MIGRATION M06 */
     const ok = await dbSetMatchRaw(m);
     if(!ok){ failed++; continue; }
@@ -6051,6 +6294,12 @@ async function handleImportFile(event){
   status.textContent =
     `Import terminé : ${teamsAdded} équipe(s) ajoutée(s), ${teamsUpdated} mise(s) à jour, ${matchesAdded} match(s) ajouté(s), ${matchesUpdated} mis à jour.` +
     (failed ? ` (${failed} échec(s) d'écriture)` : '');
+  const nEcartes = Object.values(ecartes).reduce((a,b)=>a+b, 0);
+  if(nEcartes){
+    const importes = teamsAdded + teamsUpdated + matchesAdded + matchesUpdated;
+    status.textContent += ` ${importes} importé${importes>1?'s':''}, ${nEcartes} écarté${nEcartes>1?'s':''} (`
+      + Object.keys(ecartes).map(k => ecartes[k] > 1 ? `${k} : ${ecartes[k]}` : k).join(' ; ') + ').';
+  }
   if(kbImport) kbImport.fin(status); /* MIGRATION M06 */
 }
 </script>

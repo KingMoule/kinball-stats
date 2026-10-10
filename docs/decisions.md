@@ -71,6 +71,14 @@ Une ou deux lignes par décision, avec sa raison. Pas d'historique de chantier :
 | L'import n'écrase jamais une donnée plus récente de l'appareil. | Une sauvegarde ancienne ne doit pas défaire un match saisi depuis. |
 | Une nouvelle version du site ne s'active que sur accord de la personne, jamais pendant un match ni avec une écriture en attente. | Une mise à jour au milieu d'un point perdrait des données. |
 | La collecte des matchs est facultative, éteinte par défaut, accord par identité, aucun nom de joueur ne part. | Vie privée ; la page de confidentialité le promet. |
+| Tout identifiant venu d'un fichier est limité à `[A-Za-z0-9_-]` à l'import et passe par `jsArg()` dans un `onclick` ; un enregistrement mal formé est écarté et compté, jamais écrit (C25). Pas de CSP pour l'instant. | Les `onclick` en ligne rendent `script-src 'self'` impossible sans chantier à part ; l'échappement et la validation ferment les trois injections connues. |
+| L'import accepte l'export JSON d'un seul match tel quel ; l'export n'a pas changé (C25 · R3). | Les fichiers déjà exportés par les utilisateurs restent valables ; c'est le plus petit changement. |
+| Un match importé sans auteur reste visible mais la collecte ne l'envoie jamais (C25 · R22). | Il n'est pas « le mien » ; la page de confidentialité promet que les matchs d'autres preneurs ne partent pas. |
+| Une équipe supprimée va à la corbeille (`deleted:true`), comme un match ; seul « Effacer pour de bon » supprime (C26 · R9). | Un geste de trop ne doit pas effacer un alignement ; les matchs passés gardent la fiche. |
+| Un match terminé refuse toute saisie, ↶ compris (C26 · R7). | La confirmation de fin dit « vous ne pourrez plus y ajouter d'action ». |
+| Une fin de période décidée à la main est un événement `fin_periode` annulable seul ; une fin automatique reste portée par l'action qui la provoque (C26 · R6). | ↶ ne doit pas effacer l'action d'avant ; l'invariant « rien n'est accordé sans événement ». |
+| Une connexion IndexedDB morte est rouverte une fois et l'opération rejouée ; une lecture en échec n'est jamais prise pour « aucun match » (C27). | Safari iOS perd la connexion après une longue veille ; la copie de secours doit rester proposée. |
+| Exports : « ajouts sûrs » (rien d'existant n'est renommé ni déplacé, colonnes ajoutées en fin) et « Excel en français » (décimales à la virgule, `;`) ; heures et dates en UTC ISO 8601 (C28, décision du 2026-10-09). | Les fichiers d'avant restent comparables ; un Excel réglé en français lit les nombres comme des nombres. |
 | La version et l'empreinte du site sont tenues par `check-release` ; le déploiement échoue sans elles. | Sans nouvelle version, les appareils ne verraient jamais la mise à jour. |
 | L'utilisateur fusionne toujours les PR ; un agent ne fusionne ni ne pousse sur `main`. | Pousser sur `main` met le site en ligne. |
 

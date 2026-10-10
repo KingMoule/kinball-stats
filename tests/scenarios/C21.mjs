@@ -20,7 +20,8 @@ import { runFuzz } from '../fuzz.mjs';
 export const gabarits = ['tablette', 'telephone'];
 const AVANT_NOM = 'kinball.C21.avant.html';
 const CAPT = path.join(SORTIE, 'captures', 'C21');
-const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete c.createdAt; delete c.matchName; delete c.authorId; return c; };
+const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete c.createdAt; delete c.matchName; delete c.authorId; (c.history || []).forEach(e => { delete e.at; }); return c; };   /* C28 : `at` (heure des événements) est propre à chaque partie */
+const NOUV_COLS = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];   /* C28 : colonnes ajoutées en fin de ligne ; l'ID et les dates changent d'une partie à l'autre */
 
 /* ---------- aides ---------- */
 async function ouvrir(gabarit, o = {}) {
@@ -94,7 +95,7 @@ async function jouer(app, avecJoueurs = true) {
 async function resultat(app) {
   const st = arrondi(NORM(await app.state()));
   const rows = await app.ev(() => buildActionRows().rows);
-  rows.forEach(x => { delete x['Saisi par']; ['X départ', 'Y départ', 'X arrivée', 'Y arrivée'].forEach(k => { if (typeof x[k] === 'number') x[k] = Math.round(x[k] * 100) / 100; }); });
+  rows.forEach(x => { delete x['Saisi par']; NOUV_COLS.forEach(k => { delete x[k]; }); ['X départ', 'Y départ', 'X arrivée', 'Y arrivée'].forEach(k => { if (typeof x[k] === 'number') x[k] = Math.round(x[k] * 100) / 100; }); });
   return { st: JSON.stringify(st), rows: JSON.stringify(rows), saves: await app.ev(() => window.__saves) };
 }
 async function compter(app) {
