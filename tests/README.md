@@ -1,79 +1,57 @@
 # Banc d'essai Kin-Ball Stats
 
-Commande : `cd <dépôt> && NODE_PATH=<dossier de playwright> node tests/run.mjs` (environ 7-8 minutes depuis C22, qui garde l'animation de la feuille ; tablette et téléphone en parallèle ; code de sortie 1 au moindre échec).
+## Lancer et attendre
 
-Variables : `KINBALL_SORTIE=<dossier>` (mesures et captures, défaut : `kinball-sortie` dans le dossier temporaire du système, jamais dans le dépôt), `KINBALL_AVANT=<dossier>` (sauvegardes « d'avant » des chantiers, défaut : `kinball-avant` dans le dossier temporaire du système ; un fichier absent donne KNOWN « sauvegarde d'avant absente »), `KINBALL_HTML=<fichier>` (tester une copie ; défaut : index.html du dépôt), `KINBALL_BAIL=1` (stop au premier échec), `KINBALL_ONLY=smoke,undo,fuzz,<id>` (suites), `KINBALL_GABARIT=tablette|telephone`, `KINBALL_TIMESCALE=1` (vrais délais de l'app), `KINBALL_ANIM=1` (garder l'animation de la feuille).
+```bash
+cd <dépôt>; export NODE_PATH=/home/claude/.npm-global/lib/node_modules KINBALL_SORTIE=/tmp/kb-sortie
+(setsid nohup node tests/run.mjs > /tmp/banc.log 2>&1 < /dev/null &)
+node tests/attendre.mjs          # bloque ≤ 9 min ; 0 vert, 1 rouge, 2 encore en cours (relancer la même commande)
+```
 
-Contenu : `lib.mjs` (Chromium, gestes réels sur `#field` et `#sheet`, `state()`, `settle()`), `model.mjs` (modèle indépendant du pointage), `smoke.mjs`, `undo.mjs`, `fuzz.mjs`.
+Passage complet : environ 17 min. Un seul banc à la fois sur la machine.
 
-Ajouter un scénario par chantier : créer `tests/scenarios/<id>.mjs`, chargé automatiquement :
+## Variables essentielles
+
+- `KINBALL_ONLY=smoke,undo,C21` : ces suites seulement. Pendant le travail, utilise ton id.
+- `KINBALL_GABARIT=tablette|telephone` : un seul gabarit.
+- `KINBALL_PARTS=n` : n processus par gabarit (défaut 1). Avec 2, le passage dure environ 11 min mais n'est pas stable : voir `tests/docs/lib.md`.
+- `KINBALL_VERBEUX=1` : affiche aussi les PASS et les sorties des scénarios.
+- `KINBALL_CACHE=1` : si un passage complet de même empreinte existe dans `~/.cache/kinball-banc/`, son résultat est affiché et rien n'est lancé.
+- `KINBALL_HTML=<copie>` : tester une autre version, par exemple pour le contrôle négatif.
+- `KINBALL_AVANT=<dossier>` : versions d'avant. Sans elles, certaines vérifications sont KNOWN.
+- `KINBALL_SORTIE=<dossier>` : mesures, captures et `resultat.json`, jamais dans le dépôt.
+- `KINBALL_ANIM=1`, `KINBALL_TIMESCALE=1` : modes animé et vrais délais.
+- `KINBALL_BAIL=1` : s'arrêter au premier échec.
+
+## Lire le résultat
+
+- Le journal ne contient que les FAIL, les KNOWN et le résumé ; sa dernière ligne donne le chemin de `resultat.json`. Ne fais pas `cat` du journal ; lis `node tests/attendre.mjs`, ou `resultat.json`.
+- `resultat.json` contient :
+  - `total`, `ok`, `echecs[{nom,message}]`, `known[]` ;
+  - `suites{id:{tablette,telephone,verifications}}` (secondes), `gabarits`, `duree_s` ;
+  - `empreinte`, `complet`, `code`.
+- `verifications.json` contient chaque vérification avec son état et sa durée.
+- Les vérifications marquées `{ calme: true }` (mesures de durée réelle) sont jouées à la fin, seules : c'est la « phase au calme ».
+
+## Ajouter un scénario
+
+Crée `tests/scenarios/<id>.mjs`, chargé automatiquement :
 
 ```js
 import { launch, assert, eq } from '../lib.mjs';
-export const gabarits = ['tablette', 'telephone'];          // facultatif
+export const gabarits = ['tablette', 'telephone'];   // facultatif
 export default async function ({ gabarit, check }) {
   const app = await launch(gabarit);
   try {
-    await check(`[${gabarit}] C14 · ma vérification`, async () => {
-      await app.startMatch({ format: '9_11' });
-      await app.initialPossession('Bleu');
-      await app.lancer({ from: [.2, .3], to: [.7, .6], target: 'Gris', caught: false });
+    await check(`[${gabarit}] C99 · ma vérification`, async () => {
+      await app.startMatch({ format: '9_11' }); await app.initialPossession('Bleu');
+      await app.lancer({ target: 'Gris', caught: false });
       eq((await app.state()).scores.Noir, 1, 'point de Noir');
-      assert(app.errors.length === 0, app.errors.join(' | '));
     });
   } finally { await app.close(); }
 }
 ```
 
-Un défaut connu de l'app : `check(nom, fn, { known: 'description' })` (affiché KNOWN, ne bloque pas). Sélecteurs : privilégier les appels d'`onclick` et les identifiants (`pickResult('Gris',true)`, `#undoBtn`), jamais les textes de boutons.
+Un défaut connu s'écrit `check(nom, fn, { known: '…' })`. Pour les sélecteurs, utilise les appels `onclick` et les identifiants, jamais les textes.
 
-## Animation de la feuille et trois modes de passage (C22B)
-
-Par défaut le banc coupe l'animation de `#sheet` (feuille de style `transition:none`) et divise par 20 les minuteries de 400 à 1 600 ms. Trois modes, tous à 0 échec :
-
-| Commande | Durée indicative |
-|---|---|
-| `node tests/run.mjs` | ~7,5 min (459 s mesurés, C22 comprise ; ~90 s sans C22 : `KINBALL_ONLY=smoke,undo,fuzz,C14,C15,C16,C17,C18`) |
-| `KINBALL_ANIM=1 node tests/run.mjs` (animation de 0,22 s gardée) | ~10,5 min (630 s mesurés) |
-| `KINBALL_ANIM=1 KINBALL_TIMESCALE=1 node tests/run.mjs` (animation + vrais délais) | ~18 min (1 064 s mesurés) |
-
-Un scénario peut aussi garder l'animation seul : `launch(gabarit, { anim: true })` (C22 le fait : les appuis fantômes se produisent pendant la descente de 220 ms).
-
-`clickSheet(call)` clique comme une personne, **sans `force`** : il attend que `#sheet` porte `open`, ne porte pas `closing`, n'ait plus d'animation (`getAnimations().length === 0`), que le bouton existe, et que l'appui ne soit pas un « double appui » au sens de l'app (`sheetLastTap`, `SHEET_DOUBLE_MS`, `SHEET_DOUBLE_PX`) ; Playwright vérifie ensuite que le bouton reçoit bien l'appui. `undo()` attend la fin du réarmement de ↶ (`undoBlockedUntil`) puis clique sans `force` ; `undoInSheet()` clique le bouton `undo()` placé dans la feuille (feuille du duel) ; `settle()` attend aussi la fin de la classe `closing`. Les variables de l'app ajoutées par C22B sont lues sous garde `typeof` : le banc tourne encore sur une ancienne copie (`KINBALL_HTML=backups/kinball.C22B.avant.html`).
-
-Scénario `C22.mjs` : de vrais appuis aux coordonnées (`page.mouse.click`, `page.touchscreen.tap` sur le téléphone), jamais `locator.click()` ni `force` pour la mesure ; le Δ réel entre deux appuis est lu sur les `pointerdown` et donné dans le message d'échec. Adaptation de M04·6 et M04·11 : la carte de premier lancement (base vide) est ignorée dans leurs listes de cartes (les autres vérifications intactes). Contrôle négatif : `KINBALL_HTML=backups/kinball.C22B.avant.html KINBALL_ONLY=C22 node tests/run.mjs` doit échouer sur les vérifications 1 à 8 et 10.
-
-## C23 : vrais délais, fenêtre de fin de période, seuil des barres
-`launch(gabarit, { timescale: 1 })` donne les vrais délais à UNE page (défaut : la valeur de `KINBALL_TIMESCALE`, 20 si absente) ; `{ timescale: 1, anim: true }` y ajoute l'animation de la feuille. `scenarios/C23.mjs` agit dans la fenêtre de 1,4 s de la fin de période avec de vrais appuis sur ↶ et lit `periodEndTimer` / `WP.minK` sous garde `typeof` : contrôle négatif `KINBALL_HTML=backups/kinball.C23.avant.html KINBALL_ONLY=C23 node tests/run.mjs` doit échouer sur 1, 2, 3, 4, 6, 7, 9 à 12 (et 15 sur téléphone).
-`C23_ONLY=<regex sur le nom>` ne lance que certaines vérifications de C23 ; `scenarios/C13B.mjs` pose `WP.minK = 1` dans `open()` (ses tests supposent un premier calcul au 3e événement).
-
-## C24 : feuilles de possession rouvertes, jeton glissé visible, fin de période reprise
-`scenarios/C24.mjs` : `reopenMatchSheets()` (appelée par `onEnterScreen('match')`) rouvre « QUI COMMENCE AU BALLON ? » et le choix du duel après accueil → match, après Statistiques → retour et sur une page neuve qui charge `S` ; aucune réouverture si archive, match terminé, `pending` ou `periodEndTimer` ; `.sub-pitch` en `overflow:visible` ; fin de période restée en suspens rejouée une seule fois (faute, échappé, élimination 9_11). Référence : `kinball.C24.avant.html` dans `KINBALL_AVANT`. Contrôle négatif : `KINBALL_HTML=<avant>/kinball.C24.avant.html KINBALL_ONLY=C24 node tests/run.mjs` doit échouer (9 sur 11 sur tablette).
-
-## C20 : ATTRAPÉ / ÉCHAPPÉ en mots, DÉF ILL
-`scenarios/C20.mjs` : menu du résultat (libellés, 3 segments ≥ 44 px sans débordement, un bloc en duel, appels `pickResult` inchangés) ; DÉF ILL = ballon échappé (points, possession, départ arrêté), événement `lancer` échappé avec `fault_type:'DÉF ILL'`, aucune feuille de joueur même avec alignement et mode avancé ; Annuler exact ; élimination et fin de période par DÉF ILL ; stats (Fautes, Par type, détail, export ; hors F % et hors zones de fautes ; OFF % / DÉF % comme un échappé ; jamais « lancer sans joueur ») ; match sans DÉF ILL identique à la référence (`kinball.C20.avant.html`, `KINBALL_AVANT`). Helper `app.defIll({target})` dans `lib.mjs` ; `pickAction` (model.mjs) fait de ~28 % des échappés des DÉF ILL sans tirage aléatoire supplémentaire (les séquences des suites aléatoires sont inchangées). Contrôle négatif : `KINBALL_HTML=<avant>/kinball.C20.avant.html KINBALL_ONLY=C20 node tests/run.mjs` doit échouer (1 à 6 ; le 7 passe, il ne contient pas de DÉF ILL).
-
-## C21 : saisie près du doigt (menu radial)
-Réglage d'appareil, hors `S` : `localStorage['kinball.saisie']` = `radiale` (défaut) ou `feuille` (feuilles du bas d'avant, à l'identique) ; bouton « Saisie en match (cet appareil) » de l'écran Nouveau match, sous le mode de prise de stats. **Le banc travaille en `feuille`** : `launch()` écrit `kinball.saisie` avant le chargement de la page (init script), de sorte que les vérifications d'avant ne changent pas. Variable de lancement : `launch(gabarit, { saisie: 'radiale' })` (menu radial), `{ saisie: null }` (rien écrit : défaut de l'app) ; pour une exécution entière : `KINBALL_SAISIE=radiale` (ex. `KINBALL_SAISIE=radiale KINBALL_ONLY=smoke,undo,C20 node tests/run.mjs`). `lib.mjs` : `clickSheet`, `settle` et `_pickPlayer` acceptent `#radial` en plus de `#sheet` (mêmes `onclick`) ; hors `KINBALL_ANIM`, la feuille de style d'essai coupe aussi les transitions et animations de `#radial`.
-`scenarios/C21.mjs` (tablette et téléphone ; 22 vérifications sur tablette, 23 sur téléphone dont fuzz) : rangées d'équipe et Annuler près du relâchement, entières dans le terrain (centre, quatre bords, quatre coins), libellés, appels, tailles, débordements ; Noir, duel ; menu des joueurs (4 disques en diagonale + « ? » centrés sur le bouton touché, ramené dans le cadre) ; DÉF ILL sans joueur ; sans alignement ; grille des fautes, REPRISE DE JEU, FAUTE D'ÉQUIPE ; garde-fous (couche qui se ferme avec vrais appuis, double appui au relâchement et au centre du menu, voile, `pointerdown` du terrain, ↶ atteignable, élimination et fin de période, accueil puis retour) ; réglage ; verrou portrait ±90° (téléphone, rectangles comparés au terrain) ; non-régression (mode feuille = référence `kinball.C21.avant.html` : S, export, save() ; mode radial = mode feuille) ; fuzz en mode radial (mêmes graines que le mode feuille : `runFuzz` de `fuzz.mjs`). Audit : 6i (⌂ et navigation refusés pendant la saisie), 6j (redimensionnement annule la saisie), 6k (téléphone 320 et 360 px, noms hostiles sur deux lignes, téléphone seul), 6l (fermeture de 120 ms après Annuler / voile, 240 ms après un choix). Le réglage `kinball.saisie` n'est écrit par `launch()` qu'une fois par contexte (sessionStorage `__saisieInit`) et seulement si la clé est absente : M03 et M11, qui rechargent la page, restent stables. `C21_ONLY=<regex sur le nom>` ne lance que certaines vérifications. Captures dans `captures/C21/`.
-Contrôle négatif : `KINBALL_HTML=<avant>/kinball.C21.avant.html KINBALL_ONLY=C21 node tests/run.mjs` doit échouer. Rejeux en radial : `KINBALL_SAISIE=radiale KINBALL_ONLY=smoke,undo,C20 node tests/run.mjs` (C20·1, ·2, ·3 lisent la couche radiale quand elle est ouverte).
-
-## C19 : changements par glisser-déposer
-`scenarios/C19.mjs` (11 vérifications par gabarit, 13 sur téléphone) : glisser à la souris (`page.mouse`), glisser tactile réel par CDP (`Input.dispatchTouchEvent`, téléphone), `pointercancel` simulé, verrou portrait (viewport 844×390 + `window.orientation`). Les jetons de la feuille sont des `<button class="sub-tok" data-pid data-zone="on|off">` ; le bouton d'annulation de la feuille s'appelle par `undoLineupChange()`. La comparaison d'export lit la sauvegarde `backups/kinball.C19.avant.html`.
-
-## M04 : service worker, mise à jour sur accord, version, installation
-`scenarios/M04.mjs` (12 vérifications sur tablette, 4 sur téléphone). Les pages sont servies en `http://127.0.0.1:<port>/` par `tests/serveur.mjs` (`serveur(racine, { cache })`, Cache-Control de Pages par défaut ; `srv.requetes` consigne les chemins demandés ; M03·10 l'utilise aussi). La mise à jour se joue sur une COPIE du site (`copierSite()`) : v2 = un fichier touché (balise `<meta name="kb-test" content="v2">` dans index.html) puis `node outils/check-release.mjs --ecrire --racine <copie>`. Mécanique (premier chargement, hors-ligne via `context.setOffline`, mise à jour, `hasUnsavedWork` forcé, limite d'une heure avec `Date.now` décalé et `ServiceWorkerRegistration.update` compté, check-release, grep de sw.js) : tablette seule ; cartes (installation iOS simulée par `navigator.standalone`, `beforeinstallprompt` simulé, mode installé, cartes à l'écran) et file:// : les deux gabarits. Captures dans `captures/M04/`.
-Avant de committer un changement de fichier du site (index.html, kbsite.js, kblocal.js, polices, icônes, manifest, vendor) : `node outils/check-release.mjs --ecrire` (nouvelle version et empreinte dans kbsite.js et sw.js), puis `node outils/check-release.mjs` doit passer. Un fichier ajouté au site doit aussi être ajouté à la liste de précache de sw.js (entre les marqueurs PRECACHE) : sinon « oublié : <nom> ».
-
-## M05 : feuille de partage (fichiers sur iPad)
-`scenarios/M05.mjs` (7 vérifications sur téléphone, 2 sur tablette) : `navigator.share` / `canShare` sont des doublures posées par `context.addInitScript` puis rechargement (`window.__mode` = `'ok'`, un nom d'erreur, ou une liste consommée appel par appel ; `window.__canShare` ; les fichiers reçus sont gardés dans `window.__fichiers` et relus par `arrayBuffer()`). Instruments d'essai posés dans la page après coup : `saveFile` et `flashMessage` sont enveloppés (`window.__sf`, `window.__flash`) sans toucher à index.html ; l'événement `kb:fichier` s'accumule dans `window.__evts`. Téléphone (`hasTouch` + `isMobile`, donc `maxTouchPoints > 0` et `(pointer: coarse)`) : les 6 appelants (CSV, CSV brut, XLSX, JSON du match, sauvegarde complète, archivage appelé directement car sa carte est masquée en mode local : un match terminé daté de 200 jours est écrit par `writeMatchDoc`), les quatre issues, le second geste (feuille `#kbFichierPret`, boutons `KBSite.fichierPartager()` / `KBSite.fichierAnnuler()`), captures en portrait et appareil couché (verrou portrait, `window.orientation` ±90). Tablette sans tactile = ordinateur (critère 5) ; la même tablette avec `navigator.standalone` simulé (iPad installé) sert à la capture. Suite autonome de la façade : groupes `partage` (contexte tactile) et `partage-ordi` de `tests/local/kblocal.test.mjs` (identifiants PT1 à PT10 ; nom nettoyé, type, issues, second geste, adresse libérée). Captures dans `captures/M05/`.
-
-## M06 : sauvegarde v2, import sans écrasement, premier lancement, rappel
-`scenarios/M06.mjs` (14 vérifications par gabarit). Deux navigateurs séparés : A (données : 2 équipes, 3 matchs terminés dont 2 copies par `writeMatchDoc`, 1 copie à la corbeille, 1 match réel en cours) et B (vide, puis réutilisé pour les imports). Les écritures de la façade sont comptées en enveloppant `IDBObjectStore.prototype.put` sur le magasin « docs » (`window.__puts`, via `compterEcritures(p)`) : indépendant de l'app. Fichiers fabriqués par le test (plus récent sur un objet, match chargé dans S, corbeille croisée, autre identité, version 1 sans champ `format`, archive `kinball_archive`, JSON invalide) écrits dans `os.tmpdir()` et supprimés en fin de scénario. Les cartes de l'accueil (`#kbCarteLancement`, `#kbCarteRappel`) ne se recalculent qu'à l'ENTRÉE sur l'accueil : le test passe par `allerRetour(p)` (écran Sauvegarde, 60 ms, accueil) car deux changements d'écran dans la même tâche sont vus comme un seul. Refus d'une sauvegarde : `KBLocal.downloads.save` remplacé par un rejet `{code:'declined'}`. Règle des 14 jours : `KBLocal.meta.set('site.derniereSauvegarde', {…, at: <reculé>})` puis rechargement. Captures dans `captures/M06/`. Adaptation de M04·6 et M04·11 : la carte de premier lancement (base vide) est ignorée dans leurs listes de cartes (les autres vérifications intactes). Contrôle négatif : `KINBALL_HTML=<index.html d'avant M06 copié à la racine du dépôt> KINBALL_ONLY=M06` échoue sur 8 vérifications (tablette).
-
-## M11 : copie locale périmée (F1 de l'audit M10) et textes du mode local
-`scenarios/M11.mjs` (7 vérifications par gabarit). A : une copie `kinball_backup_<id>` à 10 actions face à un match terminé de 25 actions en base : après rechargement (on attend `backupChecked` vrai et `KBSite.baseIncomplete()` faux) aucun bandeau, 0 écriture (`IDBObjectStore.prototype.put` enveloppé par `page.addInitScript`, `window.__puts`), contenu de la base identique octet pour octet ; `restoreLocalBackup(id)` forcé : feuille « COPIE NON RÉCUPÉRÉE », copie supprimée, base intacte. B : copie plus récente que la base (la base est remise en retard par `writeMatchDoc` de l'ancien enregistrement) : bandeau puis récupération. C : match absent de la base (`dbDeleteMatchDoc`) : bandeau « absent du stockage » puis récupération. D : copie plus ancienne qu'un match à la corbeille : pas de bandeau. E : textes sans « serveur / connexion / en ligne / synchronis… » en mode local (sous-titre de l'accueil, carte d'archivage masquée, badge, feuille, échec de mise à la corbeille provoqué en remplaçant `writeMatchDoc` par un rejet) ; `KBSite.local = false` redonne les textes d'origine. Contrôle négatif : `KINBALL_HTML=<index.html d'avant M11 copié à la racine du dépôt> KINBALL_ONLY=M11` échoue sur 1, 2 et 5 (tablette).
-Chemins : plus aucun chemin local en dur. `KINBALL_SORTIE` et `KINBALL_AVANT` ont pour défaut un dossier du dossier temporaire du système ; sans `KINBALL_AVANT` pointant sur les sauvegardes « d'avant », C13B, C19 et C23 donnent des KNOWN supplémentaires. Playwright : `NODE_PATH`, sinon `~/.npm-global/lib/node_modules`. `tests/local/resync.test.mjs` vérifie l'absence de nom et de fragment d'adresse personnels dans MIGRATION.md par empreintes sha256 (aucun mot en clair dans le dépôt).
-
-## M08 : collecte facultative côté app (consentement, boîte d'envoi, confidentialité)
-`scenarios/M08.mjs` (17 vérifications par gabarit). Le site est servi en http local par un petit serveur du test : `config.js` y est remplacé à la volée (`cfg.valeur`, null = fichier du dépôt) et `sw.js` y est absent (pas de service worker, donc config.js vient toujours du serveur). Le serveur de collecte est `collecte/faux-serveur.mjs` en module (`demarrer({redirection})`, mêmes .gs que le vrai) ; panne, réponse illisible et refus « noms » se jouent par `page.route` sur l'adresse de collecte (`mode.v`). Noms de joueurs sentinelles `ZZ-Élodie-…` : aucun ne doit apparaître dans ce que le serveur reçoit ; chaque envoi est contrôlé par `analyserEnvoi` de `collecte/Logique.gs` (réutilisé) et l'empreinte recalculée par Node est comparée à celle que l'app a notée (`KBLocal.meta` « site.collecte.file »). `crypto.subtle.digest` est compté (`window.__digests`) : 0 pendant un match. Critère hors-ligne : COPIE du site servie par `tests/serveur.mjs`, service worker actif, `setOffline(true)`. Captures dans `captures/M08/` (carte éteinte, allumée, confirmation d'effacement, confidentialite.html, exemples JSON d'envoi). Contrôle négatif : neutraliser l'appel `nettoyer(c)` de `epurer` dans kbcollect.js fait échouer 9 vérifications.
+Détail des suites : `tests/docs/lib.md` (lib, modes, variables) et `tests/docs/<id>.md`.

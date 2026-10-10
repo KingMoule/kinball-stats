@@ -406,8 +406,13 @@ export default async function ({ gabarit, check: check0 }) {
       const rec = await a.ev(() => JSON.parse(JSON.stringify(S)));
       /* reprise : nouvelle page, enregistrement injecté pour la seule durée du test (la base du banc est vide) */
       const b = await open(); await b.ev(() => { WP.seedFixed = 5; });
+      /* R4 : le premier instantané de la base (asynchrone, après launch()) remplace MATCHES_DB ; s'il arrive après
+         l'injection, l'enregistrement disparaît et resumeMatch() ne reprend rien (« barres après reprise : 0 »).
+         On attend donc la base prête (backupChecked, comme M11) avant d'injecter, et on vérifie que la reprise a eu lieu. */
+      await b.page.waitForFunction(() => backupChecked && !(window.KBSite && KBSite.baseIncomplete && KBSite.baseIncomplete()), null, { timeout: 8000, polling: 20 });
       await b.ev(r => { MATCHES_DB.push(r); }, rec);
       await b.ev(() => { navHome(); resumeMatch(); });
+      eq(await b.ev(() => [S.id, currentScreen()]), [rec.id, 'match'], 'match repris (S et écran)');
       await wait(b);
       let s = await wp(b);
       eq(s.bars.length, 3, 'barres après reprise'); eq(s.stats.sent, 1, 'un calcul sur le match repris'); eq(s.stats.applied, 1, 'appliqué');
@@ -468,8 +473,12 @@ export default async function ({ gabarit, check: check0 }) {
 
     /* ---- 13. saisie non retardée ---- */
     await chk(`${P} · 13 · saisie non retardée : Worker (aucune tâche longue) et repli (aucune tranche > 50 ms), aussi avec CPU ×4`, async () => {
-      for (const rate of [1, 4]) {
-        for (const mode of ['worker', 'sync']) {
+      /* R4 : une durée réelle compte aussi le temps où le fil a été privé de processeur par un AUTRE processus (autre gabarit,
+         autre Chromium) : une seule tranche préemptée suffisait à faire échouer la vérification sous charge (66,7 et 96,9 ms
+         observés, contre 9 à 41 ms au calme). La mesure entière (page neuve, donc code froid comme pour l'utilisateur) est
+         refaite au plus 2 fois quand elle dépasse 50 ms, et chaque essai doit tenir TOUTES les bornes : un code réellement
+         trop lent dépasse à chaque essai, la borne de 50 ms n'est pas relâchée. Les essais refusés figurent dans le message. */
+      const mesurer = async (rate, mode) => {
           const a = await open(); await a.ev(() => { WP.seedFixed = 3; });
           if (mode === 'sync') await a.ev(() => { window.Worker = undefined; });
           const cdp = await a.page.context().newCDPSession(a.page);
@@ -482,18 +491,31 @@ export default async function ({ gabarit, check: check0 }) {
           });
           if (mode === 'sync') await a.ev(() => { const o = window.wpCompute; window.wpCompute = function (...x) { const t = performance.now(); const r = o.apply(this, x); window.__slices.push(performance.now() - t); return r; }; });
           await nouveau(a, '9_11'); await jouer(a, 'F E F E F F');
-          await a.page.waitForTimeout(300);
+          await a.page.waitForTimeout(300); await wait(a);   // R4 : calcul réellement terminé (sous charge, 300 ms ne suffisaient pas toujours)
           const m = await a.ev(() => ({ long: window.__long, maxMain: Math.round(Math.max(0, ...window.__main) * 10) / 10, maxSlice: Math.round(Math.max(0, ...window.__slices) * 10) / 10, nSlices: window.__slices.length, mode: WP.mode, calcMs: WP.result && WP.result.ms }));
-          mesures[`${mode}_x${rate}`] = m;
-          assert(m.mode === mode, 'mode ' + m.mode);
-          assert(m.maxMain < 50, `code C13B du fil principal : ${m.maxMain} ms (${mode}, CPU ×${rate}) ; tâches longues de la page : ${m.long}`);
-          if (mode === 'sync') { assert(m.nSlices >= 20, 'tranches mesurées ' + m.nSlices); assert(m.maxSlice < 50, `tranche de ${m.maxSlice.toFixed(1)} ms (CPU ×${rate})`); }
-          else eq(m.nSlices, 0, 'aucun calcul sur le fil principal quand le Worker fonctionne');
           await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+          return m;
+      };
+      for (const rate of [1, 4]) {
+        for (const mode of ['worker', 'sync']) {
+          const refuses = [];
+          let m;
+          for (let essai = 1; essai <= 3; essai++) {
+            m = await mesurer(rate, mode);
+            if (m.maxMain < 50 && (mode !== 'sync' || m.maxSlice < 50)) break;
+            if (essai < 3) refuses.push({ maxMain: m.maxMain, maxSlice: m.maxSlice });
+          }
+          if (refuses.length) m.essaisRefuses = refuses;
+          mesures[`${mode}_x${rate}`] = m;
+          const autres = refuses.length ? ` ; essais précédents : ${JSON.stringify(refuses)}` : '';
+          assert(m.mode === mode, 'mode ' + m.mode);
+          assert(m.maxMain < 50, `code C13B du fil principal : ${m.maxMain} ms (${mode}, CPU ×${rate}) ; tâches longues de la page : ${m.long}${autres}`);
+          if (mode === 'sync') { assert(m.nSlices >= 20, 'tranches mesurées ' + m.nSlices); assert(m.maxSlice < 50, `tranche de ${m.maxSlice.toFixed(1)} ms (CPU ×${rate})${autres}`); }
+          else eq(m.nSlices, 0, 'aucun calcul sur le fil principal quand le Worker fonctionne');
         }
       }
       console.log(`  mesures C13B [${gabarit}] : ` + JSON.stringify(mesures));
-    });
+    }, { calme: true });   // R5 : mesure de durée réelle, jouée dans la phase finale « au calme » (un seul processus)
 
     /* ---- mise en page ---- */
     await chk(`${P} · mise en page : ruban +${phone ? 20 : 16} px au plus, zone d'appui ≥ 22 px, aucun recouvrement, terrain carré et entier`, async () => {
@@ -519,7 +541,9 @@ export default async function ({ gabarit, check: check0 }) {
     });
 
     fs.mkdirSync(SORTIE, { recursive: true });
-    fs.writeFileSync(`${SORTIE}/C13B-mesures-${gabarit}.json`, JSON.stringify(mesures, null, 1));
+    { const f = `${SORTIE}/C13B-mesures-${gabarit}.json`;   // R5 : deux phases (parallèle, calme) écrivent ce fichier : on fusionne
+      let avant = {}; if (process.env.KINBALL_PHASE === 'calme') { try { avant = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {} }
+      fs.writeFileSync(f, JSON.stringify({ ...avant, ...mesures }, null, 1)); }
   } finally {
     for (const a of apps) { try { await a.close(); } catch {} }
   }
