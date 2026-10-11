@@ -21,7 +21,7 @@ export const gabarits = ['tablette', 'telephone'];
 const AVANT_NOM = 'kinball.C21.avant.html';
 const CAPT = path.join(SORTIE, 'captures', 'C21');
 const NORM = s => { const c = JSON.parse(JSON.stringify(s)); delete c.id; delete c.createdAt; delete c.matchName; delete c.authorId; (c.history || []).forEach(e => { delete e.at; }); return c; };   /* C28 : `at` (heure des événements) est propre à chaque partie */
-const NOUV_COLS = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];   /* C28 : colonnes ajoutées en fin de ligne ; l'ID et les dates changent d'une partie à l'autre */
+const NOUV_COLS = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute', 'Réussite offensive (avec fautes)'];   /* STAT-1 : colonne ajoutée à la suite */   /* C28 : colonnes ajoutées en fin de ligne ; l'ID et les dates changent d'une partie à l'autre */
 
 /* ---------- aides ---------- */
 async function ouvrir(gabarit, o = {}) {
