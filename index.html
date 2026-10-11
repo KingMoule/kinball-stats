@@ -4840,10 +4840,11 @@ function openFaultDetail(team){
          val:r=>pctVal(r.c, fz.total), fmt:r=>pctStr(r.c, fz.total)},
       ],
       note:SORT_HINT,
-    }) + `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`;
+    }) + (faults.defIll ? `<div class="section-sub">Les défensives illégales n'ont pas de position : elles sont dans « Par type », pas dans les zones.</div>` : '')
+      + `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`;
   document.getElementById('statsBody').innerHTML =
     `<div class="section-title">${escapeHtml(S.names[team])} — fautes directes</div>
-     <div class="section-sub">${total} faute(s) directe(s)${phaseQuoi(phase)} • zone = où l'équipe était en possession au moment de la faute</div>`
+     <div class="section-sub">${faults.faults} faute(s) directe(s)${faults.defIll ? ` + ${faults.defIll} défensive(s) illégale(s)` : ''}${phaseQuoi(phase)} • zone = où l'équipe était en possession au moment de la faute</div>`
     + statPair(types, zones)
     + `<button class="ghost-btn" onclick="renderStats()" style="margin-top:16px">← Retour aux stats</button>`;
 }
@@ -5408,13 +5409,14 @@ function playerNameIn(ev, slot, id){
 function teamSummaryAoa(){
   const o = computeOverall(), f = computeFaults();
   const aoa = [['Équipe','Score final','Périodes gagnées','Attaques','Attaques réussies','Efficacité offensive (%)',
-                'Ballons reçus','Ballons attrapés','Efficacité défensive (%)','Actions offensives','Fautes directes','Fautes (%)']];
+                'Ballons reçus','Ballons attrapés','Efficacité défensive (%)','Actions offensives','Fautes directes','Fautes (%)',
+                'Défensives illégales']];
   ATEAMS().forEach(t=>{
     const s = o[t];
     aoa.push([nm(t), S.scores[t], (S.periodWins && S.periodWins[t]) || 0,
       s.offAttempts, s.offSuccesses, pctNum(s.offSuccesses, s.offAttempts),
       s.defAttempts, s.defSuccesses, pctNum(s.defSuccesses, s.defAttempts),
-      f[t].actions, f[t].faults, pctNum(f[t].faults, f[t].actions)]);
+      f[t].actions, f[t].faults, pctNum(f[t].faults, f[t].actions), f[t].defIll]);
   });
   return aoa;
 }
