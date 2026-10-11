@@ -46,8 +46,8 @@ async function jouer(app, { format = '9_11', names = {}, nom = 'essai_c08', rost
   }
 }
 /* Installe en « stockage » des copies du match joué (S) : lecture seule pour l'export. */
-async function installer(app) {
-  await app.ev(({ HOSTILE, HOSTILE2 }) => {
+async function installer(app, garderS = false) {
+  await app.ev(({ HOSTILE, HOSTILE2, garderS }) => {
     const base = JSON.parse(JSON.stringify(S));
     const copie = (id, t, f) => { const m = JSON.parse(JSON.stringify(base)); m.id = id; m.createdAt = t; f && f(m); return m; };
     const A = copie('m_a', 3000, m => { m.status = 'completed'; m.names = { Bleu: 'Laval', Gris: 'Laval', Noir: 'Québec' }; m.matchName = 'A'; });
@@ -57,7 +57,8 @@ async function installer(app) {
     const E = copie('m_e', 4000, m => { m.status = 'completed'; m.history.forEach(e => { delete e.at; }); delete m.createdAt; m.matchName = 'E ancien'; delete m.activeTeams; delete m.format; });
     window.__avant = { n: { A: A.history.length, B: B.history.length, E: E.history.length } };
     MATCHES_DB = [A, B, C, E]; DELETED_MATCHES = [D];
-  }, { HOSTILE, HOSTILE2 });
+    if (!garderS) S = freshState();   /* le match joué n'est pas « en cours » : seuls les matchs posés en stockage comptent */
+  }, { HOSTILE, HOSTILE2, garderS });
 }
 async function telecharger(app, declencheur) {
   const [dl] = await Promise.all([app.page.waitForEvent('download'), declencheur()]);
@@ -162,7 +163,7 @@ export default async function ({ gabarit, check }) {
       await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
       await app.ev(() => { S.createdAt = 1700000000000; });
       const avant = await sortiesUnMatch(app);
-      await installer(app);
+      await installer(app, true);
       await exporterTous(app);
       const apres = await sortiesUnMatch(app);
       for (const k of Object.keys(avant)) eq(apres[k] === avant[k], true, `sortie « ${k} » inchangée` + (apres[k] === avant[k] ? '' : ' : ' + diffCourt(avant[k], apres[k])));
@@ -231,6 +232,76 @@ export default async function ({ gabarit, check }) {
       assert(L.length > 0, 'des lignes');
       L.forEach((l, i) => eq(l.length, h.length, `ligne ${i + 2} : colonnes`));
       assert(L.some(l => l.some(c => c.includes("'" + HOSTILE) || c === "'" + HOSTILE)) || texte.includes("'" + HOSTILE), 'joueur =1+1 protégé');
+    } finally { await app.close(); }
+  });
+
+  /* ============ le match en cours se lit dans S (audit : écriture locale lente ou en échec) ============ */
+  const ligneIds = async app => { const { texte } = await exporterTous(app); const [h, ...L] = lireCSV(texte); return { h, L, ids: L.map(l => l[h.indexOf('ID du match')]), texte }; };
+
+  await check(`${P}·8 écriture locale en échec (writeMatchDoc lève) : le CSV contient les actions de S, une seule fois`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await app.ev(() => { window.writeMatchDoc = async () => { throw new Error('panne simulée'); }; });
+      await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
+      const r = await app.ev(() => ({ n: S.history.length, id: S.id, copie: MATCHES_DB.some(m => m.id === S.id) }));
+      assert(r.n >= 4, 'des actions saisies');
+      const avant = await instantane(app);
+      const { ids } = await ligneIds(app);
+      eq(ids, Array(r.n).fill(r.id), 'toutes les actions de S, un seul match');
+      eq(await instantane(app), avant, 'S et le stockage inchangés');
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·9 écriture locale lente (jamais revenue) : le CSV contient les actions de S`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await app.ev(() => { window.writeMatchDoc = () => new Promise(() => {}); });
+      await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
+      const r = await app.ev(() => ({ n: S.history.length, id: S.id }));
+      eq((await ligneIds(app)).ids, Array(r.n).fill(r.id), 'toutes les actions de S');
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·10 match nouveau absent de MATCHES_DB : ajouté depuis S, et jamais de « Aucun match avec des actions »`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
+      await app.ev(() => { MATCHES_DB = []; });
+      const r = await app.ev(() => ({ n: S.history.length, id: S.id }));
+      eq((await ligneIds(app)).ids, Array(r.n).fill(r.id), 'les lignes de S');
+      assert(!(await app.ev(() => document.getElementById('backupStatus').textContent)).includes('Aucun'), 'message trompeur absent');
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·11 match déjà enregistré mais en retard sur S : toutes les lignes de S, une seule fois, ordre conservé`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
+      await installer(app, true);
+      await app.ev(() => {
+        const copie = JSON.parse(JSON.stringify(S)); copie.history = copie.history.slice(0, 2);
+        MATCHES_DB = MATCHES_DB.filter(m => m.id !== S.id).concat([copie]);
+        window.__nS = S.history.length;
+      });
+      const { ids, L, h } = await ligneIds(app);
+      const nS = await app.ev(() => window.__nS), id = await app.ev(() => S.id);
+      eq(ids.filter(x => x === id).length, nS, 'toutes les actions de S, aucune en double');
+      eq(L.filter(l => l[h.indexOf('ID du match')] === id).map(l => l[h.indexOf('No')]), Array.from({ length: nS }, (_, i) => String(i + 1)), 'numéros 1..n');
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·12 match archivé consulté (viewingArchive) : S n'est pas utilisé ; un match de S à la corbeille reste exclu`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await jouer(app, { names: { Bleu: 'Laval', Gris: 'Québec', Noir: 'Lévis' } });
+      await installer(app, true);
+      await app.ev(() => { viewingArchive = true; MATCHES_DB = MATCHES_DB.filter(m => m.id !== S.id); });
+      const a = await ligneIds(app);
+      assert(!a.ids.includes(await app.ev(() => S.id)), 'S (archive consultée) absent');
+      eq([...new Set(a.ids)].sort(), ['m_a', 'm_b', 'm_e'], 'les autres matchs seulement');
+      await app.ev(() => { viewingArchive = false; DELETED_MATCHES.push({ id: S.id, deleted: true, history: [] }); });
+      assert(!(await ligneIds(app)).ids.includes(await app.ev(() => S.id)), 'match de S à la corbeille exclu');
+      await app.ev(() => { viewingArchive = false; });
     } finally { await app.close(); }
   });
 }

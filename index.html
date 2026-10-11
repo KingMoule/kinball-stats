@@ -5850,13 +5850,19 @@ function buildAllActionRows(m){
 }
 async function exportAllMatchesCSV(){
   const status = document.getElementById('backupStatus');
-  const liste = MATCHES_DB.filter(m => m && !m.deleted && Array.isArray(m.history) && m.history.length)
-    .map((m,i)=>({m,i})).sort((a,b)=> ((a.m.createdAt||0)-(b.m.createdAt||0)) || (a.i-b.i)).map(x=>x.m);
-  if(!liste.length){ if(status) status.textContent = 'Aucun match avec des actions à exporter.'; return; }
+  /* Les auteurs sont résolus AVANT de fixer la liste : S est lu au dernier moment. */
   if(USER_CAP){
-    const ids = [...new Set(liste.flatMap(m=>[m.authorId, ...m.history.map(ev=>ev.by)]).filter(Boolean))].filter(id => !(id in profileCache));
+    const tous = MATCHES_DB.concat(S && S.id ? [S] : []);
+    const ids = [...new Set(tous.flatMap(m=>[m.authorId, ...(m.history||[]).map(ev=>ev.by)]).filter(Boolean))].filter(id => !(id in profileCache));
     if(ids.length){ try{ const ps = await USER_CAP.profiles(ids); Object.keys(ps).forEach(id => { profileCache[id] = ps[id]; }); }catch(e){} }
   }
+  /* Le match en cours se lit dans S (la copie de MATCHES_DB peut être en retard ou absente si l'écriture locale n'est pas revenue) ;
+     un seul exemplaire par id ; S n'est jamais modifié ni enregistré ; pas pendant la consultation d'une archive. */
+  const enCours = (S && S.id && !viewingArchive && !S.deleted && !DELETED_MATCHES.some(m => m && m.id === S.id) && Array.isArray(S.history) && S.history.length) ? S : null;
+  const base = MATCHES_DB.filter(m => m && !m.deleted && Array.isArray(m.history) && m.history.length && !(enCours && m.id === enCours.id));
+  const liste = base.concat(enCours ? [enCours] : [])
+    .map((m,i)=>({m,i})).sort((a,b)=> ((a.m.createdAt||0)-(b.m.createdAt||0)) || (a.i-b.i)).map(x=>x.m);
+  if(!liste.length){ if(status) status.textContent = 'Aucun match avec des actions à exporter.'; return; }
   const parts = ['﻿' + ALL_ACTIONS_HEADER.map(csvEscape).join(';') + '\r\n'];
   let lignes = 0, matchs = 0, ecartes = 0;
   for(const m of liste){
