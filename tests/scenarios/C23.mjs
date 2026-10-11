@@ -296,6 +296,10 @@ export default async function ({ gabarit, check: check0 }) {
         eq(apres, 1, `${nom} : un seul save() au minuteur`);
         eq(await peState(a), null, 'periodEndTimer nul après le minuteur');
         await tapUndo(a); await a.settle();
+        /* Le geste suivant est un appui sur le terrain : comme App.undo(), attendre que le terrain ait fini de se re-mettre en page après ↶
+           (une image périmée d'environ 17 ms ; un appui qui la chevauche est lu comme un glisser, la feuille des lancers s'ouvre au lieu de celle des fautes,
+           et clickSheet("pickFault…") attend 4 s en vain : cause de l'échec intermittent de C23 · 6 en CI). */
+        await a.fieldStable();
         const d = diff(await stateOf(a), E0); assert(!d, `${nom} : ↶ après la fenêtre ≠ E0 — ${d}`);
         /* annulation dans la fenêtre, puis la même action : une seule fin de période */
         await resetT0(a);

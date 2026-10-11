@@ -32,7 +32,7 @@
     { "motif": "GARDE-FOUS CONTRE LE FAUX CLIC|^SHEET", "suites": ["C22", "C24", "C26"] },
     { "motif": "MENU RADIAL|FIELD DRAG|JOUEUR DE L'ACTION|REPRISE DE JEU", "suites": ["C20", "C21", "C24", "fuzz"] },
     { "motif": "% DE VICTOIRE EN DIRECT|Générateur à graine|Un pas de règles|^Simulation|Pas de règles pour|Paramètres à partir|^Affichage", "suites": ["C13B"] },
-    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C29"] },
+    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C23", "C29"] },
     { "motif": "Phases d'une période", "suites": ["C16", "C29"] },
     { "motif": "^Par période", "suites": ["C15", "C29"] },
     { "motif": "ZONES DE DÉPART|HEAT MAP|GRILLE D'EFFICACITÉ", "suites": ["C17", "C18"] },
