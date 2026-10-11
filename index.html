@@ -323,6 +323,13 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .evo-leg-item{display:inline-flex; align-items:center; gap:7px;}
 .evo-sw{display:inline-block; width:9px; height:9px; border-radius:50%; margin-left:3px; vertical-align:middle;}
 .evo-sw.big{width:13px; height:13px; margin:0; box-shadow:0 0 0 1px rgba(255,255,255,.35);}
+.evo-controls{display:flex; flex-wrap:wrap; gap:4px 18px; margin:0 2px 8px; font-size:14px; color:var(--ink);}
+.evo-opt{display:inline-flex; align-items:center; gap:8px; min-height:36px; cursor:pointer;}
+.evo-opt input{width:20px; height:20px; accent-color:var(--bleu);}
+.evo-hint{font-size:12px; color:var(--dim); margin:-2px 2px 8px;}
+.evo-leg-btn{background:none; border:1px solid var(--line); border-radius:999px; padding:6px 12px; min-height:36px; color:inherit; font:inherit; cursor:pointer;}
+.evo-leg-btn.on{border-color:var(--ink); color:var(--ink);}
+.evo-leg-btn.dim,.evo-leg-item.dim{opacity:.45;}
 .phone .evo-card{padding:8px 6px 6px;}
 .phone .evo-legend{font-size:12px; gap:4px 12px;}
 .zone-team-row{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 4px;}
@@ -4053,7 +4060,9 @@ function computeOverall(){
    échappé) et DÉF (elle est la cible, succès = attrapé) de chaque équipe en
    jeu. Le DÉF se calcule sur les lancers REÇUS, indépendamment de l'OFF
    adverse. Lecture seule : ne touche à rien. Retourne {periods:[n…],
-   teams:{équipe:{n:{offAtt,offSucc,defAtt,defSucc}}}}. */
+   teams:{équipe:{n:{offAtt,offSucc,defAtt,defSucc,fautes}}}}.
+   `fautes` (STAT-2) = fautes directes de la période, déjà comprises dans offAtt
+   (F % = fautes / offAtt) ; les autres champs gardent leur sens. */
 function computeOffDefByPeriod(match){
   const m = match || S;
   const teams = matchTeams(m);
@@ -4067,8 +4076,8 @@ function computeOffDefByPeriod(match){
       const p = ev.before && ev.before.period, t = ev.before && ev.before.possession;
       if(p === undefined || p === null || !t || !res.teams[t]) return;
       seen[p] = true;
-      const c = res.teams[t][p] || (res.teams[t][p] = {offAtt:0, offSucc:0, defAtt:0, defSucc:0});
-      c.offAtt++;
+      const c = res.teams[t][p] || (res.teams[t][p] = {offAtt:0, offSucc:0, defAtt:0, defSucc:0, fautes:0});
+      c.offAtt++; c.fautes++;
       return;
     }
     if(ev.type!=='lancer') return;
@@ -4080,7 +4089,7 @@ function computeOffDefByPeriod(match){
     seen[per] = true;
     const cell = (t)=>{
       if(!res.teams[t]) return null;
-      return res.teams[t][per] || (res.teams[t][per] = {offAtt:0, offSucc:0, defAtt:0, defSucc:0});
+      return res.teams[t][per] || (res.teams[t][per] = {offAtt:0, offSucc:0, defAtt:0, defSucc:0, fautes:0});
     };
     const a = d.attacker && cell(d.attacker);
     if(a){ a.offAtt++; if(echappe) a.offSucc++; }
@@ -4387,7 +4396,6 @@ function computeSituations(match){
    ========================================================== */
 const STAT_SECTIONS = [
   {id:'overall', label:"Vue d'ensemble", match:sectionMatchOverall, team:sectionTeamOverall},
-  {id:'periodes', label:'Par période',   match:sectionMatchEvolution},
   {id:'h2h',     label:'Head-to-head',   match:sectionMatchH2H,     team:sectionTeamH2H},
   {id:'zones',   label:'Zones',          match:sectionMatchZones,   team:sectionTeamZones},
   {id:'fautes',  label:'Fautes',         match:sectionMatchFaults,  team:sectionTeamFaults},
@@ -4637,15 +4645,30 @@ function sectionMatchOverall(){
               fmt:r=>`${swatchHTML(TEAM_BG[r.t])}${escapeHtml(r._name)}`}]
             .concat(overallCols(r=>r.c)),
       note:`${SORT_HINT} Touchez une ligne pour voir les zones de cette équipe.`,
-    });
+    })
+    + sectionMatchEvolution();       // STAT-2 : « Par période » sous le tableau, même défilement
 }
-/* ---------- Par période : graphique d'évolution OFF / DÉF ----------
-   SVG en ligne, sans bibliothèque. Forme = mesure (OFF : trait plein et rond ;
-   DÉF : tireté et carré), couleur = équipe (TEAM_INK). Un point calculé sur
-   moins de EVO_MIN lancers est tracé pâle, contour pointillé. Une période sans
-   lancer pour une équipe n'a pas de point et interrompt la courbe. */
+/* ---------- Par période : graphique d'évolution OFF / DÉF (+ F %) ----------
+   Bloc placé sous la Vue d'ensemble (STAT-2, D87). SVG en ligne, sans
+   bibliothèque. Forme = mesure (OFF : trait plein et rond ; DÉF : tireté et
+   carré ; F % : pointillé fin et triangle), couleur = équipe (TEAM_INK). Le
+   point de l'équipe Noir est noir à contour blanc (un point blanc se lisait
+   mal). Un point calculé sur moins de EVO_MIN lancers est tracé pâle, contour
+   pointillé. Une période sans lancer pour une équipe n'a pas de point et
+   interrompt la courbe.
+   État d'interface (hors de S, jamais stocké, remis à zéro par openStats) :
+   evoOneTeam (interrupteur), evoFocus (équipe gardée), evoShowF (case F %). */
 const EVO_MIN = 5;
-function evoChartSVG(ev, teams){
+let evoOneTeam = false, evoFocus = null, evoShowF = false;
+function evoReset(){ evoOneTeam = false; evoFocus = null; evoShowF = false; }
+function setEvoOneTeam(on){ evoOneTeam = !!on; evoFocus = null; if(statsRerender) statsRerender(); }
+function evoPickTeam(t){
+  if(!evoOneTeam) return;
+  evoFocus = (evoFocus === t) ? null : t;
+  if(statsRerender) statsRerender();
+}
+function setEvoShowF(on){ evoShowF = !!on; if(statsRerender) statsRerender(); }
+function evoChartSVG(ev, teams, showF){
   const W=IS_PHONE?360:640, H=IS_PHONE?270:300, L=40, R=IS_PHONE?12:16, T=14, B=32, iw=W-L-R, ih=H-T-B;
   const P = ev.periods, n = P.length;
   const X = i => n===1 ? L+iw/2 : L+iw*i/(n-1);
@@ -4658,18 +4681,22 @@ function evoChartSVG(ev, teams){
   P.forEach((p,i)=>{
     g += `<text x="${X(i)}" y="${H-10}" text-anchor="middle" font-size="12" fill="var(--dim)">P${p}</text>`;
   });
+  const kinds = showF ? ['off','def','f'] : ['off','def'];
   teams.forEach(t=>{
     const col = TEAM_INK[t];
-    ['off','def'].forEach(k=>{
+    const ptFill = t==='Noir' ? 'var(--noir)' : col;   // Noir : point noir, contour blanc (col)
+    kinds.forEach(k=>{
       const pts = P.map((p,i)=>{
         const c = ev.teams[t][p];
-        const att = c ? c[k+'Att'] : 0;
-        return att ? {x:X(i), y:Y(100*c[k+'Succ']/att), att, succ:c[k+'Succ'], pct:Math.round(100*c[k+'Succ']/att), per:p} : null;
+        const att = c ? c.offAtt : 0, succ = c ? (k==='off' ? c.offSucc : k==='def' ? 0 : (c.fautes||0)) : 0;
+        const a = k==='def' ? (c ? c.defAtt : 0) : att, s2 = k==='def' ? (c ? c.defSucc : 0) : succ;
+        return a ? {x:X(i), y:Y(100*s2/a), att:a, succ:s2, pct:Math.round(100*s2/a), per:p} : null;
       });
       /* Segments continus : une période sans point coupe la courbe. */
       let seg = [];
       const flush = ()=>{
-        if(seg.length>1) g += `<polyline points="${seg.map(q=>q.x.toFixed(1)+','+q.y.toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"${k==='def'?' stroke-dasharray="7 5"':''}/>`;
+        const dash = k==='def' ? ' stroke-dasharray="7 5"' : k==='f' ? ' stroke-dasharray="2 4"' : '';
+        if(seg.length>1) g += `<polyline class="evo-line evo-${k}" points="${seg.map(q=>q.x.toFixed(1)+','+q.y.toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="${k==='f'?1.5:2.5}" stroke-linejoin="round" stroke-linecap="round"${dash}/>`;
         seg = [];
       };
       pts.forEach(q=>{ if(q) seg.push(q); else flush(); });
@@ -4677,37 +4704,54 @@ function evoChartSVG(ev, teams){
       pts.forEach(q=>{
         if(!q) return;
         const faible = q.att < EVO_MIN;
-        const fill = faible ? 'var(--bg)' : col;
+        const fill = faible ? 'var(--bg)' : ptFill;
         const attrs = `stroke="${col}" stroke-width="2.5" fill="${fill}"` + (faible ? ` stroke-dasharray="2 2" opacity=".55"` : '');
-        const tip = `<title>${escapeHtml(S.names[t]||t)} · ${k==='off'?'OFF':'DÉF'} · P${q.per} : ${q.pct}% (${q.succ}/${q.att})${faible?' — petit échantillon':''}</title>`;
+        const lab = k==='off' ? 'OFF' : k==='def' ? 'DÉF' : 'F %';
+        const tip = `<title>${escapeHtml(S.names[t]||t)} · ${lab} · P${q.per} : ${q.pct}% (${q.succ}/${q.att})${faible?' — petit échantillon':''}</title>`;
         g += k==='off'
           ? `<circle class="evo-pt" cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="5.5" ${attrs}>${tip}</circle>`
-          : `<rect class="evo-pt" x="${(q.x-5).toFixed(1)}" y="${(q.y-5).toFixed(1)}" width="10" height="10" rx="1.5" ${attrs}>${tip}</rect>`;
+          : k==='def'
+          ? `<rect class="evo-pt" x="${(q.x-5).toFixed(1)}" y="${(q.y-5).toFixed(1)}" width="10" height="10" rx="1.5" ${attrs}>${tip}</rect>`
+          : `<polygon class="evo-pt evo-pt-f" points="${q.x.toFixed(1)},${(q.y-6.5).toFixed(1)} ${(q.x+6).toFixed(1)},${(q.y+4.5).toFixed(1)} ${(q.x-6).toFixed(1)},${(q.y+4.5).toFixed(1)}" stroke-linejoin="round" ${attrs}>${tip}</polygon>`;
       });
     });
   });
-  return `<svg class="evo-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution du pourcentage offensif et défensif par période">${g}</svg>`;
+  return `<svg class="evo-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution du pourcentage offensif, défensif et de fautes par période">${g}</svg>`;
 }
+/* Le bloc « Par période » : titre, interrupteur et case, graphique, tableau. */
 function sectionMatchEvolution(){
-  const title = `<div class="section-title">Par période</div>`;
+  const title = `<div class="section-title" style="margin-top:22px">Par période</div>`;
   const teams = ATEAMS();
   const ev = computeOffDefByPeriod(S);
-  if(!S.history.length || !ev.periods.length){
-    return title + `<div class="empty">Aucune action enregistrée pour le moment.</div>`;
-  }
-  const legTeams = teams.map(t=>`<span class="evo-leg-item"><span class="evo-sw big" style="background:${TEAM_INK[t]}"></span>${escapeHtml(S.names[t])}</span>`).join('');
+  if(!S.history.length || !ev.periods.length) return '';   // la Vue d'ensemble dit déjà « aucune action »
+  const drawn = (evoOneTeam && evoFocus && teams.includes(evoFocus)) ? [evoFocus] : teams;
+  const legTeams = teams.map(t=>{
+    const sw = `<span class="evo-sw big" style="background:${TEAM_INK[t]}"></span>${escapeHtml(S.names[t])}`;
+    if(!evoOneTeam) return `<span class="evo-leg-item">${sw}</span>`;
+    const dim = evoFocus && evoFocus !== t;
+    return `<button type="button" class="evo-leg-item evo-leg-btn${evoFocus===t?' on':''}${dim?' dim':''}" data-team="${t}" onclick="evoPickTeam('${t}')">${sw}</button>`;
+  }).join('');
+  const controls = `<div class="evo-controls">
+      <label class="evo-opt"><input type="checkbox" id="evoOneTeam" onchange="setEvoOneTeam(this.checked)" ${evoOneTeam?'checked':''}> Une équipe seulement</label>
+      <label class="evo-opt"><input type="checkbox" id="evoShowF" onchange="setEvoShowF(this.checked)" ${evoShowF?'checked':''}> F %</label>
+    </div>`
+    + (evoOneTeam ? `<div class="evo-hint">${evoFocus ? 'Touchez de nouveau l\'équipe pour les montrer toutes.' : 'Touchez une équipe de la légende pour ne garder que ses courbes.'}</div>` : '');
   const legend = `<div class="evo-legend">${legTeams}</div>
     <div class="evo-legend">
       <span class="evo-leg-item"><svg width="30" height="12"><line x1="0" x2="30" y1="6" y2="6" stroke="var(--ink)" stroke-width="2.5"/><circle cx="15" cy="6" r="4.5" fill="var(--ink)"/></svg>OFF</span>
       <span class="evo-leg-item"><svg width="30" height="12"><line x1="0" x2="30" y1="6" y2="6" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="6 4"/><rect x="10" y="1.5" width="9" height="9" rx="1.5" fill="var(--ink)"/></svg>DÉF</span>
+      <span class="evo-leg-item${evoShowF?'':' dim'}" id="evoLegF"><svg width="30" height="12"><line x1="0" x2="30" y1="6" y2="6" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="2 4"/><polygon points="15,0.5 20.5,10.5 9.5,10.5" fill="var(--ink)" stroke="var(--ink)" stroke-linejoin="round"/></svg>F %${evoShowF?'':' (masquée)'}</span>
       <span class="evo-leg-item"><svg width="14" height="14"><circle cx="7" cy="7" r="5" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="2 2" opacity=".55"/></svg>pâle : moins de ${EVO_MIN} lancers</span>
     </div>`;
   const rows = ev.periods.map(p=>({p, _name:'Période '+p}));
-  const cell = (t,k,r)=>{ const c = ev.teams[t][r.p]; return c ? {att:c[k+'Att'], succ:c[k+'Succ']} : {att:0, succ:0}; };
+  const cell = (t,k,r)=>{
+    const c = ev.teams[t][r.p]; if(!c) return {att:0, succ:0};
+    return k==='f' ? {att:c.offAtt, succ:c.fautes||0} : {att:c[k+'Att'], succ:c[k+'Succ']};
+  };
   const cols = [{key:'per', label:'Période', short:'Pér.', val:r=>r.p, fmt:r=>'P'+r.p}];
   teams.forEach(t=>{
-    ['off','def'].forEach(k=>{
-      const lab = (k==='off'?'OFF':'DÉF');
+    ['off','def','f'].forEach(k=>{
+      const lab = (k==='off'?'OFF':k==='def'?'DÉF':'F %');
       cols.push({
         key:k+'_'+t, label:`${lab} ${escapeHtml(S.names[t])}`, short:`${lab} <span class="evo-sw" style="background:${TEAM_INK[t]}"></span>`,
         strong:true,
@@ -4718,8 +4762,8 @@ function sectionMatchEvolution(){
     });
   });
   return title
-    + `<div class="section-sub">${OFF_DEFINITION} · DÉF = ballons reçus et attrapés, période par période.</div>`
-    + `<div class="evo-card">${evoChartSVG(ev, teams)}${legend}</div>`
+    + `<div class="section-sub">${OFF_DEFINITION} · DÉF = ballons reçus et attrapés · F % = fautes directes / (lancers + fautes directes), période par période.</div>`
+    + `<div class="evo-card">${controls}${evoChartSVG(ev, drawn, evoShowF)}${legend}</div>`
     + statTable({
         scope:'match', id:'matchEvolution',
         defaultSort:{key:'per', dir:1},
@@ -4870,7 +4914,7 @@ function sectionMatchFaults(){
   return html;
 }
 
-function openStats(){ navTo('stats'); }
+function openStats(){ evoReset(); navTo('stats'); }
 /* Le rendu est séparé de la navigation : onEnterScreen() peut ainsi le
    rejouer quand on revient sur l'écran (depuis la heat map, les zones…). */
 function renderStats(){
