@@ -141,13 +141,15 @@ export default async function ({ gabarit, check }) {
             out.oppOff = ZONES.reduce((n, z) => n + agg.h2h[key].offZones[z].attempts, 0);
           }
           out.offTot = ZONES.reduce((n, z) => n + agg.zoneOff[z].attempts, 0);
-          out.offA = S.history.filter(e => e.type === 'lancer' && e.details.attacker === 'Bleu' && ['attrapé','échappé'].includes(e.details.result) && e.details.start_norm).length;
+          /* STAT-1 : les fautes directes de Bleu avec position comptent dans les cases OFF du cumul */
+          out.offA = S.history.filter(e => (e.type === 'lancer' && e.details.attacker === 'Bleu' && ['attrapé','échappé'].includes(e.details.result) && e.details.start_norm)
+            || (e.type === 'faute_directe' && e.before.possession === 'Bleu' && e.details.position_norm)).length;
         } finally { MATCHES_DB.pop(); }
         return out;
       });
       assert(d.rows >= 18, 'lignes de zones : ' + d.rows); assert(d.nums >= 18); assert(d.svg >= 2);
       assert(d.hasKey, 'pas de détail par adversaire'); eq(d.oppRows, 9);
-      eq(d.offTot, d.offA, 'cumul offensif = lancers de Bleu localisés');
+      eq(d.offTot, d.offA, 'cumul offensif = lancers et fautes localisés de Bleu');
       assert(app.errors.length === 0, app.errors.join(' | '));
     });
   } finally { await app.close(); }

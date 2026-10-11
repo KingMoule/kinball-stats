@@ -22,6 +22,7 @@ const XLSX = require(path.join(DEPOT, 'vendor', 'xlsx.full.min.js'));
 export const gabarits = ['tablette', 'telephone'];
 const AVANT_NOM = 'kinball.C28.avant.html';
 const NOUVELLES = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];
+const STAT1 = 'Réussite offensive (avec fautes)';   /* STAT-1 : cinquième colonne ajoutée en fin de la feuille Actions */
 
 /* Lecteur CSV (séparateur « ; », guillemets doublés, \r\n entre les lignes, \r et \n tolérés entre guillemets). */
 function lireCSV(texte) {
@@ -74,8 +75,8 @@ export default async function ({ gabarit, check }) {
     };
     const a = await sortie({ html: ref }), b = await sortie({});
     eq(b.header.slice(0, a.header.length), a.header, 'les colonnes existantes : mêmes noms, même ordre');
-    eq(b.header.slice(a.header.length), NOUVELLES, 'quatre colonnes ajoutées, à la fin, dans cet ordre');
-    eq(b.header.length, a.header.length + 4, 'rien d\'autre');
+    eq(b.header.slice(a.header.length), [...NOUVELLES, STAT1], 'quatre colonnes ajoutées (C28), puis celle de STAT-1, à la fin, dans cet ordre');
+    eq(b.header.length, a.header.length + 5, 'rien d\'autre');
     eq(b.rows.length, a.rows.length, 'même nombre de lignes');   /* « Saisi par » mis à part : la copie d'avant, servie sans stockage, n'a pas d'identité d'appareil */
     b.rows.forEach((x, i) => a.header.filter(k => k !== 'Saisi par').forEach(k => eq(x[k], a.rows[i][k], `ligne ${i + 1}, « ${k} » (valeur d'une colonne existante)`)));
     eq(b.csv[0], b.header, 'ligne d\'en-tête du CSV = en-tête');
@@ -295,7 +296,7 @@ export default async function ({ gabarit, check }) {
       const csv = lireCSV((await csvActions(app)).toString('utf8'));
       eq(act[0], csv[0], 'Actions : même en-tête que le CSV');
       eq(act.length, csv.length, 'même nombre de lignes');
-      eq(act[0].slice(-4), NOUVELLES, 'quatre colonnes ajoutées en fin');
+      eq(act[0].slice(-5, -1), NOUVELLES, 'quatre colonnes ajoutées en fin (avant celle de STAT-1)');
       eq(act.slice(1).map(l => l[act[0].indexOf('Code de faute')] ?? ''), ['', 'EXT', 'DÉF ILL', '', ''], 'codes de faute dans le XLSX');
     } finally { await app.close(); }
   });

@@ -8,6 +8,8 @@ fs.mkdirSync(TMP, { recursive: true });
 const recalc = (hist, teams) => {            // recalcul indépendant, écrit à part du code testé
   const out = {}; teams.forEach(t => out[t] = {});
   for (const e of hist) {
+    /* STAT-1 : une faute directe est une tentative offensive ratée de l'équipe en possession */
+    if (e.type === 'faute_directe' && e.before && out[e.before.possession]) { const a = out[e.before.possession], p = e.before.period; a[p] ??= [0,0,0,0]; a[p][0]++; continue; }
     if (e.type !== 'lancer' || !e.details) continue;
     const r = e.details.result; if (r !== 'attrapé' && r !== 'échappé') continue;
     const p = e.before.period;
@@ -35,7 +37,7 @@ export default async function ({ gabarit, check }) {
       while (m.period < 3 && guard++ < 400) await play(app, m, pickAction(m, r));
       for (let k = 0; k < 6; k++) await play(app, m, pickAction(m, r));
       assert(m.period >= 3, 'trois périodes non atteintes');
-      const d = await app.ev(() => ({ hist: JSON.parse(JSON.stringify(S.history)), teams: ATEAMS(), ov: computeOverall(), ev: computeOffDefByPeriod(), lancers: S.history.filter(e => e.type === 'lancer' && e.details && (e.details.result === 'attrapé' || e.details.result === 'échappé')).length }));
+      const d = await app.ev(() => ({ hist: JSON.parse(JSON.stringify(S.history)), teams: ATEAMS(), ov: computeOverall(), ev: computeOffDefByPeriod(), lancers: S.history.filter(e => (e.type === 'lancer' && e.details && (e.details.result === 'attrapé' || e.details.result === 'échappé')) || e.type === 'faute_directe').length }));
       const rc = recalc(d.hist, d.teams);
       let offTot = 0;
       for (const t of d.teams) {
@@ -46,11 +48,11 @@ export default async function ({ gabarit, check }) {
           so += oa; sa += os;
         }
         for (const p of Object.keys(d.ev.teams[t])) assert(rc[t][p], 'période fantôme');
-        eq(so, d.ov[t].offAttempts, `somme offAtt ${t} = computeOverall`);
+        eq(so, d.ov[t].offTentatives, `somme offAtt ${t} = computeOverall (lancers + fautes)`);
         eq(sa, d.ov[t].offSuccesses, `somme offSucc ${t}`);
         offTot += so;
       }
-      eq(offTot, d.lancers, 'somme des offAtt = nombre de lancers');
+      eq(offTot, d.lancers, 'somme des offAtt = nombre de lancers et de fautes directes');
       assert(d.ev.periods.length >= 3, 'au moins 3 périodes');
       // DOM : points tracés et valeurs du tableau
       await app.openStatsTab('periodes');

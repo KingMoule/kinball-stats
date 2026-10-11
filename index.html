@@ -4000,14 +4000,29 @@ function computeFaults(phase){
    « overall » du head-to-head. Offensive : part des attaques NON attrapées.
    Défensive : part des ballons reçus qui ONT été attrapés. Les mêmes totaux
    sont aussi ventilés par zone du terrain, à partir des coordonnées du
-   lancer (départ pour l'offensive, arrivée pour la défensive). */
+   lancer (départ pour l'offensive, arrivée pour la défensive).
+   STAT-1 : une faute directe est une tentative offensive ratée de l'équipe qui
+   avait le ballon. Les champs `offAttempts`, `offSuccesses` et `offZones` restent
+   sur les LANCERS SEULS (l'export ancien les lit) ; `offTentatives` (lancers +
+   fautes), `offZonesF` (la faute compte dans la case de sa position) et `fautes`
+   portent le total avec fautes, que lisent les écrans. */
 function computeOverall(){
   const o = {};
   ATEAMS().forEach(t=>{
-    o[t] = {offAttempts:0, offSuccesses:0, defAttempts:0, defSuccesses:0, offZones:{}, defZones:{}};
-    ZONES.forEach(z=>{ o[t].offZones[z]={attempts:0,successes:0}; o[t].defZones[z]={attempts:0,successes:0}; });
+    o[t] = {offAttempts:0, offSuccesses:0, defAttempts:0, defSuccesses:0, offZones:{}, defZones:{},
+            fautes:0, offTentatives:0, offZonesF:{}};
+    ZONES.forEach(z=>{ o[t].offZones[z]={attempts:0,successes:0}; o[t].defZones[z]={attempts:0,successes:0}; o[t].offZonesF[z]={attempts:0,successes:0}; });
   });
   S.history.forEach(ev=>{
+    if(ev.type==='faute_directe'){
+      const a = ev.before && ev.before.possession;
+      if(a && o[a]){
+        const s = o[a], pos = ev.details && ev.details.position_norm;
+        s.fautes++;
+        if(pos){ const z = classifyZone(pos[0], pos[1]); s.offZonesF[z].attempts++; }
+      }
+      return;
+    }
     if(ev.type!=='lancer') return;
     const d = ev.details || {};
     if(!(d.result==='attrapé' || d.result==='échappé')) return;
@@ -4018,6 +4033,7 @@ function computeOverall(){
       if(d.start_norm){
         const z = classifyZone(d.start_norm[0], d.start_norm[1]);
         s.offZones[z].attempts++; if(echappe) s.offZones[z].successes++;
+        s.offZonesF[z].attempts++; if(echappe) s.offZonesF[z].successes++;
       }
     }
     if(d.target && o[d.target]){
@@ -4029,6 +4045,7 @@ function computeOverall(){
       }
     }
   });
+  ATEAMS().forEach(t=>{ o[t].offTentatives = o[t].offAttempts + o[t].fautes; });
   return o;
 }
 /* Évolution par période : pour chaque période où il y a eu au moins un
@@ -4044,6 +4061,16 @@ function computeOffDefByPeriod(match){
   teams.forEach(t=>{ res.teams[t] = {}; });
   const seen = {};
   (m.history || []).forEach(ev=>{
+    /* STAT-1 : une faute directe est une tentative offensive ratée de l'équipe
+       en possession, dans la période où elle a eu lieu. */
+    if(ev.type==='faute_directe'){
+      const p = ev.before && ev.before.period, t = ev.before && ev.before.possession;
+      if(p === undefined || p === null || !t || !res.teams[t]) return;
+      seen[p] = true;
+      const c = res.teams[t][p] || (res.teams[t][p] = {offAtt:0, offSucc:0, defAtt:0, defSucc:0});
+      c.offAtt++;
+      return;
+    }
     if(ev.type!=='lancer') return;
     const d = ev.details || {};
     if(!(d.result==='attrapé' || d.result==='échappé')) return;
@@ -4228,6 +4255,21 @@ function situationOf(history, i){
   if(!ev || ev.type !== 'lancer') return null;
   const d = ev.details || {};
   if(d.situation === 'continue' || d.situation === 'arretee') return d.situation;
+  return situationBack(history, i);
+}
+/* Situation d'une FAUTE DIRECTE (STAT-1) : celle de l'équipe qui avait le
+   ballon, lue sur `before.stopped` (la même source que la situation figée dans
+   un lancer) ; repli sur la reconstitution si l'instantané ne la porte pas.
+   Sert seulement aux totaux : une faute n'entre jamais dans un duel. */
+function situationOfFaute(history, i){
+  const ev = history[i];
+  if(!ev || ev.type !== 'faute_directe') return null;
+  const b = ev.before;
+  if(b && typeof b.stopped === 'boolean') return b.stopped === false ? 'continue' : 'arretee';
+  return situationBack(history, i);
+}
+function situationBack(history, i){
+  const ev = history[i];
   /* Repli pour les matchs d'avant : on remonte au dernier événement qui a
      donné le ballon à l'attaquant courant. */
   const per = ev.before && ev.before.period;
@@ -4281,7 +4323,11 @@ function phaseLegendHTML(fmt){
 }
 /* Compte les lancers d'un match par équipe ET par situation, à l'attaque
    comme à la défense. Même structure que computeOverall(), volontairement :
-   les deux se lisent de la même façon. */
+   les deux se lisent de la même façon.
+   STAT-1 : `off_<situation>` reste sur les lancers seuls (l'export ancien le lit) ;
+   `offF_<situation>` y ajoute les fautes directes de l'équipe en possession, rangées
+   par la situation de la faute (`situationOfFaute`). Les fautes n'ont pas de
+   détail par adversaire : elles n'existent que dans ces totaux. */
 function computeSituations(match){
   const m = match || S;
   const teams = matchTeams(m);
@@ -4290,6 +4336,7 @@ function computeSituations(match){
     out[t] = {reprises:0};
     SITUATIONS.forEach(x=>{
       out[t]['off_'+x.id] = {attempts:0, successes:0};
+      out[t]['offF_'+x.id] = {attempts:0, successes:0};
       out[t]['def_'+x.id] = {attempts:0, successes:0};
     });
   });
@@ -4297,6 +4344,11 @@ function computeSituations(match){
     if(ev.type === 'reprise'){
       const t = ev.details && ev.details.team;
       if(t && out[t]) out[t].reprises++;
+      return;
+    }
+    if(ev.type === 'faute_directe'){
+      const t = ev.before && ev.before.possession, sit = situationOfFaute(m.history, i);
+      if(t && out[t] && sit) out[t]['offF_'+sit].attempts++;
       return;
     }
     if(ev.type !== 'lancer') return;
@@ -4308,6 +4360,8 @@ function computeSituations(match){
     if(d.attacker && out[d.attacker]){
       const s = out[d.attacker]['off_'+sit];
       s.attempts++; if(echappe) s.successes++;
+      const sf = out[d.attacker]['offF_'+sit];
+      sf.attempts++; if(echappe) sf.successes++;
     }
     if(d.target && out[d.target]){
       const s = out[d.target]['def_'+sit];
@@ -4346,6 +4400,7 @@ let statTab = {match:'overall', team:'overall'};
    STATS INDIVIDUELLES
    ----------------------------------------------------------
    - OFF %   : lancers de ce joueur non attrapés / ses lancers identifiés
+               + ses fautes directes attribuées (STAT-1 : un lancer raté)
    - Fautes  : fautes directes attribuées à ce joueur
    - +/-     : seuls les joueurs impliqués dans l'action.
                Ballon échappé : +1 aux joueurs sur le terrain de l'équipe
@@ -4364,6 +4419,9 @@ function accumulatePlayerStats(m, slot, acc, nameOf){
   const roster = (m.rosters && m.rosters[slot]) || [];
   const get = id => acc[id] || (acc[id] = {id, name:(nameOf && nameOf(id)) || (roster.find(p=>p.id===id)||{}).name || '?',
                                              throws:0, succ:0, faults:0, plus:0, minus:0, onCourt:0,
+                                             /* STAT-1 : lancers + fautes attribuées (une faute est un lancer raté).
+                                                `throws` et `throws_<sit>` restent sur les lancers seuls (export ancien). */
+                                             throwsF:0, throwsF_arretee:0, throwsF_continue:0,
                                              /* offensive détaillée : un lanceur peut être excellent
                                                 balle en main et beaucoup moins sur relance arrêtée */
                                              throws_arretee:0, succ_arretee:0,
@@ -4377,12 +4435,18 @@ function accumulatePlayerStats(m, slot, acc, nameOf){
       if(d.attacker_player_id){
         const x = get(d.attacker_player_id), reussi = d.result==='échappé';
         x.throws++; if(reussi) x.succ++;
+        x.throwsF++;
         const sit = situationOf(m.history, evIndex);
         x['throws_'+sit]++; if(reussi) x['succ_'+sit]++;
+        x['throwsF_'+sit]++;
       }
       else if(b.lineups && (b.lineups[slot]||[]).length && !isDefIll(d)) unattributed++;   // C20 : une DÉF ILL n'a pas de lanceur
     }
-    if(ev.type==='faute_directe' && mine && d.attacker_player_id) get(d.attacker_player_id).faults++;
+    if(ev.type==='faute_directe' && mine && d.attacker_player_id){
+      const x = get(d.attacker_player_id), sit = situationOfFaute(m.history, evIndex);
+      x.faults++;
+      x.throwsF++; if(sit) x['throwsF_'+sit]++;   // STAT-1 : lancer raté dans l'OFF % du joueur
+    }
     /* +/- : seuls les joueurs IMPLIQUÉS dans l'action bougent.
        - ballon échappé : l'équipe qui a échappé −1, l'équipe qui a lancé +1
          (la troisième équipe gagne son point au pointage, mais pas de +/-) ;
@@ -4422,18 +4486,19 @@ function playerTableHTML(rows, extra, opts){
   ];
   if(o.teamCol) cols.push({key:'team', label:'Équipe', short:'Éq.', cls:'muted', val:r=>S.names[r._team], fmt:r=>escapeHtml(S.names[r._team])});
   cols.push(
-    {key:'throws',  label:'Lancers', short:'Lanc.', val:r=>r.throws},
-    {key:'off',     label:'OFF %',   short:'OFF',   val:r=>pctVal(r.succ, r.throws), strong:true, best:'high',
-     bestMin:5, sample:r=>r.throws, fmt:r=>pctStr(r.succ, r.throws),
-     sub:r=>r.throws ? r.succ+'/'+r.throws : '—'},
+    /* STAT-1 : les lancers du joueur comptent ses fautes attribuées (lancers ratés). */
+    {key:'throws',  label:'Lancers', short:'Lanc.', val:r=>r.throwsF},
+    {key:'off',     label:'OFF %',   short:'OFF',   val:r=>pctVal(r.succ, r.throwsF), strong:true, best:'high',
+     bestMin:5, sample:r=>r.throwsF, fmt:r=>pctStr(r.succ, r.throwsF),
+     sub:r=>r.throwsF ? r.succ+'/'+r.throwsF : '—'},
     {key:'off_arr', label:'OFF arrêtée', short:'OFF arr.', strong:true, best:'high',
-     bestMin:5, sample:r=>r.throws_arretee,
-     val:r=>pctVal(r.succ_arretee, r.throws_arretee), fmt:r=>pctStr(r.succ_arretee, r.throws_arretee),
-     sub:r=>r.throws_arretee ? r.succ_arretee+'/'+r.throws_arretee : '—'},
+     bestMin:5, sample:r=>r.throwsF_arretee,
+     val:r=>pctVal(r.succ_arretee, r.throwsF_arretee), fmt:r=>pctStr(r.succ_arretee, r.throwsF_arretee),
+     sub:r=>r.throwsF_arretee ? r.succ_arretee+'/'+r.throwsF_arretee : '—'},
     {key:'off_cont',label:'OFF continue', short:'OFF cont.', strong:true, best:'high',
-     bestMin:5, sample:r=>r.throws_continue,
-     val:r=>pctVal(r.succ_continue, r.throws_continue), fmt:r=>pctStr(r.succ_continue, r.throws_continue),
-     sub:r=>r.throws_continue ? r.succ_continue+'/'+r.throws_continue : '—'},
+     bestMin:5, sample:r=>r.throwsF_continue,
+     val:r=>pctVal(r.succ_continue, r.throwsF_continue), fmt:r=>pctStr(r.succ_continue, r.throwsF_continue),
+     sub:r=>r.throwsF_continue ? r.succ_continue+'/'+r.throwsF_continue : '—'},
     {key:'faults',  label:'Fautes',  short:'Ftes',  val:r=>r.faults,
      fmt:r=>r.faults ? `<span style="color:var(--red)">${r.faults}</span>` : '0'},
     {key:'pm',      label:'+/-',     val:r=>r._pm, strong:true, best:'high',
@@ -4450,7 +4515,7 @@ function playerTableHTML(rows, extra, opts){
       unknownFaults ? `${unknownFaults} faute${unknownFaults>1?'s':''} sans joueur identifié (« ? »)` : '',
     ].filter(Boolean).map(t=>`<div class="section-sub" style="margin:6px 0 0">${t} — comptés pour l'équipe, pas pour un joueur.</div>`).join(''));
 }
-const PLAYER_STATS_LEGEND = `<details class="legend" ${IS_PHONE?'':'open'}><summary>Comment lire ce tableau</summary><div class="section-sub">OFF = lancers non attrapés, décliné en situation arrêtée et continue · +/- (joueurs sur le terrain) : +1 quand leur équipe marque sur une autre, −1 quand leur équipe échappe le ballon ; une faute directe attribuée = −1 pour ce joueur seulement · Actions = lancers et fautes survenus pendant qu'il jouait.</div></details>`;
+const PLAYER_STATS_LEGEND = `<details class="legend" ${IS_PHONE?'':'open'}><summary>Comment lire ce tableau</summary><div class="section-sub">OFF = lancers non attrapés sur lancers et fautes directes attribuées (une faute est un lancer raté), décliné en situation arrêtée et continue · +/- (joueurs sur le terrain) : +1 quand leur équipe marque sur une autre, −1 quand leur équipe échappe le ballon ; une faute directe attribuée = −1 pour ce joueur seulement · Actions = lancers et fautes survenus pendant qu'il jouait.</div></details>`;
 
 function sectionMatchPlayers(){
   const rows = [], extra = {unattributed:0, teamFaults:0, unknownFaults:0};
@@ -4537,9 +4602,10 @@ function overallCols(g){
    situation dans la forme attendue par overallCols(). */
 function overallCounters(t, o, st, f){
   return {
-    off:{attempts:o.offAttempts, successes:o.offSuccesses},
+    /* STAT-1 : l'OFF des écrans compte aussi les fautes directes (tentatives ratées). */
+    off:{attempts:o.offTentatives, successes:o.offSuccesses},
     def:{attempts:o.defAttempts, successes:o.defSuccesses},
-    off_arretee:st.off_arretee, off_continue:st.off_continue,
+    off_arretee:st.offF_arretee, off_continue:st.offF_continue,
     def_arretee:st.def_arretee, def_continue:st.def_continue,
     faults:f.faults, actions:f.actions, reprises:st.reprises,
   };
@@ -4549,6 +4615,8 @@ function overallCounters(t, o, st, f){
 const SITUATION_LEGEND = `<details class="legend" ${IS_PHONE?'':'open'}><summary>Arrêtée ou continue ?</summary><div class="section-sub">
   <b>Arrêtée</b> : l'équipe repart d'un point fixe sans pouvoir se déplacer — premier ballon du match ou d'une période, après une faute, après une reprise de jeu, et après un ballon échappé.
   <b>Continue</b> : elle vient d'attraper le ballon, elle peut se déplacer et relancer d'où elle veut.</div></details>`;
+/* La définition de l'OFF % des écrans (STAT-1), écrite une seule fois. */
+const OFF_DEFINITION = 'OFF = ballons échappés / (lancers + fautes directes) : une faute directe est une attaque ratée';
 function sectionMatchOverall(){
   const o = computeOverall(), faults = computeFaults(), st = computeSituations(S);
   const rows = ATEAMS().map(t=>({
@@ -4557,7 +4625,7 @@ function sectionMatchOverall(){
   }));
   const ancien = S.history.some(ev=>ev.type==='lancer' && !(ev.details && ev.details.situation));
   return `<div class="section-title">Vue d'ensemble</div>
-    <div class="section-sub">OFF = attaques non attrapées · DÉF = ballons reçus et attrapés · F % = fautes directes / actions offensives.</div>`
+    <div class="section-sub">${OFF_DEFINITION} · DÉF = ballons reçus et attrapés · F % = fautes directes / actions offensives.</div>`
     + SITUATION_LEGEND
     + (ancien ? `<div class="stab-note" style="margin-top:0">Ce match a été enregistré avant le suivi arrêté/continu : la situation est reconstituée à partir de l'enchaînement des actions.</div>` : '')
     + statTable({
@@ -4650,13 +4718,13 @@ function sectionMatchEvolution(){
     });
   });
   return title
-    + `<div class="section-sub">OFF = attaques non attrapées · DÉF = ballons reçus et attrapés, période par période.</div>`
+    + `<div class="section-sub">${OFF_DEFINITION} · DÉF = ballons reçus et attrapés, période par période.</div>`
     + `<div class="evo-card">${evoChartSVG(ev, teams)}${legend}</div>`
     + statTable({
         scope:'match', id:'matchEvolution',
         defaultSort:{key:'per', dir:1},
         rows, cols,
-        note:`${SORT_HINT} Seules les périodes avec au moins un lancer sont listées.`,
+        note:`${SORT_HINT} Seules les périodes avec au moins un lancer ou une faute directe sont listées.`,
       });
 }
 function sectionTeamOverall(agg){
@@ -4664,12 +4732,12 @@ function sectionTeamOverall(agg){
   const row = {_name:agg.teamName, c:{
     off:{attempts:g.offAttempts, successes:g.offSuccesses},
     def:{attempts:g.defAttempts, successes:g.defSuccesses},
-    off_arretee:st.off_arretee, off_continue:st.off_continue,
+    off_arretee:st.off_arretee, off_continue:st.off_continue,   // le cumul d'ensemble compte déjà les fautes (STAT-1)
     def_arretee:st.def_arretee, def_continue:st.def_continue,
     faults:agg.faults, actions:agg.actions, reprises:st.reprises,
   }};
   return `<div class="section-title">Vue d'ensemble</div>
-    <div class="section-sub">Tous matchs et tous adversaires confondus • ${agg.matchesPlayed} match${agg.matchesPlayed>1?'s':''} joué${agg.matchesPlayed>1?'s':''} • ${agg.periodWins} période${agg.periodWins>1?'s':''} gagnée${agg.periodWins>1?'s':''}</div>`
+    <div class="section-sub">Tous matchs et tous adversaires confondus • ${agg.matchesPlayed} match${agg.matchesPlayed>1?'s':''} joué${agg.matchesPlayed>1?'s':''} • ${agg.periodWins} période${agg.periodWins>1?'s':''} gagnée${agg.periodWins>1?'s':''}<br>${OFF_DEFINITION}.</div>`
     + SITUATION_LEGEND
     + statTable({
       scope:'team', id:'teamOverall',
@@ -4759,9 +4827,9 @@ function sectionMatchZones(){
   const o = computeOverall()[matchZoneTeam];
   const table = `<div class="zone-team-row">` + ATEAMS().map(t=>
       `<button class="heat-btn ${matchZoneTeam===t?'active':''} ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="setMatchZoneTeam('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`
-    ).join('') + `</div>` + zonesDualTable('match', 'matchZones', o.offZones, o.defZones, TEAM_INK[matchZoneTeam]);
+    ).join('') + `</div>` + zonesDualTable('match', 'matchZones', o.offZonesF, o.defZones, TEAM_INK[matchZoneTeam]);
   return `<div class="section-title">Zones — vue d'ensemble</div>
-    <div class="section-sub">Toutes attaques confondues, peu importe l'équipe ciblée</div>` +
+    <div class="section-sub">Toutes attaques confondues, peu importe l'équipe ciblée. Une faute directe compte dans la case où elle a été commise (aucune case si sa position est inconnue).</div>` +
     statCols(table, `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`);
 }
 function sectionMatchFaults(){
@@ -4958,7 +5026,7 @@ function zonesDualTable(scope, id, offZ, defZ, accent, note){
        val:r=>pctVal(r.def.successes, r.def.attempts), fmt:r=>pctStr(r.def.successes, r.def.attempts),
        sub:r=>r.def.attempts ? r.def.successes+'/'+r.def.attempts : '—'},
     ],
-    note: note || `${SORT_HINT} OFF = zone d'où part le lancer · DÉF = zone où le ballon arrive.`,
+    note: note || `${SORT_HINT} OFF = zone d'où part le lancer, ou où la faute directe a été commise · DÉF = zone où le ballon arrive.`,
   });
 }
 function openZoneDetail(a,b){
@@ -5342,7 +5410,9 @@ function buildActionRows(){
     ...teams.map(t=>'Sur le terrain — '+nm(t)),
     'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
     /* C28 : colonnes AJOUTÉES en fin de ligne (rien d'existant n'est renommé, retiré ni déplacé) */
-    'ID du match','Date du match','Heure de l’action','Code de faute'];
+    'ID du match','Date du match','Heure de l’action','Code de faute',
+    /* STAT-1 : 1/0 dont la moyenne égale l'OFF % de l'écran (une faute directe vaut 0) */
+    'Réussite offensive (avec fautes)'];
   const rows = S.history.map((ev,i)=>{
     const d = ev.details || {}, b = ev.before || {};
     const lin = b.lineups || {};
@@ -5385,6 +5455,8 @@ function buildActionRows(){
       'Date du match': isoOuVide(S.createdAt),
       'Heure de l’action': typeof ev.at === 'string' ? ev.at : '',
       'Code de faute': d.fault_type || '',
+      'Réussite offensive (avec fautes)': lancer ? (d.result==='échappé' ? 1 : 0)
+        : ((ev.type==='faute_directe' && b.possession && teams.includes(b.possession)) ? 0 : ''),
     };
     teams.forEach(t=>{ row['Score '+nm(t)+' avant'] = (b.scores && b.scores[t] !== undefined) ? b.scores[t] : ''; });
     teams.forEach(t=>{ row['Sur le terrain — '+nm(t)] = est(t); });
@@ -5410,27 +5482,33 @@ function teamSummaryAoa(){
   const o = computeOverall(), f = computeFaults();
   const aoa = [['Équipe','Score final','Périodes gagnées','Attaques','Attaques réussies','Efficacité offensive (%)',
                 'Ballons reçus','Ballons attrapés','Efficacité défensive (%)','Actions offensives','Fautes directes','Fautes (%)',
-                'Défensives illégales']];
+                'Défensives illégales',
+                /* STAT-1 : colonnes neuves, la faute directe compte comme une attaque ratée */
+                'Attaques (avec fautes)','Attaques réussies (avec fautes)','Efficacité offensive (%) (avec fautes)']];
   ATEAMS().forEach(t=>{
     const s = o[t];
     aoa.push([nm(t), S.scores[t], (S.periodWins && S.periodWins[t]) || 0,
       s.offAttempts, s.offSuccesses, pctNum(s.offSuccesses, s.offAttempts),
       s.defAttempts, s.defSuccesses, pctNum(s.defSuccesses, s.defAttempts),
-      f[t].actions, f[t].faults, pctNum(f[t].faults, f[t].actions), f[t].defIll]);
+      f[t].actions, f[t].faults, pctNum(f[t].faults, f[t].actions), f[t].defIll,
+      s.offTentatives, s.offSuccesses, pctNum(s.offSuccesses, s.offTentatives)]);
   });
   return aoa;
 }
 function zoneAoa(){
   const o = computeOverall();
-  const aoa = [['Équipe','Côté','Zone','Tentatives','Réussites','Efficacité (%)']];
+  const aoa = [['Équipe','Côté','Zone','Tentatives','Réussites','Efficacité (%)',
+                'Tentatives (avec fautes)','Réussites (avec fautes)','Efficacité (%) (avec fautes)']];
   ATEAMS().forEach(t=>{
     ZONES.forEach(z=>{
-      const s = o[t].offZones[z];
-      aoa.push([nm(t), 'Offensive', ZONE_LABEL[z], s.attempts, s.successes, pctNum(s.successes, s.attempts)]);
+      const s = o[t].offZones[z], sf = o[t].offZonesF[z];
+      aoa.push([nm(t), 'Offensive', ZONE_LABEL[z], s.attempts, s.successes, pctNum(s.successes, s.attempts),
+        sf.attempts, sf.successes, pctNum(sf.successes, sf.attempts)]);
     });
-    ZONES.forEach(z=>{
+    ZONES.forEach(z=>{   // DÉF inchangée : les colonnes neuves répètent les anciennes
       const s = o[t].defZones[z];
-      aoa.push([nm(t), 'Défensive', ZONE_LABEL[z], s.attempts, s.successes, pctNum(s.successes, s.attempts)]);
+      aoa.push([nm(t), 'Défensive', ZONE_LABEL[z], s.attempts, s.successes, pctNum(s.successes, s.attempts),
+        s.attempts, s.successes, pctNum(s.successes, s.attempts)]);
     });
   });
   return aoa;
@@ -5439,7 +5517,11 @@ function playerAoa(){
   const aoa = [['Équipe','Joueur','Lancers','Lancers réussis','Efficacité offensive (%)',
                 'Lancers arrêtés','Réussis arrêtés','Efficacité arrêtée (%)',
                 'Lancers continus','Réussis continus','Efficacité continue (%)',
-                'Fautes directes','Plus','Moins','+/-','Actions sur le terrain']];
+                'Fautes directes','Plus','Moins','+/-','Actions sur le terrain',
+                /* STAT-1 : une faute attribuée est un lancer raté */
+                'Lancers (avec fautes)','Lancers réussis (avec fautes)','Efficacité offensive (%) (avec fautes)',
+                'Lancers arrêtés (avec fautes)','Réussis arrêtés (avec fautes)','Efficacité arrêtée (%) (avec fautes)',
+                'Lancers continus (avec fautes)','Réussis continus (avec fautes)','Efficacité continue (%) (avec fautes)']];
   let any = false;
   ATEAMS().forEach(t=>{
     const acc = {};
@@ -5449,19 +5531,24 @@ function playerAoa(){
       aoa.push([nm(t), x.name, x.throws, x.succ, pctNum(x.succ, x.throws),
         x.throws_arretee, x.succ_arretee, pctNum(x.succ_arretee, x.throws_arretee),
         x.throws_continue, x.succ_continue, pctNum(x.succ_continue, x.throws_continue),
-        x.faults, x.plus, x.minus, x.plus-x.minus, x.onCourt]);
+        x.faults, x.plus, x.minus, x.plus-x.minus, x.onCourt,
+        x.throwsF, x.succ, pctNum(x.succ, x.throwsF),
+        x.throwsF_arretee, x.succ_arretee, pctNum(x.succ_arretee, x.throwsF_arretee),
+        x.throwsF_continue, x.succ_continue, pctNum(x.succ_continue, x.throwsF_continue)]);
     });
   });
   return any ? aoa : null;
 }
 function situationAoa(){
   const st = computeSituations(S);
-  const aoa = [['Équipe','Côté','Situation','Tentatives','Réussites','Efficacité (%)']];
+  const aoa = [['Équipe','Côté','Situation','Tentatives','Réussites','Efficacité (%)',
+                'Tentatives (avec fautes)','Réussites (avec fautes)','Efficacité (%) (avec fautes)']];
   ATEAMS().forEach(t=>{
     [['Offensive','off'],['Défensive','def']].forEach(([cote, pre])=>{
       SITUATIONS.forEach(x=>{
-        const c = st[t][pre+'_'+x.id];
-        aoa.push([nm(t), cote, x.label, c.attempts, c.successes, pctNum(c.successes, c.attempts)]);
+        const c = st[t][pre+'_'+x.id], cf = pre==='off' ? st[t]['offF_'+x.id] : c;   // STAT-1 : DÉF inchangée
+        aoa.push([nm(t), cote, x.label, c.attempts, c.successes, pctNum(c.successes, c.attempts),
+          cf.attempts, cf.successes, pctNum(cf.successes, cf.attempts)]);
       });
     });
   });
@@ -5884,6 +5971,11 @@ function computeTeamAggregate(teamId){
         if(ft in faultTypes) faultTypes[ft]++;
         const pos = ev.details && ev.details.position_norm;
         if(pos) faultZones[classifyZone(pos[0], pos[1])]++;
+        /* STAT-1 : la faute est une attaque ratée dans les TOTAUX (arrêtée/continue
+           d'ensemble, case de sa position) ; jamais dans un adversaire (h2h, situations[key]). */
+        const sitF = situationOfFaute(m.history, evIndex);
+        if(sitF) situationTotal['off_'+sitF].attempts++;
+        if(pos) zoneOff[classifyZone(pos[0], pos[1])].attempts++;
       }
     });
   });
@@ -5958,7 +6050,9 @@ function teamGlobals(agg){
     const o = agg.h2h[k];
     oa+=o.offAttempts; os+=o.offSuccesses; da+=o.defAttempts; ds+=o.defSuccesses;
   });
-  return {offAttempts:oa, offSuccesses:os, defAttempts:da, defSuccesses:ds};
+  /* STAT-1 : les fautes directes sont des tentatives offensives sans réussite ; elles n'ont pas
+     d'adversaire, donc elles s'ajoutent ici et non dans h2h. */
+  return {offAttempts:oa + (agg.faults||0), offSuccesses:os, defAttempts:da, defSuccesses:ds};
 }
 
 /* ---------- Sections : cumul d'UNE équipe (tous ses matchs) ---------- */

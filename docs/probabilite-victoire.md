@@ -10,6 +10,8 @@ Interface : `params(history, teams)` estime les paramètres depuis l'historique 
 
 Règles reprises de l'app (`awardFaultPoints`, `checkPeriodState`, `finishPeriod`) : faute directe = +1 à chaque autre équipe en jeu, le fautif garde le ballon ; ballon échappé = +1 à toutes les équipes en jeu sauf la cible, qui prend le ballon ; ballon attrapé = aucun point ; élimination de la plus basse au seuil ; fin de période au seuil ; ballon à l'éliminée (ou au perdant du duel) à la période suivante. Une DÉF ILL est un ballon échappé pour le moteur.
 
+Le moteur recalcule ses paramètres depuis l'historique et ne lit pas les totaux des écrans : il garde « P(faute) » et « P(échappé | lancer) » séparés, si bien que le changement de l'OFF % des statistiques (la faute dans le total de lancers, D85) ne le touche pas et qu'il ne faut pas y ajouter les fautes (elles seraient comptées deux fois).
+
 Paramètres estimés : fenêtre des 35 dernières actions offensives de l'équipe ; probabilité de faute lissée vers 5 % ; pourcentage offensif lissé vers la moyenne du match (poids 6, 0,35 sans aucun lancer) ; détail par cible lissé vers le pourcentage offensif de l'équipe. `confidence` (0 à 1) dit combien d'actions nourrissent l'estimation.
 
 ### Hypothèses sans référence
