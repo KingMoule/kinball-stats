@@ -330,6 +330,22 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .evo-leg-btn{background:none; border:1px solid var(--line); border-radius:999px; padding:6px 12px; min-height:36px; color:inherit; font:inherit; cursor:pointer;}
 .evo-leg-btn.on{border-color:var(--ink); color:var(--ink);}
 .evo-leg-btn.dim,.evo-leg-item.dim{opacity:.45;}
+.evo-per{cursor:pointer; outline:none;}
+.evo-per:focus-visible text{fill:var(--bleu-ink);}
+.stab td.per-cell{cursor:pointer;}
+.stab td.per-cell .per-lab{font-weight:700;}
+.stab td.per-cell .per-sub{display:block; font-size:11px; font-weight:600; max-width:12ch; overflow:hidden; text-overflow:ellipsis; opacity:.9;}
+.stab td.per-cell .per-none{color:var(--dim); font-weight:500;}
+.stab td.per-win.is-noir{box-shadow:inset 0 0 0 2px rgba(255,255,255,.55);}
+.ps-list{max-height:55vh; overflow-y:auto;}
+.ps-row{display:flex; align-items:center; gap:10px; padding:10px 2px; border-top:1px solid var(--line); min-height:44px;}
+.ps-row:first-child{border-top:none;}
+.ps-names{flex:1; min-width:0; overflow-wrap:anywhere; font-size:15px; font-weight:600;}
+.ps-score{display:inline-flex; gap:10px; font-size:14px; color:var(--dim); font-variant-numeric:tabular-nums;}
+.ps-sc{display:inline-flex; align-items:center; gap:4px;}
+.ps-sc .team-swatch{width:9px; height:9px;}
+.phone .ps-names{font-size:14px;}
+.phone .ps-score{gap:6px; font-size:13px;}
 .phone .evo-card{padding:8px 6px 6px;}
 .phone .evo-legend{font-size:12px; gap:4px 12px;}
 .zone-team-row{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 4px;}
@@ -4099,6 +4115,41 @@ function computeOffDefByPeriod(match){
   res.periods = Object.keys(seen).map(Number).sort((x,y)=>x-y);
   return res;
 }
+/* STAT-3 : gagnant de chaque période, DÉRIVÉ DE L'HISTORIQUE (rien de stocké, aucun champ ajouté à S).
+   Une fin de période décidée à la main porte son vainqueur (fin_periode, details.winner, ou null). Une fin
+   automatique (seuil) ne laisse aucun événement : le score du seuil étant déjà compté dans periodWins, on lit
+   qui a gagné une période en comparant les victoires de période (before.periodWins) du premier événement de
+   cette période et de la suivante (ou celles du match pour la dernière période). Même résultat qu'un rejeu
+   des scores, sans refaire les règles de checkPeriodState. Un ancien match sans before.periodWins : aucun
+   gagnant (« Sans vainqueur » / « En cours »), jamais d'erreur.
+   Retourne {période:{winner:équipe|null, etat:'gagnee'|'cours'|'sans'}} pour chaque période de l'historique. */
+function periodWinners(match){
+  const m = match || S, teams = matchTeams(m), hist = m.history || [];
+  const first = {}, manual = {};
+  hist.forEach(ev=>{
+    const b = ev && ev.before;
+    if(!b || b.period === undefined || b.period === null) return;
+    if(!(b.period in first)) first[b.period] = b.periodWins || null;
+    if(ev.type === 'fin_periode') manual[b.period] = (ev.details && ev.details.winner) || null;
+  });
+  const pers = Object.keys(first).map(Number).sort((x,y)=>x-y);
+  const last = pers[pers.length-1], out = {};
+  pers.forEach((p,i)=>{
+    let winner = null;
+    if(p in manual){
+      winner = teams.includes(manual[p]) ? manual[p] : null;
+    } else {
+      const start = first[p];
+      const end = (i+1 < pers.length) ? (pers[i+1] === p+1 ? first[pers[i+1]] : null) : (m.periodWins || null);
+      if(start && end){
+        const gagn = teams.filter(t=>(end[t]||0) - (start[t]||0) > 0);
+        if(gagn.length === 1) winner = gagn[0];
+      }
+    }
+    out[p] = {winner, etat: winner ? 'gagnee' : ((p === last && m.status === 'in_progress' && !(p in manual)) ? 'cours' : 'sans')};
+  });
+  return out;
+}
 function pctStr(succ, att){ return att ? Math.round(100*succ/att)+'%' : '—'; }
 
 /* ==========================================================
@@ -4206,7 +4257,9 @@ function statTable(o){
          aucun défilement horizontal qui n'existait pas avant), et le chiffre
          est exactement sous la valeur qu'il explique. */
       const detail = (showDetails && c.sub) ? `<small class="cell-sub">${c.sub(r)}</small>` : '';
-      return `<td class="${cls}">${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : (typeof v === 'string' ? escapeHtml(v) : v))}${detail}</td>`;
+      const extra = c.tdAttrs ? c.tdAttrs(r) : '';   // STAT-3 : classe, style, titre ou geste propres à la cellule (déjà échappés)
+      if(extra && extra.cls) cls += ' ' + extra.cls;
+      return `<td class="${cls}"${extra && extra.attrs ? ' ' + extra.attrs : ''}>${c.fmt ? c.fmt(r) : (v === null || v === undefined ? '—' : (typeof v === 'string' ? escapeHtml(v) : v))}${detail}</td>`;
     }).join('');
     return `<tr class="${r._click?'clickable':''}" ${r._click?`onclick="${r._click}"`:''}>${tds}</tr>`;
   }).join('');
@@ -4668,8 +4721,8 @@ function evoPickTeam(t){
   if(statsRerender) statsRerender();
 }
 function setEvoShowF(on){ evoShowF = !!on; if(statsRerender) statsRerender(); }
-function evoChartSVG(ev, teams, showF){
-  const W=IS_PHONE?360:640, H=IS_PHONE?270:300, L=40, R=IS_PHONE?12:16, T=14, B=32, iw=W-L-R, ih=H-T-B;
+function evoChartSVG(ev, teams, showF, win){
+  const W=IS_PHONE?360:640, H=IS_PHONE?290:320, L=40, R=IS_PHONE?12:16, T=14, B=52, iw=W-L-R, ih=H-T-B;
   const P = ev.periods, n = P.length;
   const X = i => n===1 ? L+iw/2 : L+iw*i/(n-1);
   const Y = v => T+ih*(1-v/100);
@@ -4678,8 +4731,20 @@ function evoChartSVG(ev, teams, showF){
     g += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="${v===0?1.5:1}"/>`
        + `<text x="${L-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--dim)">${v}%</text>`;
   });
+  /* STAT-3 : bande de fond pâle pour chaque période gagnée (couleur du vainqueur réel, même si ses courbes ne
+     sont pas toutes tracées). Noir : gris foncé pâle avec contour, jamais un aplat blanc (D87). Sous les courbes. */
+  if(win) P.forEach((p,i)=>{
+    const w = win[p]; if(!w || !w.winner) return;
+    const step = n===1 ? iw : iw/(n-1);
+    const x0 = Math.max(L, X(i)-step/2), x1 = Math.min(W-R, X(i)+step/2), t = w.winner;
+    const look = t==='Noir' ? 'fill="#3A3F4B" fill-opacity=".55" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="1"' : `fill="${TEAM_INK[t]}" fill-opacity=".16"`;
+    g += `<rect class="evo-band" data-per="${p}" data-team="${escapeHtml(t)}" x="${x0.toFixed(1)}" y="${T}" width="${(x1-x0).toFixed(1)}" height="${ih}" ${look}><title>Période ${p} gagnée par ${escapeHtml(S.names[t]||t)}</title></rect>`;
+  });
   P.forEach((p,i)=>{
-    g += `<text x="${X(i)}" y="${H-10}" text-anchor="middle" font-size="12" fill="var(--dim)">P${p}</text>`;
+    /* STAT-3 : l'étiquette ouvre les changements de joueur de la période ; zone tactile de 48 px de haut. */
+    g += `<g class="evo-per" role="button" tabindex="0" data-per="${p}" aria-label="Changements de joueur, période ${p}" onclick="openPeriodSubs(${Number(p)})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPeriodSubs(${Number(p)})}">`
+       + `<rect x="${(X(i)-28).toFixed(1)}" y="${T+ih+2}" width="56" height="${B-4}" fill="transparent"/>`
+       + `<text x="${X(i)}" y="${T+ih+24}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)" text-decoration="underline">P${p}</text></g>`;
   });
   const kinds = showF ? ['off','def','f'] : ['off','def'];
   teams.forEach(t=>{
@@ -4719,11 +4784,30 @@ function evoChartSVG(ev, teams, showF){
   return `<svg class="evo-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution du pourcentage offensif, défensif et de fautes par période">${g}</svg>`;
 }
 /* Le bloc « Par période » : titre, interrupteur et case, graphique, tableau. */
+/* STAT-3 : feuille des changements de joueur d'une période, toutes équipes confondues, dans l'ordre de saisie,
+   avec le score avant l'événement. Lecture seule : ne touche ni à l'historique ni à S. */
+function openPeriodSubs(p){
+  p = Number(p);
+  const teams = ATEAMS();
+  const evs = (S.history || []).filter(ev=>ev && ev.type==='changement' && ev.before && ev.before.period === p && ev.details);
+  const nom = (t,id,rep)=> playerName(t,id) || rep || '?';
+  const rows = evs.map(ev=>{
+    const d = ev.details, t = d.team, sc = ev.before.scores || {};
+    const score = teams.map(x=>`<span class="ps-sc" title="${escapeHtml(S.names[x]||x)}">${swatchHTML(TEAM_BG[x])}<b>${Number(sc[x])||0}</b></span>`).join('');
+    return `<div class="ps-row" data-team="${escapeHtml(t)}"><span class="ps-team" title="${escapeHtml(S.names[t]||t)}">${swatchHTML(TEAM_BG[t])}</span>`
+      + `<span class="ps-names">${escapeHtml(nom(t, d.player_out_id, d.player_out_name))} → ${escapeHtml(nom(t, d.player_in_id, d.player_in_name))}</span>`
+      + `<span class="ps-score">${score}</span></div>`;
+  }).join('');
+  openSheet(`<div class="sheet-title">PÉRIODE ${p} — CHANGEMENTS DE JOUEUR</div>`
+    + (rows ? `<div class="ps-list">${rows}</div>` : `<div class="empty" style="padding:4px 0 12px">Aucun changement de joueur dans cette période.</div>`)
+    + `<button class="ghost-btn" style="width:100%; margin-top:14px" onclick="closeSheet()">Fermer</button>`, true);
+}
 function sectionMatchEvolution(){
   const title = `<div class="section-title" style="margin-top:22px">Par période</div>`;
   const teams = ATEAMS();
   const ev = computeOffDefByPeriod(S);
   if(!S.history.length || !ev.periods.length) return '';   // la Vue d'ensemble dit déjà « aucune action »
+  const win = periodWinners(S);
   const drawn = (evoOneTeam && evoFocus && teams.includes(evoFocus)) ? [evoFocus] : teams;
   const legTeams = teams.map(t=>{
     const sw = `<span class="evo-sw big" style="background:${TEAM_INK[t]}"></span>${escapeHtml(S.names[t])}`;
@@ -4748,7 +4832,24 @@ function sectionMatchEvolution(){
     const c = ev.teams[t][r.p]; if(!c) return {att:0, succ:0};
     return k==='f' ? {att:c.offAtt, succ:c.fautes||0} : {att:c[k+'Att'], succ:c[k+'Succ']};
   };
-  const cols = [{key:'per', label:'Période', short:'Pér.', val:r=>r.p, fmt:r=>'P'+r.p}];
+  /* STAT-3 : la cellule de période prend la couleur du vainqueur (le nom reste écrit : la couleur ne porte pas seule
+     l'information) et ouvre les changements de joueur ; « En cours » / « Sans vainqueur » sans couleur. */
+  const perCell = r=>{
+    const w = win[r.p] || {winner:null, etat:'sans'};
+    if(w.winner){
+      const nm = S.names[w.winner] || w.winner;
+      return `<span class="per-lab">P${r.p}</span><small class="per-sub">${escapeHtml(nm)}</small>`;
+    }
+    return `<span class="per-lab">P${r.p}</span><small class="per-sub per-none">${w.etat==='cours' ? 'En cours' : 'Sans vainqueur'}</small>`;
+  };
+  const perAttrs = r=>{
+    const w = win[r.p] || {winner:null, etat:'sans'}, t = w.winner;
+    const lib = t ? `Période ${r.p} gagnée par ${S.names[t] || t}` : (w.etat==='cours' ? `Période ${r.p} en cours` : `Période ${r.p} sans vainqueur`);
+    const col = t ? ` style="background:${TEAM_BG[t]}; color:${t==='Gris' ? '#0B1220' : '#fff'}"` : '';
+    return {cls:'per-cell' + (t ? ' per-win ' + isNoir(t) : ''),
+      attrs:`title="${escapeHtml(lib)}. Touchez pour les changements de joueur." data-per="${r.p}"${t ? ` data-winner="${escapeHtml(t)}"` : ''} onclick="openPeriodSubs(${Number(r.p)})"${col}`};
+  };
+  const cols = [{key:'per', label:'Période', short:'Pér.', val:r=>r.p, fmt:perCell, tdAttrs:perAttrs}];
   teams.forEach(t=>{
     ['off','def','f'].forEach(k=>{
       const lab = (k==='off'?'OFF':k==='def'?'DÉF':'F %');
@@ -4763,12 +4864,12 @@ function sectionMatchEvolution(){
   });
   return title
     + `<div class="section-sub">${OFF_DEFINITION} · DÉF = ballons reçus et attrapés · F % = fautes directes / (lancers + fautes directes), période par période.</div>`
-    + `<div class="evo-card">${controls}${evoChartSVG(ev, drawn, evoShowF)}${legend}</div>`
+    + `<div class="evo-card">${controls}${evoChartSVG(ev, drawn, evoShowF, win)}${legend}</div>`
     + statTable({
         scope:'match', id:'matchEvolution',
         defaultSort:{key:'per', dir:1},
         rows, cols,
-        note:`${SORT_HINT} Seules les périodes avec au moins un lancer ou une faute directe sont listées.`,
+        note:`${SORT_HINT} Seules les périodes avec au moins un lancer ou une faute directe sont listées. La cellule de période porte la couleur de l'équipe qui l'a gagnée ; touchez-la (ou P# sous le graphique) pour les changements de joueur.`,
       });
 }
 function sectionTeamOverall(agg){

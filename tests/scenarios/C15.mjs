@@ -89,6 +89,43 @@ export default async function ({ gabarit, check }) {
       await app.ev(() => toggleDetails());
       assert(app.errors.length === 0, app.errors.join(' | '));
     });
+    await check(`${P} · STAT-3 : gagnant dérivé de l'historique = S.periodWins ; bandes, cellules colorées ; S inchangé`, async () => {
+      /* le match à trois périodes de la 1re vérification est encore là (seuil 9/11, élimination) */
+      const d = await app.ev(() => {
+        const w = periodWinners(S), cnt = {}; ATEAMS().forEach(t => cnt[t] = 0);
+        const pers = computeOffDefByPeriod().periods;
+        Object.keys(w).forEach(p => { if (w[p].winner) cnt[w[p].winner]++; });
+        return { w, cnt, wins: JSON.parse(JSON.stringify(S.periodWins)), pers, periodeCourante: S.period, nHistFin: S.history.filter(e => e.type === 'fin_periode').length };
+      });
+      assert(d.pers.length >= 3 && d.nHistFin === 0, 'au moins 3 périodes, toutes sur seuil (aucun fin_periode)');
+      for (const t of Object.keys(d.cnt)) eq(d.cnt[t], d.wins[t], `victoires de ${t} rejouées = S.periodWins`);
+      await app.openStatsTab('overall');
+      const s0 = await app.ev(() => JSON.stringify(S));
+      await app.backToMatch(); await app.openStatsTab('overall');
+      const r = await app.ev(() => {
+        const bands = [...document.querySelectorAll('.evo-band')].map(b => ({ p: Number(b.dataset.per), t: b.dataset.team, op: b.getAttribute('fill-opacity') }));
+        const cells = [...document.querySelectorAll('.per-cell')].map(c => ({ p: Number(c.dataset.per), t: c.dataset.winner || null, bg: c.style.background, txt: c.textContent.trim() }));
+        return { bands, cells, w: periodWinners(S), s: JSON.stringify(S), noms: S.names };
+      });
+      assert(r.s === s0, 'JSON de S identique avant / après ouverture des stats');
+      const gagnees = Object.keys(r.w).filter(p => r.w[p].winner);
+      eq(r.bands.length, gagnees.length, 'une bande par période gagnée');
+      for (const b of r.bands) { eq(b.t, r.w[b.p].winner, 'bande P' + b.p); assert(Number(b.op) < .6, 'bande pâle'); }
+      eq(r.cells.length, d.pers.length, 'une cellule de période par ligne');
+      for (const c of r.cells) {
+        eq(c.t, r.w[c.p].winner, 'cellule P' + c.p);
+        if (c.t) assert(c.txt.includes(r.noms[c.t]), 'le nom du gagnant reste écrit : ' + c.txt);
+        else assert(/En cours|Sans vainqueur/.test(c.txt), 'texte discret : ' + c.txt);
+      }
+      /* contrôle négatif : sans la dérivation, plus aucune bande ni cellule de gagnant */
+      const sans = await app.ev(() => {
+        const vrai = periodWinners; periodWinners = () => ({});
+        const el = document.createElement('div'); el.innerHTML = sectionMatchEvolution(); periodWinners = vrai;
+        return { bandes: el.querySelectorAll('.evo-band').length, gagnants: el.querySelectorAll('[data-winner]').length };
+      });
+      eq([sans.bandes, sans.gagnants], [0, 0], 'dérivation retirée : plus de bande ni de cellule gagnante');
+      assert(app.errors.length === 0, app.errors.join(' | '));
+    });
     await check(`${P} · plus d'onglet « Par période » (match ni cumul), calcul disponible sur une copie (archive)`, async () => {
       const r = await app.ev(() => ({ t: STAT_SECTIONS.some(s => s.team && s.id === 'periodes'), mm: STAT_SECTIONS.some(s => s.match && s.id === 'periodes'), tout: STAT_SECTIONS.some(s => s.id === 'periodes'),
         bouton: !!document.querySelector('.stat-tab[onclick*="periodes"]'),
@@ -111,7 +148,7 @@ export default async function ({ gabarit, check }) {
         const out = [];
         ATEAMS().forEach(tm => {
           const i = th.findIndex(o => o.includes(`'f_${tm}'`)); if (i < 0) { out.push(null); return; }
-          tr.forEach(row => { const p = Number(row.children[0].textContent.trim().slice(1)), c = ev.teams[tm][p]; out.push({ att: c ? c.offAtt : 0, f: c ? c.fautes : 0, txt: row.children[i].textContent.trim() }); });   // le tri en cours peut changer l'ordre des lignes
+          tr.forEach(row => { const p = Number(row.children[0].textContent.trim().match(/^P(\d+)/)[1]), c = ev.teams[tm][p]; out.push({ att: c ? c.offAtt : 0, f: c ? c.fautes : 0, txt: row.children[i].textContent.trim() }); });   // le tri en cours peut changer l'ordre des lignes
         });
         return out;
       });
@@ -204,6 +241,90 @@ export default async function ({ gabarit, check }) {
       assert(ow.page <= 0 && ow.wrap <= 0, `3 équipes : débordement horizontal ${JSON.stringify(ow)}`);
       await app.shot(`${TMP}/C15-${gabarit}-noir.png`);
       assert(app.errors.length === 0, app.errors.join(' | '));
+    });
+    await check(`${P} · STAT-3 : fins manuelles (vainqueur / sans vainqueur), période en cours, feuille des changements, noms spéciaux`, async () => {
+      const SP = `<b>"'&`, JP = `<i>"x"&'`;
+      await app.startMatch({ format: '9_11', withRosters: true, names: { Gris: SP } });
+      await app.ev((jp) => { S.rosters.Bleu[4].name = jp; }, JP);
+      await app.initialPossession('Bleu');
+      const sub = async (team, out, inn) => { await app.ev(([t, o, i]) => { openLineupSheet(t); applySub(t, o, i); closeLineupSheet(); }, [team, out, inn]); };
+      const cible = () => app.ev(() => ATEAMS().find(t => t !== S.possession));
+      const fin = async (call) => { await app.ev(() => openFinishMenu()); await app.clickSheet(call); await app.settle(); };
+      await app.lancer({ target: 'Gris', caught: true });
+      await sub('Bleu', 'Bleu_p1', 'Bleu_p5');
+      await app.lancer({ target: 'Noir', caught: true });
+      await sub('Gris', 'Gris_p2', 'Gris_p5');
+      await fin("endPeriodManually('Gris')");
+      await app.tick(1700); await app.settle();
+      await app.lancer({ target: await cible(), caught: true });
+      await sub('Noir', 'Noir_p3', 'Noir_p5');
+      await fin("endPeriodManually('')");
+      await app.tick(1700); await app.settle();
+      await app.lancer({ target: await cible(), caught: true });
+      const h0 = await app.ev(() => JSON.stringify(S.history));
+      await app.openStatsTab('overall');
+      const r = await app.ev(() => ({ w: periodWinners(S), pers: computeOffDefByPeriod().periods,
+        bands: [...document.querySelectorAll('.evo-band')].map(b => ({ p: Number(b.dataset.per), t: b.dataset.team, titre: b.querySelector('title').textContent })),
+        cells: [...document.querySelectorAll('.per-cell')].map(c => ({ p: Number(c.dataset.per), t: c.dataset.winner || null, txt: c.textContent.trim(), titre: c.getAttribute('title') })),
+        injecte: [...document.querySelectorAll('#statsBody b, #statsBody i')].filter(e => e.textContent.includes('"') || e.querySelector('*')).length + document.querySelectorAll('#statsBody i').length, ow: document.documentElement.scrollWidth - innerWidth }));
+      eq(r.pers, [1, 2, 3], 'trois périodes');
+      eq([r.w[1].winner, r.w[1].etat, r.w[2].winner, r.w[2].etat, r.w[3].winner, r.w[3].etat], ['Gris', 'gagnee', null, 'sans', null, 'cours'], 'états dérivés');
+      eq(r.bands.length, 1, 'une seule bande (P1)'); eq([r.bands[0].p, r.bands[0].t, r.bands[0].titre], [1, 'Gris', 'Période 1 gagnée par ' + SP], 'bande + bulle littérale');
+      r.cells.sort((x, y) => x.p - y.p);   // le tri du tableau peut inverser l'ordre des lignes
+      eq(r.cells.map(c => c.t), ['Gris', null, null], 'cellules');
+      assert(r.cells[0].txt.includes(SP) && r.cells[0].titre.includes(SP), 'nom spécial lisible dans la cellule et le titre');
+      assert(/Sans vainqueur/.test(r.cells[1].txt) && /En cours/.test(r.cells[2].txt), 'textes discrets : ' + r.cells.map(c => c.txt).join(' / '));
+      eq(r.injecte, 0, 'aucun HTML injecté (b, i) dans les stats'); assert(r.ow <= 0, 'pas de débordement horizontal');
+      /* « Une équipe seulement » : la bande reste */
+      await app.ev(() => document.getElementById('evoOneTeam').click());
+      await app.ev(() => document.querySelector('.evo-leg-btn[data-team="Bleu"]').click());
+      eq(await app.ev(() => [...document.querySelectorAll('.evo-band')].map(b => b.dataset.team)), ['Gris'], 'bande du vainqueur conservée, courbes d\'une seule équipe');
+      await app.ev(() => document.getElementById('evoOneTeam').click());
+      /* zone tactile de l'étiquette P# : au moins 44 px de haut */
+      const h = await app.ev(() => { const g = document.querySelector('.evo-per[data-per="1"]'); return g.querySelector('rect').getBoundingClientRect().height; });
+      assert(h >= 44, 'zone tactile P# : ' + h + ' px');
+      await app.shot(`${TMP}/C15-${gabarit}-bandes.png`);
+      /* feuille depuis l'étiquette P1 : deux changements, dans l'ordre, avec le score */
+      await app.page.locator('.evo-per[data-per="1"]').click();
+      const f1 = await app.ev(() => ({ open: document.getElementById('sheet').classList.contains('open'),
+        rows: [...document.querySelectorAll('#sheet .ps-row')].map(x => ({ t: x.dataset.team, noms: x.querySelector('.ps-names').textContent, sc: [...x.querySelectorAll('.ps-sc b')].map(b => b.textContent) })),
+        inj: document.querySelectorAll('#sheet i').length + [...document.querySelectorAll('#sheet b')].filter(e => e.textContent.includes('"')).length, ow: document.documentElement.scrollWidth - innerWidth }));
+      assert(f1.open, 'feuille ouverte');
+      eq(f1.rows.map(x => x.t), ['Bleu', 'Gris'], 'ordre de saisie, toutes équipes');
+      eq(f1.rows[0].noms, `Bleu joueur 1 → ${JP}`, 'sortant → entrant (littéral)');
+      eq(f1.rows[0].sc.length, 3, 'score de chaque équipe'); assert(f1.rows[0].sc.every(v => /^\d+$/.test(v)), 'scores numériques');
+      eq(f1.rows[1].noms, `${'Gris joueur 2'} → Gris joueur 5`, 'second changement'); eq(f1.inj, 0, 'rien d\'injecté dans la feuille');
+      assert(f1.ow <= 0, 'feuille : pas de débordement horizontal');
+      await app.shot(`${TMP}/C15-${gabarit}-feuille.png`);
+      await app.clickSheet('closeSheet()'); await app.settle();
+      assert(!(await app.sheetOpen()), 'feuille fermée');
+      /* cellule du tableau P2 : un changement ; P3 : message */
+      await app.page.locator('.per-cell[data-per="2"]').click();
+      eq(await app.ev(() => [...document.querySelectorAll('#sheet .ps-row')].map(x => x.dataset.team)), ['Noir'], 'P2 : le changement de Noir');
+      await app.clickSheet('closeSheet()'); await app.settle();
+      await app.page.locator('.per-cell[data-per="3"]').click();
+      assert(await app.ev(() => /Aucun changement de joueur dans cette période\./.test(document.getElementById('sheet').textContent)), 'P3 : message');
+      await app.clickSheet('closeSheet()'); await app.settle();
+      eq(await app.ev(() => JSON.stringify(S.history)), h0, 'aucune écriture dans l\'historique');
+      assert(app.errors.length === 0, app.errors.join(' | '));
+    });
+    await check(`${P} · STAT-3 : ancien match (sans fin_periode, alignements ni periodWins) : s'ouvre sans erreur, S inchangé`, async () => {
+      const r = await app.ev(() => {
+        const copie = JSON.parse(JSON.stringify(S));
+        copie.history = copie.history.filter(e => e.type !== 'fin_periode' && e.type !== 'changement' && e.type !== 'alignement');
+        copie.history.forEach(e => { if (e.before) { delete e.before.lineups; delete e.before.periodWins; } });
+        delete copie.startingLineups;
+        const w = periodWinners(copie);
+        const bak = S; S = copie;
+        let html = '', err = null;
+        try { html = sectionMatchEvolution(); } catch (e) { err = String(e); }
+        const j0 = JSON.stringify(S); try { openPeriodSubs(1); closeSheet(); } catch (e) { err = String(e); }
+        S = bak;
+        return { err, w, html: html.length, bandes: (html.match(/evo-band/g) || []).length, cours: /En cours|Sans vainqueur/.test(html) };
+      });
+      assert(!r.err, r.err); assert(r.html > 0 && r.bandes === 0 && r.cours, 'rendu sûr, aucune bande : ' + JSON.stringify(r.w));
+      assert(app.errors.length === 0, app.errors.join(' | '));
+      await app.backToMatch();
     });
     await check(`${P} · duel (2 équipes) : 4 courbes max, une seule période : points sans trait`, async () => {
       await app.startMatch({ format: 'duel11' }); await app.initialPossession('Bleu');
