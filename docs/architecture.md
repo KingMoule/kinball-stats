@@ -33,7 +33,7 @@ En plus des invariants de `CLAUDE.md` :
 
 - `TEAMS` (Bleu, Gris, Noir) sert au stockage : un match a toujours trois emplacements, même en duel. `ATEAMS()` (ou `matchTeams(m)` pour un match archivé) donne les équipes réellement en jeu : c'est elle qu'on utilise pour le jeu et les statistiques.
 - Le rendu ne déclenche jamais `save()`. `renderScoreboard()` appelle `wpSync()` en dernière ligne, sous `try`, sans jamais rien écrire dans `S`.
-- Un réglage d'affichage vit dans une variable de module ou dans `localStorage` (par exemple `kinball.saisie`), pas dans `S`. Les anciens champs `heatTeam`, `heatMode`, `heatSituation`, `heatView` et `sheetDismissable` sont encore dans `S` par héritage : n'en ajouter aucun.
+- Un réglage d'affichage vit dans une variable de module ou dans `localStorage` (par exemple `kinball.saisie`), pas dans `S`. Depuis R16 (D90), `heatTeam`, `heatMode`, `heatSituation`, `heatView` et `sheetDismissable` sont eux aussi des variables de module : `S` ne contient plus aucun état d'interface, n'en ajouter aucun.
 - Le terrain a un seul lecteur de coordonnées, `fieldPoint()` ; `uiVec()` convertit un déplacement sous le verrou portrait (second lecteur, pour le glisser des jetons). Un nouveau geste réutilise l'un des deux.
 - Les fonctions de calcul récentes reçoivent le match en paramètre (`computeOffDefByPeriod(match)`, `phaseOf(history, i, fmt)`, `heatPointsFrom(match, …)`) ; les anciennes lisent `S` (`computeH2H`, `computeFaults`, `computeOverall`). C'est la direction à suivre.
 
@@ -50,6 +50,8 @@ Un nouvel écran touche quatre endroits : le `<div id>` du HTML, `SCREENS`, `SCR
 L'écran de match n'a volontairement pas de barre d'app : toute sa surface sert à tracer les lancers, et un bouton de navigation à portée de pouce serait une sortie accidentelle en plein point. Il garde quatre contrôles délibérés (↶, TERMINER, ⌂, STATS) ; ⌂ demande confirmation si un match est en cours.
 
 Consultation d'un match archivé : `viewArchivedMatchStats()` met une copie du match dans `S` et passe `viewingArchive` à vrai, ce qui bloque `save()`. `navBack()` ne quitte ce mode qu'une fois sorti de tous les écrans qui affichent ces données (`stats`, `zoneDetail`).
+
+Reprise d'un match (R19) : `resumeMatch(id)` sans argument reprend le match en cours le plus récent (bannière de l'accueil, bouton de la barre d'app) ; avec un identifiant, il reprend CE match. Dans l'historique, chaque ligne `matchReprenable(m)` (en cours et au moins un événement, la condition de `findResumableMatch`) porte un bouton « REPRENDRE » ; une ligne terminée ou vide n'en a pas. La reprise sort d'abord de la consultation d'archive, garde `S` si c'est déjà ce match (il est plus à jour que la copie reçue de la base), sinon le remplace par une copie du document, puis passe à l'écran de match. Elle est refusée, avec un message, tant qu'une écriture du match qu'on quitte n'est pas confirmée (`hasUnsavedWork()`) : le réessai de `save()` relit `S`, et remplacer `S` laisserait ce match-là sans réessai.
 
 ## Téléphone
 

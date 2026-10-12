@@ -63,7 +63,7 @@ export default async function ({ gabarit, check }) {
       await waitSheet(app, "chooseInitialPossession('Bleu')");
       const st = await sheetState(app);
       assert(/COMMENCE/i.test(st.title), 'titre : ' + st.title);
-      eq(await app.ev(() => S.sheetDismissable), false, 'feuille non fermable');
+      eq(await app.ev(() => sheetDismissable), false, 'feuille non fermable');
       await app.shot(path.join(CAPT, `${gabarit}-possession-rouverte.png`));
       await app.initialPossession('Bleu');
       const s = await app.state();

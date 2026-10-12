@@ -54,6 +54,8 @@ Vue par défaut : la grille d'efficacité (`heatGridSVG`), 3×3 fixe. Échelle d
 
 Les filtres de module (`h2hPhase`, `faultPhase`, `h2hSituation`, `heatPoint`, `teamHeatPoint`) gardent leur valeur d'un match à l'autre tant que la page n'est pas rechargée.
 
+Les quatre choix de la heat map d'un match (R16, D90) sont aussi des variables de module : `heatTeam` (`null` = première équipe active), `heatMode` (`'offense'`), `heatSituation` (`'all'`), `heatView` (`'grid'`), posées par `setHeatTeam`, `setHeatMode`, `setHeatSituation` et `setHeatView`, qui ne font plus `save()` (rien à enregistrer) mais relancent le rendu. `sectionMatchHeat` lit l'équipe sans rien écrire : une équipe qui n'est pas en jeu dans le match affiché (duel à deux équipes, match archivé d'un autre format) retombe sur `ATEAMS()[0]`. Ces choix ne sont donc plus dans `S`, ni dans `exportJSON`, ni dans le stockage ; un ancien match qui les porte encore les garde dans son document sans qu'on les lise. Les exports (`buildActionRows`, `buildRawRows`, `matchInfoRows`, feuilles XLSX) ne les ont jamais lus : `buildRawRows` ne lit que `before` et `details`.
+
 ## DÉF ILL dans les statistiques
 
 Stockée comme un lancer échappé, elle compte comme tel dans OFF %, DÉF %, head-to-head, par période, arrêté ou continu et +/-. Dans l'onglet Fautes, « Fautes » l'inclut pour l'équipe fautive, F % ne l'inclut pas (F % = fautes directes sur actions offensives), le tableau « Par type » l'inclut, « Où elles sont commises » non (elle n'a pas de position ; le détail d'équipe l'écrit sous le tableau, et son sous-titre sépare « N faute(s) directe(s) + M défensive(s) illégale(s) »). Elle n'est ni dans les zones ni dans la heat map, et ne gonfle pas le compteur de lancers sans joueur.

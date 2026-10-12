@@ -19,7 +19,7 @@ const enregistre = app => app.page.waitForFunction(() => !pendingSaveId && dbSyn
 const joueursDe = (pref, n = 5) => Array.from({ length: n }, (_, i) => ({ id: pref + (i + 1), name: pref.toUpperCase() + ' joueur ' + (i + 1) }));
 const creerEquipe = (app, id, name, players) => app.ev(async ([i, n, p]) => { await dbSetTeam({ id: i, name: n, players: p, createdAt: 1, updatedAt: 1 }); }, [id, name, players]);
 /* État de jeu sans les champs d'interface. */
-const etat = app => app.ev(() => { const c = JSON.parse(JSON.stringify(S)); delete c.updatedAt; delete c.sheetDismissable; return c; });
+const etat = app => app.ev(() => { const c = JSON.parse(JSON.stringify(S)); delete c.updatedAt; return c; });
 const clic = (app, sel) => app.page.locator(sel + ':visible').first().click();
 const total = s => s.scores.Bleu + s.scores.Gris + s.scores.Noir;
 
@@ -139,7 +139,7 @@ export default async function ({ gabarit, check }) {
         await p.mouse.click(10, 10);
         await app.page.waitForTimeout(300);
         eq(await app.ev(() => document.getElementById('sheet').classList.contains('open')), true, 'la feuille reste ouverte après un appui à côté');
-        eq(await app.ev(() => S.sheetDismissable), false, 'non refermable');
+        eq(await app.ev(() => sheetDismissable), false, 'non refermable');
         /* on force la fermeture (ancien chemin) : le terrain ne répond plus */
         await app.ev(() => closeSheet());
         await app.settle();
