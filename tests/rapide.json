@@ -3,7 +3,7 @@
 
   "toujours": ["smoke", "undo"],
 
-  "poids_s": { "smoke": 5, "undo": 26, "fuzz": 75, "C13B": 135, "C08": 20, "C14": 13, "C15": 12, "C16": 16, "C17": 8, "C18": 7, "C19": 10, "C20": 8, "C21": 155, "C22": 96, "C23": 138, "C24": 10, "C25": 30, "C26": 30, "C27": 30, "C28": 30, "C29": 16, "M02": 2, "M03": 21, "M04": 33, "M05": 18, "M06": 18, "M08": 37, "M11": 16, "R16": 30 },
+  "poids_s": { "smoke": 5, "undo": 26, "fuzz": 75, "C13B": 135, "C08": 20, "C14": 13, "C15": 12, "C16": 16, "C17": 8, "C18": 7, "C19": 10, "C20": 8, "C21": 155, "C22": 96, "C23": 138, "C24": 10, "C25": 30, "C26": 30, "C27": 30, "C28": 30, "C29": 16, "M02": 2, "M03": 21, "M04": 33, "M05": 18, "M06": 18, "M08": 37, "M11": 16, "R15": 14, "R16": 30 },
 
   "fichiers": [
     { "motif": "^tests/scenarios/([^/]+)\\.mjs$", "suites": ["$1"] },
@@ -25,9 +25,9 @@
 
   "sections": [
     { "motif": "TÉLÉPHONE", "suites": ["C19", "C20", "C24"], "gabarit": "tous" },
-    { "motif": "FORMATS DE MATCH|NOUVEAU MATCH|CHOIX DU FORMAT|SÉLECTEUR D'ÉQUIPES|ALIGNEMENTS|GESTION DES ÉQUIPES", "suites": ["C19", "C25", "C26", "R16"] },
-    { "motif": "BASE D'ÉQUIPES|STOCKAGE SERVEUR|SYNCHRONISATION|OÙ VIVENT|QUI A PRIS|MIGRATION|CORBEILLE|SAUVEGARDE D'UN MATCH|RÉCUPÉRATION", "suites": ["C26", "C27", "M03", "M06", "M11", "R16"] },
-    { "motif": "^NAVIGATION", "suites": ["C25", "C26", "R16", "fuzz"] },
+    { "motif": "FORMATS DE MATCH|NOUVEAU MATCH|CHOIX DU FORMAT|SÉLECTEUR D'ÉQUIPES|ALIGNEMENTS|GESTION DES ÉQUIPES", "suites": ["C19", "C25", "C26", "R15", "R16"] },
+    { "motif": "BASE D'ÉQUIPES|STOCKAGE SERVEUR|SYNCHRONISATION|OÙ VIVENT|QUI A PRIS|MIGRATION|CORBEILLE|SAUVEGARDE D'UN MATCH|RÉCUPÉRATION", "suites": ["C26", "C27", "M03", "M06", "M11", "R15", "R16"] },
+    { "motif": "^NAVIGATION", "suites": ["C25", "C26", "R15", "R16", "fuzz"] },
     { "motif": "JOUEURS PENDANT LE MATCH|Glisser-déposer", "suites": ["C19", "C24"] },
     { "motif": "GARDE-FOUS CONTRE LE FAUX CLIC|^SHEET", "suites": ["C22", "C24", "C26", "R16"] },
     { "motif": "MENU RADIAL|FIELD DRAG|JOUEUR DE L'ACTION|REPRISE DE JEU", "suites": ["C20", "C21", "C24", "fuzz"] },
@@ -37,8 +37,8 @@
     { "motif": "^Par période", "suites": ["C15", "C29"] },
     { "motif": "ZONES DE DÉPART|HEAT MAP|GRILLE D'EFFICACITÉ", "suites": ["C17", "C18", "R16"] },
     { "motif": "^EXPORT|ENREGISTREMENT DE FICHIER", "suites": ["C08", "C25", "C28", "C29", "M05"] },
-    { "motif": "HISTORIQUE DES MATCHS|STATISTIQUES CUMULÉES|CLASSEMENT|Sections : cumul", "suites": ["C18", "C25", "C26", "C29", "R16"] },
-    { "motif": "SAUVEGARDE / RESTAURATION|ARCHIVAGE|VALIDATION DE L'IMPORT", "suites": ["C08", "C25", "C27", "M06", "M11"] }
+    { "motif": "HISTORIQUE DES MATCHS|STATISTIQUES CUMULÉES|CLASSEMENT|Sections : cumul", "suites": ["C18", "C25", "C26", "C29", "R15", "R16"] },
+    { "motif": "SAUVEGARDE / RESTAURATION|ARCHIVAGE|VALIDATION DE L'IMPORT", "suites": ["C08", "C25", "C27", "M06", "M11", "R15"] }
   ],
 
   "section_inconnue": { "suites": ["fuzz"], "note": "section non reconnue : ajouter son titre à tests/rapide.json" }

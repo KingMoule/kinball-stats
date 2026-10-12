@@ -1987,12 +1987,14 @@ function navBack(){
   /* On ne quitte la consultation d'un match archivé qu'une fois sorti de
      tous les écrans qui en affichent les données. */
   if(viewingArchive && !['stats','zoneDetail'].includes(id)) exitArchiveView();
+  if(id === 'home') corbeilleSiMatchVide();
   closeSheet();
   showOnly(id);
   onEnterScreen(id);
 }
 function navHome(){
   exitArchiveView();
+  corbeilleSiMatchVide();
   closeSheet();
   navStack = ['home'];
   showOnly('home');
@@ -2004,6 +2006,7 @@ function navHome(){
    (pile = accueil → destination, jamais tout le parcours parcouru avant). */
 function navTab(fnName){
   exitArchiveView();
+  corbeilleSiMatchVide();
   closeSheet();
   navStack = ['home'];
   const fn = window[fnName];
@@ -2051,7 +2054,25 @@ function openNavMenu(){
    suffit à le retrouver. */
 /* Un match se reprend s'il est en cours ET compte au moins un événement (R19 : la même condition pour la bannière,
    le bouton de la barre d'app et le bouton « REPRENDRE » de l'historique). */
-function matchReprenable(m){ return !!m && m.status==='in_progress' && !!(m.history && m.history.length); }
+function matchReprenable(m){ return !!m && m.status==='in_progress' && !matchVide(m); }
+/* R15 (D91) : UNE seule définition de « match vide », partagée par la bannière, REPRENDRE, la mise à la corbeille au retour
+   à l'accueil et tous les comptes. Une « action » = un lancer, une faute directe ou une fin de période. Un alignement
+   (`alignement`), des changements (`changement`) ou une reprise de jeu (`reprise`) n'en sont pas. Prudent avec les anciens
+   matchs : history absent ou non tableau, événement sans `type` ou nul = pas une action. */
+const TYPES_ACTION = ['lancer','faute_directe','fin_periode'];
+function matchVide(m){
+  return !m || !Array.isArray(m.history) || !m.history.some(e => !!e && TYPES_ACTION.includes(e.type));
+}
+/* Tout retour à l'accueil (navHome, navBack vers l'accueil, navTab) : le match de SAISIE encore en cours, sans aucune action,
+   part à la corbeille — sans confirmation, par l'écriture normale de save() (deleted:true sur S lui-même, donc le réessai et la
+   copie locale portent la suppression). Jamais : archive consultée, match terminé, match déjà à la corbeille (pas de double
+   suppression), saisie d'un événement en cours (pending). Un match restauré depuis la corbeille n'est plus S : aucune boucle. */
+function corbeilleSiMatchVide(){
+  if(viewingArchive || !S || !S.id || S.deleted || S.status !== 'in_progress' || !matchVide(S) || pending) return;   // `pending` en dernier : navHome() tourne avant sa déclaration (pas d'id alors)
+  if(DELETED_MATCHES.some(m => m && m.id === S.id)) return;
+  S.deleted = true; S.deletedAt = Date.now(); S.deletedBy = AUTHOR_ID || null;
+  save();
+}
 function findResumableMatch(){
   const candidates = MATCHES_DB.filter(matchReprenable);
   if(!candidates.length) return null;
@@ -2216,7 +2237,7 @@ function resumeMatch(id){
   exitArchiveView();
   /* Si S est déjà ce match, on le garde : l'état en mémoire est plus à jour
      que la copie reçue par onSnapshot quand une écriture est encore en vol. */
-  if(!(S && S.id === record.id)) S = JSON.parse(JSON.stringify(record));
+  if(!(S && S.id === record.id && !S.deleted)) S = JSON.parse(JSON.stringify(record));
   navStack = ['home'];
   navTo('match');
 }
@@ -2230,7 +2251,7 @@ function openNewMatch(){ navTo('newMatch'); }
    vaut rien si on ne le dit pas au moment où on risque de le perdre. */
 function goHome(){
   if(radialBusy()) return;   // C21 : idem (⌂ reste atteignable sous la couche, qui ne couvre que le terrain)
-  if(currentScreen()==='match' && !viewingArchive && S.id && S.status==='in_progress' && S.history.length){
+  if(currentScreen()==='match' && !viewingArchive && S.id && S.status==='in_progress' && !matchVide(S)){   // R15 : un match vide n'a rien à perdre, navHome() le met à la corbeille sans question
     openSheet(`<div class="sheet-title">QUITTER LE MATCH EN COURS ?</div>
       <div class="empty" style="padding:0 0 16px">Le match est sauvegardé en continu : vous pourrez le reprendre depuis l'accueil, exactement où vous l'avez laissé.</div>
       <div class="choice-row">
@@ -5932,7 +5953,7 @@ function renderTeamManagerList(){
     body.innerHTML = html + `<div class="empty">Aucune équipe enregistrée pour le moment.<br>Créez-en une pour la réutiliser dans vos prochains matchs.</div>`;
     return;
   }
-  const matchsDe = id => MATCHES_DB.filter(m => TEAMS.some(sl => m.teamIds && m.teamIds[sl]===id)).length;
+  const matchsDe = id => MATCHES_DB.filter(m => !matchVide(m) && TEAMS.some(sl => m.teamIds && m.teamIds[sl]===id)).length;   // R15 : un match vide ne compte pas
   body.innerHTML = html + statTable({
     scope:'team', id:'teamManager',
     defaultSort:{key:'nom', dir:1},
@@ -6125,7 +6146,7 @@ function renderTeamStatsPickerList(){
     return;
   }
   body.innerHTML = TEAMS_DB.map(t=>{
-    const n = MATCHES_DB.filter(m=>TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===t.id)).length;
+    const n = MATCHES_DB.filter(m=>!matchVide(m) && TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===t.id)).length;   // R15
     return `<div class="team-card" onclick="openTeamAggregate('${jsArg(t.id)}')">
       <div>
         <div class="tc-name">${escapeHtml(t.name)}</div>
@@ -6145,7 +6166,7 @@ function renderTeamStatsPickerList(){
 function computeTeamAggregate(teamId){
   const team = getTeamAny(teamId);
   const teamName = team ? team.name : '?';
-  const matches = MATCHES_DB.filter(m => TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===teamId));
+  const matches = MATCHES_DB.filter(m => !matchVide(m) && TEAMS.some(slot=>m.teamIds && m.teamIds[slot]===teamId));   // R15 : un match vide ne compte pas
 
   const h2h = {};
   const zoneOff = {}, zoneDef = {};
@@ -6487,10 +6508,11 @@ async function doPurgeMatch(id){
 function renderStorageInfo(){
   const el = document.getElementById('storageInfo');
   if(!el) return;
-  const total = MATCHES_DB.length + TEAMS_DB.length;
+  const comptes = MATCHES_DB.filter(m => !matchVide(m));   // R15 : un match vide ne compte ni comme match ni pour ses événements
+  const total = comptes.length + TEAMS_DB.length;
   const warn = false;   /* MIGRATION M03 : plus de plafond de 5 000 documents sur cet appareil */
-  const actions = MATCHES_DB.reduce((n,m)=>n+((m.history||[]).length), 0);
-  el.innerHTML = `<span style="${warn?'color:var(--red);font-weight:700':''}">${MATCHES_DB.length} match${MATCHES_DB.length>1?'s':''}, `
+  const actions = comptes.reduce((n,m)=>n+((m.history||[]).length), 0);
+  el.innerHTML = `<span style="${warn?'color:var(--red);font-weight:700':''}">${comptes.length} match${comptes.length>1?'s':''}, `
     + `${TEAMS_DB.length} équipe${TEAMS_DB.length>1?'s':''} et ${actions.toLocaleString('fr-CA')} action${actions>1?'s':''} enregistrée${actions>1?'s':''}`
     + `${warn?' — vous approchez de la limite technique (~5000 matchs et équipes), pensez à archiver les vieux matchs ci-dessous':''}.</span>`;
 }
