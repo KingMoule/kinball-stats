@@ -88,7 +88,9 @@ export default async function ({ gabarit, check }) {
       try {
         const avant = await instant(app);
         for (const [at, nom] of [[[0.5, 0.5], 'centre'], [[0.5, 0.97], 'bas'], [[0.04, 0.96], 'coin bas gauche'], [[0.96, 0.96], 'coin bas droit'], [[0.5, 0.04], 'haut']]) {
-          if (genre === 'lancer') { await glisser(app, Math.abs(at[0] - 0.5) < 0.1 && Math.abs(at[1] - 0.5) < 0.1 ? [0.3, 0.3] : [0.5 + (at[0] - 0.5) * 0.5, 0.5 + (at[1] - 0.5) * 0.5], at); await app.clickSheet(`pickResult('${await cible(app)}',true)`); }
+          if (genre === 'lancer') { await glisser(app, Math.abs(at[0] - 0.5) < 0.1 && Math.abs(at[1] - 0.5) < 0.1 ? [0.3, 0.3] : [0.5 + (at[0] - 0.5) * 0.5, 0.5 + (at[1] - 0.5) * 0.5], at); /* D1 (audit) : on vise la rangée adverse la plus basse (2e équipe visée), pour que le menu des joueurs soit ancré tout en bas et que la marge `bot` compte */
+            const bas = await app.ev(() => [...document.querySelectorAll('#radial [onclick^="pickResult("]')].sort((x, y) => y.getBoundingClientRect().top - x.getBoundingClientRect().top)[0].getAttribute('onclick'));
+            await app.clickSheet(bas.replace(/,false\)$/, ',true)')); }
           else { await app._tap(at); await app.clickSheet("pickFault('EXT')"); }
           await app.page.waitForFunction(() => { const r = document.getElementById('radial'); return r.classList.contains('open') && radialStage === 'players' && r.getAnimations({ subtree: true }).length === 0; }, null, { timeout: 4000, polling: 10 });
           const r = await app.ev(() => {
