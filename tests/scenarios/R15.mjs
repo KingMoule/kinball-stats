@@ -213,10 +213,10 @@ export default async function ({ gabarit, check }) {
       await clicHome(app); await dansCorbeille(app, id); await attendreEcritures(app);
       await app.ev(i => dbRestoreMatch(i), id);
       await app.page.waitForFunction(i => !!getMatchRecord(i), id, { timeout: 8000, polling: 20 });
-      eq(await etat(app, id), { actif: true, corbeille: false, surS: true }, 'restauré');
+      eq(await etat(app, id), { actif: true, corbeille: false, surS: false }, 'restauré (le S mort est remplacé)');
       eq(await app.ev(i => [matchVide(getMatchRecord(i)), matchReprenable(getMatchRecord(i)), getMatchRecord(i).deleted], id), [true, false, undefined], 'vide, non repris');
       await app.ev(() => { navHome(); navHome(); openMatchHistory(); navHome(); }); await app.settle(); await attendreEcritures(app);
-      eq(await etat(app, id), { actif: true, corbeille: false, surS: true }, 'après retours à l\'accueil : toujours là');
+      eq(await etat(app, id), { actif: true, corbeille: false, surS: false }, 'après retours à l\'accueil : toujours là');
       /* le vide restauré ne devient pas le match de saisie par la reprise, mais s'il l'était, il repartirait : on le vérifie à part */
       await app.ev(i => { S = JSON.parse(JSON.stringify(getMatchRecord(i))); navHome(); }, id);
       await dansCorbeille(app, id);
@@ -246,6 +246,34 @@ export default async function ({ gabarit, check }) {
           eq(net(r.act), net(o.act), 'actions identiques'); eq(net(r.brut), net(o.brut), 'brut identique'); eq(net(r.tout), net(o.tout), '« tous les matchs » identique');
         } finally { await vieux.close(); }
       }
+      assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
+    } finally { await app.close(); }
+  });
+
+  await check(`${P}·10 D-1 : mise à la corbeille non écrite (panne), rechargement : jamais proposée en « Récupérer », jamais remise en S ; la suppression est terminée ; un match joué ensuite n'est jamais écrit deleted:true`, async () => {
+    const app = await launch(gabarit);
+    try {
+      const id = await vide(app, 'panne');
+      await attendreEcritures(app);
+      await app.ev(() => { window.__vrai = window.writeMatchDoc; window.writeMatchDoc = async () => { throw new Error('panne simulée'); }; });
+      await clicHome(app);
+      eq(await app.ev(() => S.deleted), true, 'S marqué à la corbeille');
+      eq(await app.ev(i => { const b = JSON.parse(localStorage.getItem('kinball_backup_' + i)); return b && b.match.deleted; }, id), true, 'la copie locale porte deleted:true');
+      eq(await app.ev(i => !!getMatchRecord(i), id), true, 'la base ne l\'a pas reçu');
+      await app.page.reload({ waitUntil: 'domcontentloaded' });
+      await app.page.waitForFunction(() => typeof startMatch === 'function' && typeof S !== 'undefined');
+      await dansCorbeille(app, id);
+      eq(await app.ev(() => document.getElementById('backupRecovery').style.display !== 'block'), true, 'aucune bannière « Récupérer »');
+      eq(await app.ev(i => localStorage.getItem('kinball_backup_' + i), id), null, 'copie locale marquée synchronisée');
+      await app.ev(i => restoreLocalBackup(i), id);
+      eq(await app.ev(() => [S.id, currentScreen()]), [null, 'home'], 'restoreLocalBackup ne remet rien en S');
+      /* un match joué ensuite n'est jamais écrit avec deleted:true */
+      await app.ev(() => { window.__ecrits = []; const o = window.writeMatchDoc; window.writeMatchDoc = m => { window.__ecrits.push([m.id, !!m.deleted]); return o(m); }; });
+      const id2 = await vide(app, 'suite'); await jouer1(app); await attendreEcritures(app);
+      const e = await app.ev(i => window.__ecrits.filter(x => x[0] === i), id2);
+      assert(e.length >= 1 && e.every(x => x[1] === false), 'écritures du match joué : ' + JSON.stringify(e));
+      /* latent : restauration d'un match encore S en mémoire */
+      await app.ev(() => navHome());
       assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
     } finally { await app.close(); }
   });
