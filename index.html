@@ -716,6 +716,7 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .stab td.best{color:var(--green);}
 .stab td.worst{color:var(--red);}
 .row-delete{width:34px; height:34px; border-radius:9px; background:var(--surface2); color:var(--red); font-size:14px;}
+.row-resume{min-width:44px; min-height:44px; padding:0 12px; border-radius:9px; background:var(--bleu); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em;}
 .stab td .status-badge{vertical-align:middle;}
 .stab tr.clickable{cursor:pointer;}
 .stab tr.clickable:active{background:var(--surface2);}
@@ -854,6 +855,9 @@ details.legend summary{font-size:12px; color:var(--dim); font-weight:600; cursor
    que les colonnes de chiffres défilent — on ne perd jamais de vue à qui
    appartient la ligne qu'on lit. */
 .phone .stat-cols, .phone .stat-pair{grid-template-columns:1fr;}
+.phone .row-resume{padding:0 9px; font-size:11px;}
+/* Le nom du match reste dans la colonne figée : un nom long ne doit jamais la rendre assez large pour cacher « REPRENDRE » et la corbeille. */
+.phone .stab .nom-cut{display:inline-block; max-width:44vw; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom;}
 .phone .stab .lg{display:none;}
 .phone .stab .sm{display:inline;}
 .phone .stab th, .phone .stab td{padding:9px 10px; font-size:13px;}
@@ -1293,12 +1297,10 @@ function freshState(){
        peut se déplacer et relancer d'où elle veut. C'est cette distinction
        qui sépare l'offensive/défensive arrêtée de la continue. */
     stopped:true,
-    heatTeam:'Bleu', heatMode:'offense', heatSituation:'all',
-    heatView:'grid',   // grille d'efficacité (3×3) par défaut
     format:FORMATS[DEFAULT_FORMAT],          // règles de la rencontre (voir FORMATS)
     activeTeams:TEAMS.slice(),               // équipes réellement en jeu (2 en duel)
     authorId:null,                 // qui a lancé ce match (identifiant opaque, jamais un nom)
-    history:[], sheetDismissable:false,
+    history:[],
     advancedMode:false   // mode de prise de stats avancé (voir section ARCHITECTURE MODE AVANCÉ plus bas)
   };
 }
@@ -2047,8 +2049,11 @@ function openNavMenu(){
 /* Match à reprendre : le plus récemment mis à jour parmi ceux encore
    "in_progress" — pas besoin d'un pointeur séparé, l'archive elle-même
    suffit à le retrouver. */
+/* Un match se reprend s'il est en cours ET compte au moins un événement (R19 : la même condition pour la bannière,
+   le bouton de la barre d'app et le bouton « REPRENDRE » de l'historique). */
+function matchReprenable(m){ return !!m && m.status==='in_progress' && !!(m.history && m.history.length); }
 function findResumableMatch(){
-  const candidates = MATCHES_DB.filter(m=>m.status==='in_progress' && m.history && m.history.length);
+  const candidates = MATCHES_DB.filter(matchReprenable);
   if(!candidates.length) return null;
   candidates.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
   return candidates[0];
@@ -2185,9 +2190,26 @@ function checkResume(){
     }
   }catch(e){}
 }
-function resumeMatch(){
-  const record = findResumableMatch();
-  if(!record) return;
+/* `id` facultatif : sans argument, le match le plus récent (bannière, barre d'app) ; avec un identifiant, CE match
+   (bouton « REPRENDRE » d'une ligne de l'historique).
+   Protection (R19) : remplacer S par un AUTRE match ne doit jamais faire perdre une action du match qu'on quitte.
+   save() renvoie à la file d'écriture un instantané du match quitté, mais si cette écriture n'est pas encore confirmée
+   (pendingSaveId), son réessai relirait S — devenu l'autre match — et le match quitté ne serait plus jamais réécrit
+   pendant la session. Tant qu'une écriture reste à confirmer, on ne remplace donc pas S : message, et réessai immédiat. */
+function resumeMatch(id){
+  const record = id ? getMatchRecord(id) : findResumableMatch();
+  if(!record || (id && !matchReprenable(record))) return;
+  const vivant = viewingArchive ? LIVE_S : S;   // le match de saisie, même pendant la consultation d'une archive
+  if(vivant && vivant.id && vivant.id !== record.id && hasUnsavedWork()){
+    openSheet(`<div class="sheet-title">ENREGISTREMENT EN COURS</div>
+      <div class="empty" style="padding:0 0 16px">Le match « ${escapeHtml(vivant.matchName || 'match')} » n'est pas encore enregistré sur cet appareil. Pour ne perdre aucune action, il faut attendre la fin de l'enregistrement avant d'en reprendre un autre. Réessayez dans un instant.</div>
+      ${viewingArchive ? `<div class="section-sub">Quittez d'abord la consultation de l'archive (bouton retour) : pendant qu'on la regarde, rien ne s'écrit.</div>` : ''}
+      <div class="choice-row">
+        ${viewingArchive ? '' : `<button class="choice-btn" style="background:var(--bleu)" onclick="closeSheet(); retryNow()">RÉESSAYER L'ENREGISTREMENT</button>`}
+        <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">FERMER</button>
+      </div>`, true);
+    return;
+  }
   /* On peut arriver ici depuis la consultation d'un match archivé : il faut
      en sortir AVANT de toucher à S, sinon viewingArchive resterait vrai et
      save() bloquerait silencieusement toutes les écritures du match repris. */
@@ -2423,7 +2445,6 @@ function startMatch(){
     S.duelActive = true;
     S.eliminated = null;
   }
-  if(!S.activeTeams.includes(S.heatTeam)) S.heatTeam = S.activeTeams[0];
   S.awaitingInitial = true;
   navStack = ['home'];        // un match lancé n'a plus de "retour" vers sa configuration
   navTo('match');
@@ -2723,6 +2744,7 @@ function holdButtonHTML(label, hint, action){
    - UNDO_REARM_MS : ↶ du ruban / de la barre ignoré après un appui dans une feuille.
    Variables de module, pas dans S. */
 const SHEET_CLOSE_MS = 240, SHEET_DOUBLE_MS = 300, SHEET_DOUBLE_PX = 32, UNDO_REARM_MS = 400;
+let sheetDismissable = false;   // R27 : la feuille ouverte se ferme-t-elle d'un appui à côté ? État d'interface, plus rien dans S
 let sheetCloseTimer = null, sheetLastTap = {t:0, x:-1e9, y:-1e9}, undoBlockedUntil = 0;
 let radialFastClose = false, radialCloseTimer = null, radialStage = null, radialAnchor = null, radialRelease = null, radialPendingRef = null;   // C21 (déclarées ici : openSheet / closeSheet les lisent dès le chargement)
 function openSheet(html, dismissable){
@@ -2733,7 +2755,7 @@ function openSheet(html, dismissable){
   sh.innerHTML = html;
   document.getElementById('sheetBackdrop').style.display='block';
   sh.classList.add('open');
-  S.sheetDismissable = !!dismissable;
+  sheetDismissable = !!dismissable;
 }
 function closeSheet(){
   const sh = document.getElementById('sheet');
@@ -2758,7 +2780,7 @@ function sheetTapGuard(e){
 }
 document.getElementById('sheet').addEventListener('click', sheetTapGuard, true);
 document.getElementById('sheetBackdrop').addEventListener('click', ()=>{ undoBlockedUntil = Date.now() + UNDO_REARM_MS; });
-function closeSheetIfDismissable(){ if(S.sheetDismissable) closeSheet(); }
+function closeSheetIfDismissable(){ if(sheetDismissable) closeSheet(); }
 
 /* ---------- C21 : MENU RADIAL PRÈS DU DOIGT ----------
    Présentation seulement : les boutons portent les MÊMES onclick que ceux des feuilles (pickResult, pickDefIll,
@@ -5240,6 +5262,10 @@ function heatPointsFrom(match, slot, mode, situation, point){
   return pts;
 }
 let teamHeatMode = 'offense', teamHeatSituation = 'all', teamHeatView = 'grid';
+/* R16 : choix d'affichage de la heat map d'UN match (équipe, offense/défense, situation, grille/points).
+   Variables de module, comme celles du cumul : rien dans S, aucun save(). `heatTeam` null = première
+   équipe active ; une équipe qui n'est pas active dans le match affiché retombe aussi sur la première. */
+let heatTeam = null, heatMode = 'offense', heatSituation = 'all', heatView = 'grid';
 /* Point affiché (départ/arrivée), un choix par mode. Variables de module : rien dans S, aucun save(). */
 let heatPoint = {offense:'start', defense:'end'};          // match
 let teamHeatPoint = {offense:'start', defense:'end'};      // cumul d'équipe
@@ -5251,12 +5277,12 @@ function heatSubtitle(mode, point){
     ? (point==='end' ? "Où arrivent ses lancers" : "D'où partent ses lancers")
     : (point==='start' ? "D'où partent les ballons qu'elle reçoit" : "Où arrivent les ballons qu'elle reçoit");
 }
-function setHeatTeam(t){ S.heatTeam = t; save(); if(statsRerender) statsRerender(); }
-function setHeatMode(m){ S.heatMode = m; save(); if(statsRerender) statsRerender(); }
-function setHeatSituation(v){ S.heatSituation = v; save(); if(statsRerender) statsRerender(); }
+function setHeatTeam(t){ heatTeam = t; if(statsRerender) statsRerender(); }
+function setHeatMode(m){ heatMode = m; if(statsRerender) statsRerender(); }
+function setHeatSituation(v){ heatSituation = v; if(statsRerender) statsRerender(); }
 function setTeamHeatMode(m){ teamHeatMode = m; if(statsRerender) statsRerender(); }
 function setTeamHeatSituation(v){ teamHeatSituation = v; if(statsRerender) statsRerender(); }
-function setHeatView(v){ S.heatView = v; save(); if(statsRerender) statsRerender(); }
+function setHeatView(v){ heatView = v; if(statsRerender) statsRerender(); }
 function setTeamHeatView(v){ teamHeatView = v; if(statsRerender) statsRerender(); }
 
 /* Rendu commun : le terrain, les points, la légende chiffrée. */
@@ -5377,15 +5403,15 @@ function heatModeButtons(mode, fnName){
   ).join('');
 }
 function sectionMatchHeat(){
-  if(!ATEAMS().includes(S.heatTeam)) S.heatTeam = ATEAMS()[0];
-  const mode = S.heatMode || 'offense', sit = S.heatSituation || 'all';
-  const view = S.heatView || 'grid';
+  const team = ATEAMS().includes(heatTeam) ? heatTeam : ATEAMS()[0];   // R16 : lue sans rien écrire, jamais d'équipe absente
+  const mode = heatMode || 'offense', sit = heatSituation || 'all';
+  const view = heatView || 'grid';
   const point = heatPoint[mode] || (mode==='offense' ? 'start' : 'end');
-  const pts = heatPointsFrom(S, S.heatTeam, mode, sit, point);
+  const pts = heatPointsFrom(S, team, mode, sit, point);
   return `<div class="section-title">Heat map</div>
     <div class="section-sub">${heatSubtitle(mode, point)}</div>
     <div class="heat-controls">` +
-      ATEAMS().map(t=>`<button class="heat-btn ${S.heatTeam===t?'active':''} ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="setHeatTeam('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`).join('') +
+      ATEAMS().map(t=>`<button class="heat-btn ${team===t?'active':''} ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="setHeatTeam('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`).join('') +
       `<span class="heat-sep"></span>` + heatModeButtons(mode, 'setHeatMode') + `</div>`
     + situationFilterHTML(sit, 'setHeatSituation', 'Situation :')
     + heatViewControls(view, 'setHeatView', point, 'setHeatPoint', mode)
@@ -6041,7 +6067,7 @@ function renderMatchHistoryList(){
     defaultSort:{key:'date', dir:-1},
     rows,
     cols:[
-      {key:'nom',  label:'Match', val:r=>r._name, fmt:r=>escapeHtml(r._name || 'match')},
+      {key:'nom',  label:'Match', val:r=>r._name, fmt:r=>`<span class="nom-cut" title="${escapeHtml(r._name || 'match')}">${escapeHtml(r._name || 'match')}</span>`},
       {key:'date', label:'Date', val:r=>r.quand, fmt:r=>r.dateStr},
       {key:'eq',   label:'Équipes', cls:'sub', val:r=>matchTeams(r.m).map(t=>r.m.names[t]).join(' '),
        /* Chaque équipe reste un lien direct vers sa fiche cumulée. */
@@ -6064,6 +6090,8 @@ function renderMatchHistoryList(){
       {key:'etat', label:'État', val:r=>r.m.status==='completed' ? 1 : 0,
        fmt:r=>`<span class="status-badge ${r.m.status==='completed'?'done':'progress'}">${r.m.status==='completed'?'TERMINÉ':'EN COURS'}</span>`
              + (r.m.advancedMode?' <span class="status-badge" style="background:rgba(47,107,255,.18);color:var(--bleu-ink)">AVANCÉ</span>':'')},
+      {key:'repr', label:'', val:r=>matchReprenable(r.m) ? 1 : 0,
+       fmt:r=>matchReprenable(r.m) ? `<button class="row-resume" onclick="event.stopPropagation(); resumeMatch('${jsArg(r.m.id)}')" aria-label="Reprendre le match ${escapeHtml(r._name || 'match')}">REPRENDRE</button>` : ''},
       {key:'suppr', label:'', val:r=>0,
        fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${jsArg(r.m.id)}')" aria-label="Supprimer ce match">🗑</button>`},
     ],

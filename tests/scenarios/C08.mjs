@@ -78,10 +78,10 @@ async function sortiesUnMatch(app) {
     await app.ev(() => openExportMenu());
     return (await telecharger(app, () => app.page.locator(`[onclick="${appel}"]`).click())).buf;
   };
-  const construit = await app.ev(() => JSON.stringify({ a: buildActionRows(), r: buildRawRows(), i: matchInfoRows(), s: (() => { const c = JSON.parse(JSON.stringify(S)); delete c.sheetDismissable; return JSON.stringify(c); })() }));
+  const construit = await app.ev(() => JSON.stringify({ a: buildActionRows(), r: buildRawRows(), i: matchInfoRows(), s: (() => { const c = JSON.parse(JSON.stringify(S)); return JSON.stringify(c); })() }));
   const xl = XLSX.read(await dl('exportXLSX()'), { type: 'buffer' });
   const feuilles = {}; xl.SheetNames.forEach(n => { feuilles[n] = XLSX.utils.sheet_to_json(xl.Sheets[n], { header: 1, defval: '' }); });
-  return { construit, csv: (await dl('exportCSV()')).toString('hex'), brut: (await dl('exportRawCSV()')).toString('hex'), json: await (async () => { const c = JSON.parse((await dl('exportJSON()')).toString('utf8')); delete c.sheetDismissable; return JSON.stringify(c); })(), feuilles: JSON.stringify(feuilles) };
+  return { construit, csv: (await dl('exportCSV()')).toString('hex'), brut: (await dl('exportRawCSV()')).toString('hex'), json: await (async () => { const c = JSON.parse((await dl('exportJSON()')).toString('utf8')); return JSON.stringify(c); })(), feuilles: JSON.stringify(feuilles) };
 }
 
 export default async function ({ gabarit, check }) {

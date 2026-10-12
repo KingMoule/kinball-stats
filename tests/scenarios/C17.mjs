@@ -65,7 +65,7 @@ export default async function ({ gabarit, check }) {
         const sub = document.querySelector('#statsBody .section-sub').textContent;
         const circles = f.querySelectorAll('circle').length;
         const de = document.documentElement, ov = de.scrollWidth > de.clientWidth + 1;
-        return { leg, act, sub, circles, ov, mode: S.heatMode };
+        return { leg, act, sub, circles, ov, mode: heatMode };
       });
       const click = (c) => app.page.locator(`#statsBody [onclick="${c}"]`).first().click();
       const base = await read();

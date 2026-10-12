@@ -111,12 +111,13 @@ export class App {
   ev(fn, arg) { return this.page.evaluate(fn, arg); }
 
   /* Copie de S sans les champs qui ne sont pas de l'état de jeu :
-     updatedAt (horodatage de sauvegarde) et sheetDismissable (drapeau de
-     feuille d'interface, non restauré par Annuler). */
+     updatedAt (horodatage de sauvegarde). R16/R27 : plus aucun état d'interface dans S
+     (heat* et sheetDismissable sont des variables de module) : rien d'autre n'est retiré,
+     donc une clé d'interface qui reviendrait dans S apparaîtrait dans les comparaisons. */
   async state() {
     return this.page.evaluate(() => {
       const c = JSON.parse(JSON.stringify(S));
-      delete c.updatedAt; delete c.sheetDismissable;
+      delete c.updatedAt;
       if (c.pendingPeriodWinner == null) delete c.pendingPeriodWinner;   // clé résiduelle (null) = absente
       return c;
     });

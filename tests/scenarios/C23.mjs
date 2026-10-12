@@ -15,7 +15,7 @@ const SIMCORE_SHA = '262fa0598ab61cbc3689deaadbb849f5ddfea2519a5f7f6d3ab5684f233
 /* ---------- aides ---------- */
 const wait = app => app.page.waitForFunction(() => !WP.inFlight && !WP.dirty, null, { timeout: 15000, polling: 20 });
 const peState = app => app.ev(() => typeof periodEndTimer === 'undefined' || periodEndTimer === null ? null : 'actif');
-/* Tout ce que l'app a de volatil et que state() ne retire pas encore : rien (state() retire updatedAt et sheetDismissable). */
+/* Tout ce que l'app a de volatil et que state() ne retire pas encore : rien (state() retire updatedAt ; R16/R27 : sheetDismissable et heat* ne sont plus dans S). */
 const stateOf = app => app.state();
 const instrument = app => app.ev(() => {
   window.__t0 = null; window.__saves = [];
@@ -72,7 +72,7 @@ async function tapUndo(app) {
 }
 const ribbon = app => app.ev(() => [...document.querySelectorAll('#scoreboard .team-chip .tscore')].map(e => e.textContent.trim()));
 const lastSaved = app => app.ev(() => { const s = window.__saves.filter(x => !x.r); return s.length ? s[s.length - 1].s : null; });
-const strip = s => { if (!s) return s; const c = JSON.parse(JSON.stringify(s)); delete c.updatedAt; delete c.sheetDismissable; if (c.pendingPeriodWinner == null) delete c.pendingPeriodWinner; return c; };
+const strip = s => { if (!s) return s; const c = JSON.parse(JSON.stringify(s)); delete c.updatedAt; if (c.pendingPeriodWinner == null) delete c.pendingPeriodWinner; return c; };
 
 /* ↶ annule : état exact, immédiatement et 2 s plus tard */
 async function fenetreUndo(app, { path, cfg, at, n = 1, prelude = null, bypass = null }) {
@@ -536,12 +536,13 @@ export default async function ({ gabarit, check: check0 }) {
         await a.settle(); if (!file) await wait(a);
         const out = await a.ev(() => {
           const arr = o => JSON.parse(JSON.stringify(o), (k, v) => typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e5) / 1e5 : v);
-          const c = arr(S); delete c.id; delete c.createdAt; delete c.updatedAt; delete c.sheetDismissable;
+          const UI = ['sheetDismissable', 'heatTeam', 'heatMode', 'heatSituation', 'heatView'];   /* R16/R27 : état d'interface, absent de S depuis ce chantier, présent dans la copie d'avant */
+          const c = arr(S); delete c.id; delete c.createdAt; delete c.updatedAt; UI.forEach(k => { delete c[k]; });
           delete c.authorId; c.history.forEach(e => { delete e.at; });   /* C28 : heure des événements, propre à chaque partie ; l'identité de l'appareil aussi */
           const NOUV = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute', 'Réussite offensive (avec fautes)'];   /* STAT-1 : colonne ajoutée à la suite */   /* C28 : colonnes ajoutées en fin de ligne */
           const rr = arr(buildActionRows()); rr.header = rr.header.filter(h => !NOUV.includes(h)); rr.rows.forEach(x => { NOUV.forEach(k => { delete x[k]; }); delete x['Saisi par']; });
           const j = JSON.stringify(S);
-          return { S: c, keys: Object.keys(S), rows: rr, saves: window.__saves, fuite: /"WP"|periodEndTimer|minK|lastPoss/.test(j) };
+          return { S: c, keys: Object.keys(S).filter(k => !UI.includes(k)), rows: rr, saves: window.__saves, fuite: /"WP"|periodEndTimer|minK|lastPoss/.test(j) };
         });
         await a.close(); apps.pop();
         return out;

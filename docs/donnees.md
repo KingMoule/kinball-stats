@@ -2,7 +2,7 @@
 
 ## Le match, `S`
 
-`S` est l'état du match courant ; `freshState()` en donne la forme. Champs de jeu : `id`, `status` (`in_progress` ou `completed`), `createdAt`, `updatedAt`, `matchName`, `names`, `teamIds` (référence vers une équipe enregistrée, ou `null` pour un nom libre), `rosters` (copie de l'alignement des équipes au coup d'envoi), `lineups` (joueurs sur le terrain en ce moment), `startingLineups`, `possession`, `scores`, `period`, `periodWins`, `eliminated`, `duelActive`, `awaitingDuelStart`, `awaitingInitial`, `stopped`, `format`, `activeTeams`, `authorId`, `advancedMode`, `history`. Les champs d'interface hérités (`heat*`, `sheetDismissable`) sont dans `S` mais ne doivent plus grandir.
+`S` est l'état du match courant ; `freshState()` en donne la forme. Champs de jeu : `id`, `status` (`in_progress` ou `completed`), `createdAt`, `updatedAt`, `matchName`, `names`, `teamIds` (référence vers une équipe enregistrée, ou `null` pour un nom libre), `rosters` (copie de l'alignement des équipes au coup d'envoi), `lineups` (joueurs sur le terrain en ce moment), `startingLineups`, `possession`, `scores`, `period`, `periodWins`, `eliminated`, `duelActive`, `awaitingDuelStart`, `awaitingInitial`, `stopped`, `format`, `activeTeams`, `authorId`, `advancedMode`, `history`. `S` ne contient plus aucun état d'interface (R16, R27, D90) : `heatTeam`, `heatMode`, `heatSituation`, `heatView` et `sheetDismissable` sont des variables de module. Un ancien match ou un fichier importé qui les porte encore se lit sans erreur : ils sont ignorés (pas de migration, le stockage n'est pas nettoyé), et `exportJSON`, qui écrit `S`, ne les contient plus pour les matchs lancés depuis.
 
 Un match référence une équipe sans la modifier : `rosters` est une copie, donc modifier une équipe plus tard ne réécrit jamais l'historique. Le format est enregistré dans le match (`S.format`) pour qu'un match archivé se relise avec ses propres règles.
 
@@ -84,6 +84,5 @@ Les champs récents restent facultatifs (pas de migration) : un ancien match qui
 
 **Limites connues** (revue de code du 2026-10-09, détail et suites dans le registre) :
 - les pannes de stockage (connexion perdue, lecture refusée) sont gérées (C27) mais n'ont été que simulées dans Chromium : le comportement réel de Safari iOS après une longue veille reste à observer ;
-- regarder la heat map d'un match terminé le réécrit (`updatedAt` change) ;
 - un match lancé puis quitté avant la première action reste « en cours » et compte comme match joué ;
 - dans un onglet Safari non installé, WebKit peut effacer le stockage d'un site inactif depuis 7 jours.

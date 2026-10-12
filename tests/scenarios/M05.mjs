@@ -197,7 +197,7 @@ export default async function ({ gabarit, check }) {
           eq(await p.evaluate(() => document.querySelector('#kbFichierPret .sheet-title').textContent), 'FICHIER PRÊT');
           eq(await p.evaluate(() => document.querySelector('#kbFichierPret .msg-center').textContent), c.nom, c.id + ' : nom affiché');
           eq(await p.evaluate(() => window.__fichiers.length), 1, c.id + ' : un seul share avant le geste');
-          eq(await p.evaluate(() => S.sheetDismissable), false, 'feuille non fermable');
+          eq(await p.evaluate(() => sheetDismissable), false, 'feuille non fermable');
           await p.evaluate(() => closeSheetIfDismissable());
           eq(await sheetOuverte(p), true, 'un appui à côté ne ferme pas la feuille');
           if (c.id === 'XLSX') await app.shot(path.join(dossier, 'fichier-pret-telephone.png'));
