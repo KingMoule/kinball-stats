@@ -129,6 +129,7 @@ export default async function ({ gabarit, check }) {
         await app.lancer({ target: 'Bleu', caught: true, player: 'Gris_p1' });
         await enregistre(app);
         /* TERMINER -> TERMINER LE MATCH -> TERMINER */
+        await p.waitForFunction(() => Date.now() >= undoBlockedUntil + 10, null, { timeout: 4000, polling: 10 });   // LIS-1 (D92) : TERMINER est réarmé comme ↶ après un appui de feuille
         await clic(app, tel ? '.mb-finish' : '.icon-btn.finish');
         await app.clickSheet('confirmFinishMatch()');
         await p.waitForFunction(() => { const b = document.querySelector('#sheet .armed'); return b && !b.disabled; }, null, { timeout: 4000, polling: 20 });

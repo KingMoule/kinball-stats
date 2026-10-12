@@ -9,7 +9,7 @@
 - Pas de migration des données : les champs nouveaux sont lus avec une valeur par défaut sûre.
 - Tout texte saisi passe par `escapeHtml`, y compris dans les attributs.
 - Les règles CSS du téléphone sont préfixées `.phone`.
-- Le bouton d'annulation dans une feuille appelle `undo()`.
+- Le bouton d'annulation dans une feuille appelle `undo()`, sauf à l'étage « joueurs » d'une saisie en cours (QUI A LANCÉ ? / QUI A FAIT LA FAUTE ?) : il appelle `cancelPendingEvent()`, car `undo()` refuse tant que `pending` existe.
 
 ## Banc et machine (2 cœurs)
 En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus.md` font foi.

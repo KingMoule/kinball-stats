@@ -2265,6 +2265,7 @@ function openNewMatch(){ navTo('newMatch'); }
    cours sans confirmation — le match reste récupérable, mais le savoir ne
    vaut rien si on ne le dit pas au moment où on risque de le perdre. */
 function goHome(){
+  if(Date.now() < undoBlockedUntil) return;   // LIS-1 (F28) : appui de feuille / de couche radiale tout récent (typiquement Annuler) : second appui parasite sur ⌂, comme pour ↶
   if(radialBusy()) return;   // C21 : idem (⌂ reste atteignable sous la couche, qui ne couvre que le terrain)
   if(currentScreen()==='match' && !viewingArchive && S.id && S.status==='in_progress' && !matchVide(S)){   // R15 : un match vide n'a rien à perdre, navHome() le met à la corbeille sans question
     openSheet(`<div class="sheet-title">QUITTER LE MATCH EN COURS ?</div>
@@ -2526,7 +2527,7 @@ function renderScoreboard(){
   const controlsHTML =
     `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
      ${finPeriodeHTML}
-     <button class="icon-btn finish" onclick="openFinishMenu()">TERMINER</button>
+     <button class="icon-btn finish" onclick="finishBarTap()">TERMINER</button>
      <button class="icon-btn" onclick="goHome()" aria-label="Accueil">⌂</button>
      <button class="icon-btn stats" onclick="openStats()">STATS</button>`;
   /* Tablette : tout sur une ligne en haut (inchangé). Téléphone : équipes en
@@ -2539,7 +2540,7 @@ function renderScoreboard(){
        ${libre ? `<button class="mb-btn mb-periode" onclick="endPeriodByLeader()"><span class="mb-ico">⏱</span>Fin pér.</button>` : ''}
        <button class="mb-btn" onclick="openStats()"><span class="mb-ico">▦</span>Stats</button>
        <button class="mb-btn" onclick="goHome()"><span class="mb-ico">⌂</span>Accueil</button>
-       <button class="mb-btn mb-finish" onclick="openFinishMenu()"><span class="mb-ico">■</span>Terminer</button>`
+       <button class="mb-btn mb-finish" onclick="finishBarTap()"><span class="mb-ico">■</span>Terminer</button>`
     : '';
   mb.classList.toggle('five', IS_PHONE && libre);
   document.getElementById('periodTag').textContent = 'PÉRIODE '+S.period+' · '+getFormat(S).label.toUpperCase();
@@ -2922,7 +2923,7 @@ function radialFaultMenu(pt){
 /* Étage « joueurs » : 4 disques en diagonale (rayon 84 px) autour du « ? », centré sur le bouton touché ; avec
    FAUTE D'ÉQUIPE (faute directe) un bouton large sous le « ? ». Le centre est ramené dans le terrain. */
 function radialPlayersMenu(team, players, allowTeam, title){
-  const D = 72, fw = field.offsetWidth, fh = field.offsetHeight, R = 84, m = R + 36 + 22, bot = allowTeam ? R + 54 + 22 + 4 : R + 36 + 4;
+  const D = 72, fw = field.offsetWidth, fh = field.offsetHeight, R = 84, m = R + 36 + 22, bot = allowTeam ? R + 54 + 22 + 4 : R + 20 + 44 + 4;   // LIS-1 : sans FAUTE D'ÉQUIPE, la rangée du bas loge Annuler
   const a = radialAnchor || radialRelease || {x:fw/2, y:fh/2};
   const cx = Math.round(rdClamp(a.x, R + D/2, fw - R - D/2)), cy = Math.round(rdClamp(a.y, m, fh - bot));
   let h = RD_VEIL + `<div class="rd-cap" style="left:${cx}px;top:${cy - R - D/2 - 22}px">${title} — ${escapeHtml(S.names[team]).toUpperCase()}</div>`;
@@ -2931,7 +2932,16 @@ function radialPlayersMenu(team, players, allowTeam, title){
     h += rdBtn('rd-disc '+isNoir(team), x - D/2, y - D/2, D, D, `choosePlayer('${jsArg(p.id)}')`, `<span class="rd-t">${escapeHtml(p.name)}</span>`, `background:${TEAM_BG[team]};`, ` title="${escapeHtml(p.name)}"`);
   });
   h += rdBtn('rd-disc unknown', cx - D/2, cy - D/2, D, D, "choosePlayer('')", '?', '', ' aria-label="Joueur inconnu"');
-  if(allowTeam) h += rdBtn('rd-wide', cx - 75, cy + R + 54 - 22, 150, 44, `choosePlayer('${TEAM_FAULT}')`, 'FAUTE D’ÉQUIPE');
+  /* LIS-1 (F27) : Annuler sur la rangée du bas, loin du « ? ». Avec FAUTE D'ÉQUIPE, les deux se partagent la rangée
+     (Annuler à gauche, 80 px ; l'équipe à droite, 128 px) pour tenir dans un terrain de 300 px ; seul, Annuler est centré. */
+  const ry = cy + R + 54 - 22;
+  if(allowTeam){
+    const x0 = cx - 109;
+    h += rdBtn('rd-wide', x0 + 90, ry, 128, 44, `choosePlayer('${TEAM_FAULT}')`, 'FAUTE D’ÉQUIPE');
+    h += rdBtn('rd-ghost', x0, ry, 80, 44, 'cancelPendingEvent()', 'Annuler');
+  } else {
+    h += rdBtn('rd-ghost', cx - 75, cy + R + 20, 150, 44, 'cancelPendingEvent()', 'Annuler');
+  }
   radialPaint(h, 'players');
 }
 
@@ -3150,7 +3160,7 @@ function askPlayer(team, title, cont, allowTeam){
       players.map(p=>`<button class="player-pick ${isNoir(team)}" style="background:${TEAM_BG[team]}" onclick="choosePlayer('${jsArg(p.id)}')">${escapeHtml(p.name)}</button>`).join('') +
       (allowTeam ? `<button class="player-pick team-fault" onclick="choosePlayer('${TEAM_FAULT}')">FAUTE<br>D'ÉQUIPE</button>` : '') +
       `<button class="player-pick unknown" onclick="choosePlayer('')" aria-label="Joueur inconnu">?</button>
-    </div>`, false);
+    </div>` + cancelEventBtn(18), false);   // LIS-1 (F27) : abandonner la saisie, à l'écart du « ? »
   document.querySelector('#sheet .player-pick-row').classList.toggle('with-team', !!allowTeam);
 }
 function choosePlayer(id){
@@ -3196,8 +3206,8 @@ function showResultMenu(pt, ev){
    C'est devenu propre : plus aucun point n'est attribué avant le choix,
    donc il n'y a rien à défaire — l'événement en attente est simplement
    jeté, et rien n'entre dans l'historique. */
-function cancelEventBtn(){
-  return `<button class="ghost-btn" style="width:100%; margin-top:10px" onclick="cancelPendingEvent()">Annuler cette saisie</button>`;
+function cancelEventBtn(gap){
+  return `<button class="ghost-btn" style="width:100%; margin-top:${gap||10}px" onclick="cancelPendingEvent()">Annuler cette saisie</button>`;
 }
 function cancelPendingEvent(){
   pending = null;
@@ -3327,6 +3337,11 @@ function finishPeriod(winner, manual){
 }
 /* Fin de période déclenchée à la main — indispensable en format libre, et
    utile partout ailleurs (période écourtée, temps de pratique limité). */
+/* LIS-1 (F28) : TERMINER de la barre du match. Même garde que ↶ et ⌂ : un appui juste après une annulation (feuille ou couche radiale) est un parasite. RETOUR / « Garder le match » et les appels de code passent par openFinishMenu, sans garde. */
+function finishBarTap(){
+  if(Date.now() < undoBlockedUntil) return;
+  openFinishMenu();
+}
 function openFinishMenu(){
   if(!S.id || S.status !== 'in_progress') return;   // C26 · R7
   if(radialBusy()) return;   // C21 : la couche radiale ne recouvre pas le ruban, mais une saisie en cours passe avant TERMINER

@@ -63,7 +63,7 @@ const infoRadial = app => app.ev(() => {
   };
 });
 /* Centre attendu du menu des joueurs : celui du bouton touché, ramené dans le cadre (marge = rayon 84 + 32), repère local. */
-const centreAttendu = (bt, fw, fh) => ({ x: Math.max(120, Math.min(fw - 120, bt.ll + bt.lw / 2)), y: Math.max(142, Math.min(fh - 124, bt.lt + bt.lh / 2)) });
+const centreAttendu = (bt, fw, fh) => ({ x: Math.max(120, Math.min(fw - 120, bt.ll + bt.lw / 2)), y: Math.max(142, Math.min(fh - 152, bt.lt + bt.lh / 2)) });
 const dansTerrain = (x, f, tol = 1) => x.l >= f.l - tol && x.r <= f.r + tol && x.t >= f.t - tol && x.b <= f.b + tol;
 const dist = (p, x) => Math.hypot(Math.max(x.l - p.x, 0, p.x - x.r), Math.max(x.t - p.y, 0, p.y - x.b));
 const radialFerme = app => app.ev(() => { const r = document.getElementById('radial'); return !r.classList.contains('open') && !r.classList.contains('closing'); });
@@ -183,9 +183,9 @@ export default async function ({ gabarit, check: checkTout }) {
         await app.clickSheet(`pickResult('Bleu',${caught})`);
         await attendre(app, 'players');
         const r = await infoRadial(app);
-        eq(r.btns.map(b => b.call), ["choosePlayer('Gris_p1')", "choosePlayer('Gris_p2')", "choosePlayer('Gris_p3')", "choosePlayer('Gris_p4')", "choosePlayer('')"], 'appels : 4 joueurs + « ? », pas de faute d\'équipe');
+        eq(r.btns.map(b => b.call), ["choosePlayer('Gris_p1')", "choosePlayer('Gris_p2')", "choosePlayer('Gris_p3')", "choosePlayer('Gris_p4')", "choosePlayer('')", 'cancelPendingEvent()'], 'appels : 4 joueurs + « ? » + Annuler (LIS-1), pas de faute d\'équipe');
         eq(r.btns.slice(0, 4).map(b => b.text), [1, 2, 3, 4].map(i => `Gris joueur ${i}`), 'joueurs de l\'équipe qui attaque');
-        r.btns.forEach(b => { assert(dansTerrain(b, r.field), `bouton hors du terrain (${b.call}) pour ${to}`); assert(b.lw >= 56 && b.lh >= 56, `disque trop petit ${b.lw}`); });
+        r.btns.forEach(b => { assert(dansTerrain(b, r.field), `bouton hors du terrain (${b.call}) pour ${to}`); if (b.call !== 'cancelPendingEvent()') assert(b.lw >= 56 && b.lh >= 56, `disque trop petit ${b.lw}`); });   /* LIS-1 : Annuler (44 px) n'est pas un disque */
         const q = r.btns[4], ex = centreAttendu(bt, r.fw, r.fh);
         assert(Math.abs(q.ll + q.lw / 2 - ex.x) <= 1.5 && Math.abs(q.lt + q.lh / 2 - ex.y) <= 1.5, `« ? » centré sur le bouton touché, ramené dans le cadre (attendu ${ex.x},${ex.y} ; obtenu ${q.ll + q.lw / 2},${q.lt + q.lh / 2})`);
         if (r.fw > 600 && to[0] > 0.3 && to[0] < 0.8) assert(Math.abs(q.cx - bt.cx) <= 1.5 && Math.abs(q.cy - bt.cy) <= 1.5, 'tablette : « ? » exactement sur le bouton touché');
@@ -275,7 +275,7 @@ export default async function ({ gabarit, check: checkTout }) {
       }
       await toucher(app); await app.clickSheet("pickFault('EXT')"); await attendre(app, 'players');
       const p = await infoRadial(app);
-      eq(p.btns.map(b => b.call), ["choosePlayer('Gris_p1')", "choosePlayer('Gris_p2')", "choosePlayer('Gris_p3')", "choosePlayer('Gris_p4')", "choosePlayer('')", "choosePlayer('__equipe__')"], 'joueurs, « ? », FAUTE D\'ÉQUIPE');
+      eq(p.btns.map(b => b.call), ["choosePlayer('Gris_p1')", "choosePlayer('Gris_p2')", "choosePlayer('Gris_p3')", "choosePlayer('Gris_p4')", "choosePlayer('')", "choosePlayer('__equipe__')", 'cancelPendingEvent()'], 'joueurs, « ? », FAUTE D\'ÉQUIPE, Annuler (LIS-1)');
       p.btns.forEach(b => assert(dansTerrain(b, p.field), `hors du terrain : ${b.call}`));
       assert(p.btns[5].cy > p.btns[4].cy + 40 && p.btns[5].lw > 100, 'bouton large sous le « ? »');
       assert(/QUI A FAIT LA FAUTE/.test(p.cap || ''), p.cap);
