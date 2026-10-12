@@ -7,7 +7,11 @@ const sansPanne = app => app.errors.filter(e => !/panne simulée/.test(e));
 const attendreEcritures = app => app.page.waitForFunction(() => !hasUnsavedWork(), null, { timeout: 8000, polling: 20 });
 const feuilleOuverte = app => app.ev(() => document.getElementById('sheet').classList.contains('open'));
 /* Le vrai bouton ⌂ de l'écran de match (tablette : ruban ; téléphone : barre du bas). */
-const clicHome = app => app.page.locator('[onclick="goHome()"]:visible').first().click();
+/* LIS-1 (D92) : ⌂ est refusé pendant la fenêtre de ré-armement qui suit un appui de feuille (comme ↶) : on l'attend, comme `app.undo()`. */
+const clicHome = async app => {
+  await app.page.waitForFunction(() => typeof undoBlockedUntil === 'undefined' || Date.now() >= undoBlockedUntil + 10, null, { timeout: 4000, polling: 10 });
+  await app.page.locator('[onclick="goHome()"]:visible').first().click();
+};
 const dansCorbeille = (app, id) => app.page.waitForFunction(i => DELETED_MATCHES.some(m => m.id === i), id, { timeout: 8000, polling: 20 });
 const etat = (app, id) => app.ev(i => ({ actif: !!getMatchRecord(i), corbeille: DELETED_MATCHES.some(m => m.id === i), surS: S.id === i }), id);
 /* Événements du moteur, tels que les poussent les fonctions de saisie (formes minimales lues par matchVide et l'export). */
