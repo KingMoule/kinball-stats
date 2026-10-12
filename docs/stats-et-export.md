@@ -60,7 +60,7 @@ Stockée comme un lancer échappé, elle compte comme tel dans OFF %, DÉF %, he
 
 ## Export
 
-Quatre sorties depuis STATS → EXPORTER, toutes pour **un** match :
+Quatre sorties depuis STATS → EXPORTER, toutes pour **un** match (plus, depuis l'écran Sauvegarde, l'export « tous les matchs » ci-dessous) :
 
 - **Excel** (`exportXLSX`) : feuilles Match, Actions, Équipes, Joueurs, Arrêté-continu, Reprises de jeu, Zones, Head-to-head, Types de fautes, Données brutes.
 - **CSV — actions** (`exportCSV`) : la feuille Actions.
@@ -79,7 +79,9 @@ Format du CSV (C28) : séparateur de colonnes `;`, BOM UTF-8 en tête (gardé), 
 
 **`at`** : champ de l'événement (comme `by`), posé par `horodatage()` à l'enregistrement d'un nouvel événement (`commitEvent`, `applySub`, `commitLineupDefinition`, fin de période manuelle). Jamais dans `before` ni dans `details`, donc ni `snapshotBefore`, ni ↶, ni WP, ni les statistiques ne le voient ; `kbcollect.js` le retire de la copie épurée envoyée (le contenu partagé et son empreinte ne changent pas). Pas de migration. Les suites du banc qui comparent deux parties retirent `at` (et les quatre colonnes ajoutées) comme elles retirent `ts` et `by`.
 
+**Export « tous les matchs » (C08, D89).** Écran Sauvegarde → « Exporter tous les matchs (CSV) » (`exportAllMatchesCSV`, lignes par `buildAllActionRows(m)`) : un seul CSV, une ligne par événement de chaque match de `MATCHES_DB` (en cours et terminés ; corbeille exclue ; un match sans action ne donne aucune ligne), du plus ancien (`createdAt`, absent = 0) au plus récent, puis dans l'ordre de saisie ; fichier `kinball-tous-les-matchs-AAAA-MM-JJ.csv`. Mêmes réglages de fichier que C28 (`;`, BOM, `\r\n`, virgules décimales, `csvEscape` pour chaque cellule, `saveFile`). **Colonnes figées (D84)** : `ID du match`, `Date du match`, `Heure de l’action`, `No`, `Période`, `Type d’action`, `Équipe 1`, `Équipe 2`, `Équipe 3` (noms, vides pour un emplacement hors jeu), puis les colonnes de la feuille Actions sans nom d'équipe en en-tête ; `Score équipe 1/2/3 avant` et `Sur le terrain — équipe 1/2/3` remplacent les colonnes nommées. L'emplacement est celui du match lu (1 = Bleu, 2 = Gris, 3 = Noir de ce match), jamais la couleur du jour ; les valeurs d'équipe sont les noms de `nm()` (homonymes suffixés « (2) »). Ajout seul : `buildActionRows` et les quatre exports d'un match sont inchangés ; la fonction les réutilise en remplaçant `S` par le match lu pendant un calcul synchrone (try/finally, rendu aussitôt), sans rien écrire dans le stockage. Le match en cours est lu dans `S` (au dernier moment, après les `await`), pas dans sa copie de `MATCHES_DB` qui peut être en retard ; un seul exemplaire par id ; ni pendant la consultation d'une archive (`viewingArchive`), ni pour un match de la corbeille. Écrit match par match dans le fichier. Un match illisible est écarté et compté dans le message de l'écran. Suite : `tests/scenarios/C08.mjs`.
+
 **Limites connues** (revue de code du 2026-10-09 ; détail et suites dans le registre) :
-- les noms de colonnes de la feuille Actions contiennent encore les noms des équipes (fixes seulement pour le préfixe) : les fichiers de plusieurs matchs ne s'empilent qu'avec l'`ID du match` et un renommage des colonnes de score ; pas d'export « tous les matchs » au format long ;
+- les noms de colonnes de la feuille Actions d'un match contiennent encore les noms des équipes (fixes seulement pour le préfixe) : pour empiler des matchs, l'export « tous les matchs » (C08) a des colonnes figées ;
 - « Saisi par » exporte un identifiant d'appareil quand aucun nom n'est connu ;
 - le comportement d'Excel (décimales à la virgule, apostrophe, texte en tête de formule) n'est pas vérifié, faute d'Excel ici : les fichiers ont été relus par un lecteur CSV du banc.

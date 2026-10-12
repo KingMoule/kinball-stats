@@ -1085,6 +1085,11 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
       <button class="primary-btn" style="margin-top:0" onclick="exportFullBackup()">EXPORTER LA SAUVEGARDE</button>
     </div>
     <div class="backup-card">
+      <div class="bc-title">Exporter tous les matchs (CSV)</div>
+      <div class="bc-sub">Un seul fichier CSV pour Excel : une ligne par action de tous les matchs (en cours et terminés, sans ceux de la corbeille), avec l'identifiant et la date du match. Les colonnes sont les mêmes pour tous les matchs : les noms d'équipes sont des valeurs, jamais des titres de colonnes.</div>
+      <button class="primary-btn" style="margin-top:0" onclick="exportAllMatchesCSV()">EXPORTER TOUS LES MATCHS (CSV)</button>
+    </div>
+    <div class="backup-card">
       <div class="bc-title">Importer une sauvegarde</div>
       <div class="bc-sub">Fusionne le fichier avec les données déjà en place (les équipes et matchs déjà connus sont mis à jour, rien n'est perdu).</div>
       <button class="primary-btn" style="margin-top:0; background:var(--surface2)" onclick="document.getElementById('importFileInput').click()">IMPORTER UN FICHIER</button>
@@ -5801,6 +5806,75 @@ function toCSV(header, rows, listes){
     return csvEscape(listes && listes.has(h) && typeof v === 'string' ? v.replace(/\./g, ',') : v);
   }).join(';')));
   return lines.join('\r\n');
+}
+/* C08 : export « tous les matchs » (format long, colonnes figées).
+   AJOUT SEUL (D77, D89) : buildActionRows et les exports d'un match ne changent pas. Les colonnes sont les MÊMES pour tous
+   les matchs (D84) : aucun en-tête ne porte un nom d'équipe ; les noms sont des valeurs ; scores et joueurs sur le terrain
+   vont par emplacement (équipe 1, 2, 3 = Bleu, Gris, Noir DU MATCH, jamais une couleur du jour). Lecture seule : MATCHES_DB
+   n'est pas modifié ; S est remplacé le temps d'un calcul synchrone (try/finally, aucun await) pour réutiliser
+   buildActionRows tel quel, puis rendu. Les lignes sont écrites match par match (pas de tableau géant de lignes). */
+const ALL_ACTIONS_HEADER = ['ID du match','Date du match','Heure de l’action','No','Période','Type d’action',
+  ...TEAMS.map((t,k)=>'Équipe '+(k+1)),
+  'Équipe en possession','Équipe attaquante','Équipe ciblée','Résultat','Situation','Phase',
+  'Réussite offensive','Arrêt défensif','Réussite offensive (avec fautes)','Joueur','Type de faute','Code de faute','Faute d’équipe',
+  'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
+  ...TEAMS.map((t,k)=>'Score équipe '+(k+1)+' avant'),
+  ...TEAMS.map((t,k)=>'Sur le terrain — équipe '+(k+1)),
+  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+const ALL_ACTIONS_DIRECT = ['ID du match','Date du match','Heure de l’action','No','Période','Type d’action',
+  'Équipe en possession','Équipe attaquante','Équipe ciblée','Résultat','Situation','Phase',
+  'Réussite offensive','Arrêt défensif','Réussite offensive (avec fautes)','Joueur','Type de faute','Code de faute','Faute d’équipe',
+  'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
+  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+/* Lignes (en colonnes figées) d'UN match enregistré ; [] si le match est vide ou illisible. */
+function buildAllActionRows(m){
+  if(!m || !Array.isArray(m.history) || !m.history.length) return [];
+  const sauve = S;
+  try{
+    S = m;
+    const teams = ATEAMS();
+    const noms = TEAMS.map(t => teams.includes(t) ? nm(t) : '');
+    return buildActionRows().rows.map(r=>{
+      const o = {};
+      ALL_ACTIONS_DIRECT.forEach(h=>{ o[h] = r[h]; });
+      if(o['ID du match'] === '' ) o['ID du match'] = m.id || '';
+      TEAMS.forEach((t,k)=>{
+        const ok = teams.includes(t);
+        o['Équipe '+(k+1)] = noms[k];
+        o['Score équipe '+(k+1)+' avant'] = ok ? r['Score '+nm(t)+' avant'] : '';
+        o['Sur le terrain — équipe '+(k+1)] = ok ? r['Sur le terrain — '+nm(t)] : '';
+      });
+      return o;
+    });
+  } finally { S = sauve; }
+}
+async function exportAllMatchesCSV(){
+  const status = document.getElementById('backupStatus');
+  /* Les auteurs sont résolus AVANT de fixer la liste : S est lu au dernier moment. */
+  if(USER_CAP){
+    const tous = MATCHES_DB.concat(S && S.id ? [S] : []);
+    const ids = [...new Set(tous.flatMap(m=>[m.authorId, ...(m.history||[]).map(ev=>ev.by)]).filter(Boolean))].filter(id => !(id in profileCache));
+    if(ids.length){ try{ const ps = await USER_CAP.profiles(ids); Object.keys(ps).forEach(id => { profileCache[id] = ps[id]; }); }catch(e){} }
+  }
+  /* Le match en cours se lit dans S (la copie de MATCHES_DB peut être en retard ou absente si l'écriture locale n'est pas revenue) ;
+     un seul exemplaire par id ; S n'est jamais modifié ni enregistré ; pas pendant la consultation d'une archive. */
+  const enCours = (S && S.id && !viewingArchive && !S.deleted && !DELETED_MATCHES.some(m => m && m.id === S.id) && Array.isArray(S.history) && S.history.length) ? S : null;
+  const base = MATCHES_DB.filter(m => m && !m.deleted && Array.isArray(m.history) && m.history.length && !(enCours && m.id === enCours.id));
+  const liste = base.concat(enCours ? [enCours] : [])
+    .map((m,i)=>({m,i})).sort((a,b)=> ((a.m.createdAt||0)-(b.m.createdAt||0)) || (a.i-b.i)).map(x=>x.m);
+  if(!liste.length){ if(status) status.textContent = 'Aucun match avec des actions à exporter.'; return; }
+  const parts = ['﻿' + ALL_ACTIONS_HEADER.map(csvEscape).join(';') + '\r\n'];
+  let lignes = 0, matchs = 0, ecartes = 0;
+  for(const m of liste){
+    let rows;
+    try{ rows = buildAllActionRows(m); }catch(e){ console.error('Export tous les matchs : match illisible', e); ecartes++; continue; }
+    if(!rows.length) continue;
+    matchs++; lignes += rows.length;
+    parts.push(rows.map(r => ALL_ACTIONS_HEADER.map(h=>csvEscape(r[h])).join(';')).join('\r\n') + '\r\n');
+  }
+  if(!lignes){ if(status) status.textContent = 'Aucun match avec des actions à exporter.'; return; }
+  const ok = await saveFile('kinball-tous-les-matchs-'+todayStr()+'.csv', new Blob(parts, {type:'text/csv;charset=utf-8;'}));
+  if(status && ok) status.textContent = `${lignes} action${lignes>1?'s':''} de ${matchs} match${matchs>1?'s':''} exportée${lignes>1?'s':''}` + (ecartes ? ` (${ecartes} match illisible${ecartes>1?'s':''} écarté${ecartes>1?'s':''})` : '') + '.';
 }
 async function exportJSON(){
   if(!S.history.length){ return; }
