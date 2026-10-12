@@ -60,7 +60,7 @@ export default async function ({ gabarit, check }) {
   const phone = gabarit === 'telephone';
 
   /* ---------- 1 · R14, F33 : le message de période est vu, 1,4 s pleines ---------- */
-  await check(`${P} · 1a · ballon échappé au seuil : ÉCHAPPÉ (≈ 550 ms) puis « PÉRIODE 1 TERMINÉE » 1,4 s, remise à zéro à ≈ 1,95 s ; pointage au seuil affiché pendant tout le message`, async () => {
+  for (const saisie of ['feuille', 'radiale']) await check(`${P} · 1a · (saisie ${saisie}) ballon échappé au seuil : ÉCHAPPÉ (≈ 550 ms) puis « PÉRIODE 1 TERMINÉE » 1,4 s, remise à zéro à ≈ 1,95 s ; pointage au seuil affiché pendant tout le message`, async () => {
     await un(gabarit, async app => {
       await setup(app, CFG.echappe); await record(app);
       const E0 = await app.state();
@@ -79,7 +79,7 @@ export default async function ({ gabarit, check }) {
       const S1 = await app.state();
       eq(S1.period, 2, 'période suivante'); eq(S1.history.length, E0.history.length + 1, 'une seule action ajoutée');
       assert(app.errors.length === 0, app.errors.join(' | '));
-    });
+    }, { timescale: 1, saisie });
   });
   for (const k of ['faute', 'menu']) {
     await check(`${P} · 1b · chemin ${k === 'faute' ? 'faute directe' : 'fin à la main'} : message 1,4 s inchangé (remise à zéro à ≈ 1,4 s)`, async () => {
@@ -179,7 +179,7 @@ export default async function ({ gabarit, check }) {
         const E0 = await app.state(), R0 = await ribbon(app);
         await PATHS[k](app);
         await msgUp(app);
-        await until(app, () => Date.now() - periodMsgAt >= SHEET_DOUBLE_MS + 30, null, 2000);
+        await until(app, () => Date.now() - periodMsgAt >= UNDO_REARM_MS + 30, null, 2000);
         await app.ev(() => { undoBlockedUntil = Date.now() + UNDO_REARM_MS; });   // un appui de feuille tout récent : ↶ serait ignoré, pas ce bouton
         const r = await tapEl(app, '#sheet .period-undo');
         assert(r.h >= 44 && r.w >= 44, `bouton ${Math.round(r.w)}×${Math.round(r.h)} px`);
@@ -195,7 +195,7 @@ export default async function ({ gabarit, check }) {
       });
     });
   }
-  await check(`${P} · 3b · anti-double-appui : un appui sur « Annuler » dans les SHEET_DOUBLE_MS qui suivent l'ouverture du message est ignoré (le message va à son terme)`, async () => {
+  await check(`${P} · 3b · anti-double-appui : un appui sur « Annuler » dans les UNDO_REARM_MS (400 ms) qui suivent l'ouverture du message est ignoré (le message va à son terme)`, async () => {
     await un(gabarit, async app => {
       await setup(app, CFG.faute);
       await app.ev(() => {
@@ -252,6 +252,45 @@ export default async function ({ gabarit, check }) {
         eq(m.label, 'Annuler', 'texte');
       });
     }
+  });
+
+  await check(`${P} · 3e · rebond TERMINÉ (feuille des détails) → « Annuler » du message : un appui à ≈ 330 ms n'a aucun effet (historique et pointage inchangés), un appui à 450 ms défait le lancer et la fin de période`, async () => {
+    await un(gabarit, async app => {
+      await setup(app, CFG.echappe, { rosters: true, advanced: true });
+      await app.ev(() => { window.__E0 = JSON.stringify({ h: S.history.length, sc: S.scores, per: S.period }); });
+      const E0 = await app.state();
+      await PATHS.echappe(app);
+      await until(app, () => !!document.querySelector('#sheet .adv-player-grid'), null, 4000);
+      await app.page.waitForTimeout(500);
+      await app.clickSheet('closeAdvancedDetailSheet()');
+      await msgUp(app);
+      await until(app, () => Date.now() - periodMsgAt >= 330, null, 2000);
+      await app.ev(() => document.querySelector('#sheet .period-undo').click());
+      await app.page.waitForTimeout(40);
+      const e = await app.ev(() => ({ h: S.history.length, sc: JSON.stringify(S.scores), per: S.period, msg: /TERMINÉE/.test(document.getElementById('sheet').textContent), timer: periodEndTimer !== null }));
+      eq(e.h, E0.history.length + 1, 'historique inchangé par le rebond'); assert(/"Bleu":11/.test(e.sc) && e.per === 1 && e.msg && e.timer, JSON.stringify(e));
+      await until(app, () => Date.now() - periodMsgAt >= 450, null, 2000);
+      await tapEl(app, '#sheet .period-undo');
+      await app.page.waitForTimeout(150);
+      const d = diff(await app.state(), E0); assert(!d, 'après l\'appui à 450 ms : ' + d);
+    });
+  });
+  await check(`${P} · 2d · navHome() pendant la feuille des détails : ni message sur l'accueil, ni attente résiduelle ; le match repris rejoue la fin de période puis accepte un geste`, async () => {
+    await un(gabarit, async app => {
+      await versDetails(app);
+      await app.ev(() => navHome());
+      const e = await app.ev(() => ({ scr: currentScreen(), open: document.getElementById('sheet').classList.contains('open'), msg: /TERMINÉE/.test(document.getElementById('sheet').textContent), busy: periodEndBusy(), w: periodEndWait, f: flashTimer }));
+      eq(e.scr, 'home', 'écran'); eq(e.open, false, 'feuille'); eq(e.msg, false, 'message'); eq(e.busy, false, 'periodEndBusy'); eq(e.w, null, 'attente'); eq(e.f, null, 'éclair');
+      await app.page.waitForTimeout(2500);
+      eq(await app.ev(() => /TERMINÉE/.test(document.getElementById('sheet').textContent) || document.getElementById('sheet').classList.contains('open')), false, 'rien sur l\'accueil 2,5 s plus tard');
+      await app.ev(() => resumeMatch());
+      await until(app, () => currentScreen() === 'match', null, 3000);
+      await until(app, () => S.period === 2 && periodEndTimer === null && !document.getElementById('sheet').classList.contains('open'), null, 6000);
+      await app.settle(); await app.fieldStable();
+      await app.faute({});
+      assert((await app.state()).history.length >= 2, 'le geste suivant est accepté');
+      assert(app.errors.length === 0, app.errors.join(' | '));
+    });
   });
 
   /* ---------- 4 · F43 : appui juste après ↶ = faute directe ---------- */

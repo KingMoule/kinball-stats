@@ -1958,6 +1958,9 @@ const NAV_TABS = [
    « ÉCHAPPÉ » ; phase 'detail' : la feuille DÉTAILS AVANCÉS ouverte par la personne). Variable de module, jamais dans S ; déclarée avant navHome
    (appelée au chargement), car closeSheet la lit. flashTimer : minuteur de l'éclair (undo() l'annule). */
 let periodEndWait = null, flashTimer = null, periodMsgAt = 0;
+/* T-FP : quitter l'écran de match ou en démarrer un autre abandonne l'attente de fin de période (feuille des détails ouverte) sans rien
+   afficher : la période reste comptée, reopenMatchSheets la rejoue à la reprise. À appeler AVANT closeSheet() (dont le hook la reprendrait). */
+function abandonPeriodEndWait(){ periodEndWait = null; clearTimeout(flashTimer); flashTimer = null; }
 let navStack = ['home'];
 function currentScreen(){ return navStack[navStack.length-1]; }
 
@@ -2002,6 +2005,7 @@ function navSwap(id){
   onEnterScreen(id);
 }
 function navBack(){
+  abandonPeriodEndWait();
   if(navStack.length > 1) navStack.pop();
   const id = currentScreen();
   /* On ne quitte la consultation d'un match archivé qu'une fois sorti de
@@ -2013,6 +2017,7 @@ function navBack(){
   onEnterScreen(id);
 }
 function navHome(){
+  abandonPeriodEndWait();
   exitArchiveView();
   corbeilleSiMatchVide();
   closeSheet();
@@ -2025,6 +2030,7 @@ function navHome(){
    repart de l'accueil pour que le retour reste court et prévisible
    (pile = accueil → destination, jamais tout le parcours parcouru avant). */
 function navTab(fnName){
+  abandonPeriodEndWait();
   exitArchiveView();
   corbeilleSiMatchVide();
   closeSheet();
@@ -2240,6 +2246,7 @@ function checkResume(){
 function resumeMatch(id){
   const record = id ? getMatchRecord(id) : findResumableMatch();
   if(!record || (id && !matchReprenable(record))) return;
+  abandonPeriodEndWait();
   const vivant = viewingArchive ? LIVE_S : S;   // le match de saisie, même pendant la consultation d'une archive
   if(vivant && vivant.id && vivant.id !== record.id && hasUnsavedWork()){
     openSheet(`<div class="sheet-title">ENREGISTREMENT EN COURS</div>
@@ -2431,6 +2438,7 @@ function finishMatchNow(){
 }
 
 function startMatch(){
+  abandonPeriodEndWait();
   /* Un alignement, c'est exactement 4 joueurs — ou aucun (pas de stats
      individuelles). Entre les deux, c'est presque sûrement un oubli : on
      bloque plutôt que de récolter des stats sur un terrain incomplet. */
@@ -3344,7 +3352,7 @@ function finishPeriod(winner, manual, deferred){
   showPeriodEnd(winner, eliminated);
 }
 /* Le message « PÉRIODE X TERMINÉE » (1,4 s pleines) puis la remise à zéro. « Annuler » = undo() (même chemin que ↶, qui annule le
-   minuteur) : la feuille recouvre ↶ pendant toute la fenêtre (F38). Un appui dans les SHEET_DOUBLE_MS qui suivent l'ouverture est le
+   minuteur) : la feuille recouvre ↶ pendant toute la fenêtre (F38). Un appui dans les UNDO_REARM_MS (400 ms) qui suivent l'ouverture est le
    second appui parasite du bouton qui l'a ouverte : ignoré ; aucun autre délai (undoBlockedUntil ne s'applique pas ici). */
 function showPeriodEnd(winner, eliminated){
   const fmt = getFormat(S);
@@ -3369,7 +3377,7 @@ function showPeriodEnd(winner, eliminated){
   }, 1400);
 }
 function undoPeriodEnd(){
-  if(Date.now() - periodMsgAt < SHEET_DOUBLE_MS) return;
+  if(Date.now() - periodMsgAt < UNDO_REARM_MS) return;
   undo();
 }
 /* La fin de période qui attendait (éclair, feuille des détails) reprend : le message, puis la remise à zéro. */
