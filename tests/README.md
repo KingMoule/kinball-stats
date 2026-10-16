@@ -9,7 +9,7 @@
 ## Lancer et attendre (passage local)
 
 ```bash
-cd <dépôt>; export NODE_PATH=/home/claude/.npm-global/lib/node_modules KINBALL_SORTIE=/tmp/kb-sortie
+cd <dépôt>; export NODE_PATH="$(npm root -g)" KINBALL_SORTIE=/tmp/kb-sortie
 (setsid nohup node tests/run.mjs > /tmp/banc.log 2>&1 < /dev/null &)
 node tests/attendre.mjs          # bloque ≤ 9 min ; 0 vert, 1 rouge, 2 encore en cours (relancer la même commande)
 ```
