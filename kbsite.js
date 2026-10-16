@@ -104,7 +104,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-16.1';
+  var VERSION_SITE = '2026-10-16.2';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -739,7 +739,8 @@
     } else {
       var rec = enregBase(b.match.id);
       if (!rec) return false;
-      if ((rec.updatedAt || 0) <= (b.match.updatedAt || 0) && nbActions(rec) <= nbActions(b.match)) return false;
+      /* FIAB-1 (audit D2) : une copie déposée par save() (`session`) est l'état exact de l'appareil : la plus récente gagne, même avec moins d'actions (↶). */
+      if ((rec.updatedAt || 0) <= (b.match.updatedAt || 0) && (b.session || nbActions(rec) <= nbActions(b.match))) return false;
       try { markLocalBackupSynced(b.match.id); } catch (e) {}
       msg = 'La version enregistrée sur cet appareil est plus récente que cette copie (' + nbActions(rec) + ' action(s) contre ' + nbActions(b.match) + '). La copie a été supprimée et rien n’a été modifié.';
     }

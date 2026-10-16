@@ -246,9 +246,103 @@ export default async function ({ gabarit, check }) {
       eq(await app.ev(() => [document.getElementById('resumeCard').style.display, findResumableMatch()]), ['none', null], 'pas de carte');
       await app.ev(i => { resumeMatch(); resumeMatch(i); }, id);
       eq(await app.ev(() => currentScreen()), 'home', 'reste à l\'accueil');
+      await app.ev(() => openMatchHistory());
+      eq(await app.page.locator('#matchHistoryBody tbody tr').filter({ hasText: 'Termine' }).locator('.row-resume').count(), 0, 'pas de bouton REPRENDRE dans l\'historique (audit D4)');
+      await app.ev(() => navHome());
       await app.ev(() => { window.__panne = false; retryNow(); });
       await attendreEcritures(app);
       eq(await app.ev(i => getMatchRecord(i).status, id), 'completed', 'terminé une fois écrit');
+      assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
+    } finally { await app.close(); }
+  });
+
+  /* ---------- 9. audit D2 : ↶ ↶ puis une action, fermeture brutale ---------- */
+  await check(`${P}·9 annulations puis une action non écrites, fermeture brutale : la copie (moins d'actions mais plus récente) est proposée et reprise, rien n'est perdu`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await prete(app);
+      const id = await nouveau(app, { name: 'Annule', fautes: 4 });
+      await attendreEcritures(app);
+      const n0 = await enBase(app, id);
+      await poserDoublure(app);
+      await app.ev(() => { window.__panne = true; });
+      await app.undo(); await app.undo();
+      await app.faute({});
+      const dernier = await app.ev(() => S.history.length);
+      eq(dernier, n0 - 1, 'deux annulations et une action : une de moins que la base');
+      await app.page.reload({ waitUntil: 'domcontentloaded' });
+      await prete(app);
+      await app.page.waitForFunction(i => !!getMatchRecord(i), id, { timeout: 8000 });
+      await app.page.waitForFunction(() => document.getElementById('backupRecovery').style.display === 'block', null, { timeout: 8000 });
+      assert(/de moins/.test(await app.ev(() => document.getElementById('backupRecovery').textContent)), 'la bannière dit « de moins »');
+      await app.page.locator('#resumeCard').click();
+      await app.page.waitForFunction(() => currentScreen() === 'match');
+      eq(await app.ev(() => S.history.length), dernier, 'REPRENDRE : la copie, pas la base');
+      await attendreEcritures(app);
+      await app.page.reload({ waitUntil: 'domcontentloaded' });
+      await prete(app);
+      await app.page.waitForFunction(i => !!getMatchRecord(i), id, { timeout: 8000 });
+      eq(await enBase(app, id), dernier, 'après rechargement : l\'état de la copie');
+      assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
+    } finally { await app.close(); }
+  });
+
+  /* ---------- 10. audit D1 : le match en attente n'est plus en mémoire ---------- */
+  await check(`${P}·10 corbeille en échec, puis corbeille réussie, puis récupération depuis la corbeille : rien ne reste bloqué « en attente »`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await prete(app);
+      const id = await nouveau(app, { name: 'Bloque', fautes: 2 });
+      await attendreEcritures(app);
+      await poserDoublure(app);
+      await app.ev(() => { window.__panne = true; });
+      await app.faute({});
+      const n = await app.ev(() => S.history.length);
+      await app.ev(() => navHome());
+      await app.ev(i => doDeleteMatch(i), id);
+      eq(await app.ev(() => [hasUnsavedWork(), !!S.deleted]), [true, true], 'première corbeille en échec');
+      await app.ev(() => { window.__panne = false; });
+      await app.ev(i => doDeleteMatch(i), id);
+      await attendreEcritures(app);
+      await app.page.waitForFunction(i => DELETED_MATCHES.some(m => m.id === i), id, { timeout: 8000 });
+      eq(await app.ev(i => DELETED_MATCHES.find(m => m.id === i).history.length, id), n, 'à la corbeille avec toutes ses actions');
+      await app.ev(i => dbRestoreMatch(i), id);
+      await app.page.waitForFunction(i => !!getMatchRecord(i), id, { timeout: 8000 });
+      eq(await app.ev(() => [hasUnsavedWork(), S.id]), [false, null], 'rien en attente, S remis à neuf');
+      /* et si le match en attente disparaît de la mémoire, le réessai lève le blocage */
+      await app.ev(() => { window.__panne = true; });
+      await app.ev(i => resumeMatch(i), id);
+      await app.settle();
+      await app.faute({});
+      eq(await app.ev(() => hasUnsavedWork()), true, 'écriture en attente');
+      await app.ev(() => { S = freshState(); retryNow(); });
+      eq(await app.ev(() => hasUnsavedWork()), false, 'plus de match en mémoire : plus de blocage');
+      await app.ev(() => { window.__panne = false; navHome(); openNewMatch(); });
+      await app.page.locator('[onclick="startMatch()"]').click();
+      await app.page.waitForFunction(i => S.id && S.id !== i && S.awaitingInitial, id, { timeout: 4000 });
+      assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
+    } finally { await app.close(); }
+  });
+
+  /* ---------- 11. audit D3 : copie d'un match terminé ---------- */
+  await check(`${P}·11 match terminé non écrit, fermeture brutale, REPRENDRE : la copie terminée est enregistrée, le terrain ne s'ouvre pas`, async () => {
+    const app = await launch(gabarit);
+    try {
+      await prete(app);
+      const id = await nouveau(app, { name: 'FiniCopie', fautes: 2 });
+      await attendreEcritures(app);
+      await poserDoublure(app);
+      await app.ev(() => { window.__panne = true; finishMatchNow(); });
+      await app.page.reload({ waitUntil: 'domcontentloaded' });
+      await prete(app);
+      await app.page.waitForFunction(i => !!getMatchRecord(i), id, { timeout: 8000 });
+      await app.page.waitForFunction(() => document.getElementById('resumeCard').style.display === 'flex', null, { timeout: 8000 });
+      await app.page.locator('#resumeCard').click();
+      eq(await titreFeuille(app), 'MATCH TERMINÉ', 'message');
+      eq(await app.ev(() => currentScreen()), 'home', 'terrain non ouvert');
+      await attendreEcritures(app);
+      await app.page.waitForFunction(i => getMatchRecord(i) && getMatchRecord(i).status === 'completed', id, { timeout: 8000 });
+      eq(await app.ev(() => document.getElementById('resumeCard').style.display), 'none', 'plus de carte REPRENDRE');
       assert(sansPanne(app).length === 0, sansPanne(app).join(' | '));
     } finally { await app.close(); }
   });
