@@ -1,5 +1,7 @@
 # Kin-Ball Stats : règles pour les agents
 
+**Session principale (celle que l'utilisateur ouvre) : tu es l'Orchestrator.** Lis `docs/orchestrateur.md`, puis `docs/handoff.md`, puis `docs/chantiers.md` (le seul registre). Tout l'état du projet vit dans le dépôt ; rien n'est ailleurs. Un sous-agent suit sa définition (`.claude/agents/`) et son brief, pas ce paragraphe.
+
 ## Invariants de l'app (index.html)
 - Navigation : uniquement par `showOnly` / `navTo` / `navBack` / `navHome`.
 - `S` ne contient que l'état de jeu, jamais d'état d'interface.
@@ -13,12 +15,12 @@
 
 ## Banc et machine (2 cœurs)
 En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus.md` font foi.
-- **Le banc complet se joue en CI**, jamais dans ta session (`.github/workflows/banc.yml`, cache par empreinte). Tu pousses ta branche, puis `node outils/ci-banc.mjs` donne le résultat (`--attendre` : jusqu'à 9 min par appel). Ne sonde pas.
+- **Le banc complet se joue en CI**, jamais dans ta session (`.github/workflows/banc.yml`, cache par empreinte). Tu pousses ta branche, puis `node outils/ci-banc.mjs --branche <b>` donne le résultat ; sans `--branche`, il lit le commit courant du clone. `--attendre` : jusqu'à 9 min par appel. Ne sonde pas.
 - **En travail** : `node tests/rapide.mjs` joue les suites touchées par ton diff, sur la tablette (`--liste` : le plan ; `--fond` au-delà de 8 min). Une suite : `KINBALL_ONLY=<id>[,smoke,undo]`. Un rapide vert ne remplace pas la CI.
 - Un seul banc à la fois sur la machine. Une commande dure au plus 10 min : un passage long se lance par `(setsid nohup … &)`, puis `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
 - On lit `node tests/attendre.mjs` ou `resultat.json`, jamais le journal en entier. `KINBALL_CACHE=seul node tests/run.mjs` relit un passage déjà joué, sans rien lancer.
 - On tue un processus par son PID, jamais avec `pkill -f` (cela tue aussi le shell) ; un hook le refuse.
-- `NODE_PATH=/home/claude/.npm-global/lib/node_modules` ; ne lance jamais `playwright install` (réservé à la CI). `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
+- Session cloud (claude.ai/code) : `NODE_PATH=/home/claude/.npm-global/lib/node_modules`, Chromium préinstallé ; ne lance jamais `playwright install` (réservé à la CI). Sur un ordinateur, voir « Environnement » dans `docs/processus.md`. `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
 
 ## Lecture du code
 - Ne lis jamais `index.html` en entier (354 Ko, environ 95 000 tokens) : `node outils/carte.mjs <regex>`, puis Read avec `offset` et `limit`. Un hook le refuse.
@@ -29,6 +31,8 @@ En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus
 - Un agent ne fusionne jamais une PR et ne committe jamais sur `main`.
 
 ## Où trouver la doc
+- `docs/handoff.md` et `docs/chantiers.md` : état du projet, chantiers ouverts, questions à l'utilisateur. `docs/orchestrateur.md` : rôle de la session principale.
+- Skills du dépôt (`.claude/skills/`) : `kinball-deleguer`, `kinball-banc`, `kinball-audit`.
 - `docs/README.md` : architecture et guide. `docs/processus.md` : qui joue le banc, niveau d'audit, modèles, hygiène de session.
 - `tests/README.md` : banc ; détail par suite dans `tests/docs/<id>.md`.
 - `node outils/carte.mjs [regex]` : carte « fonction → ligne » du code (ex. `wp`, `saisie`, `^undo`).
