@@ -1,29 +1,15 @@
 # Banc d'essai complet, joué par GitHub et non dans la session d'un agent : le modèle ne lit que le résultat.
-# Le résultat d'un passage est rangé dans un cache par empreinte (tests/empreinte.mjs) : une PR qui ne change
-# que la documentation, ou un commit déjà joué, relit le résultat au lieu de rejouer les 17 à 20 minutes du banc.
+# Le résultat d'un passage est rangé dans un cache par empreinte (tests/empreinte.mjs) : un commit déjà joué relit
+# le résultat au lieu de rejouer les 17 à 20 minutes du banc ; une PR qui ne change que la documentation saute le banc.
 name: Banc d'essai
 
 on:
+  # Pas de « paths-ignore » : la règle de protection de main exige le contrôle « banc », qui doit donc exister sur
+  # toute PR. Quand seule la documentation change, l'étape « Portée du diff » le fait finir vert sans jouer le banc.
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'tests/docs/**'
-      - 'tests/README.md'
-      - '.claude/**'
-      - 'CLAUDE.md'
-      - 'README.md'
-      - 'MIGRATION.md'
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'tests/docs/**'
-      - 'tests/README.md'
-      - '.claude/**'
-      - 'CLAUDE.md'
-      - 'README.md'
-      - 'MIGRATION.md'
   workflow_dispatch:
     inputs:
       suites:
@@ -38,8 +24,8 @@ on:
 permissions:
   contents: read
 
-# Un seul passage à la fois par branche, sans annuler celui qui tourne. Le filtre « paths-ignore » d'une PR juge la PR
-# entière : un push de documentation sur une PR qui change du code relance donc le workflow. En annulant, ce push
+# Un seul passage à la fois par branche, sans annuler celui qui tourne. La portée du diff juge la PR entière :
+# un push de documentation sur une PR qui change du code rejoue donc le workflow. En annulant, ce push
 # aurait tué un passage de 20 minutes ; sans annuler, il attend et relit le cache du premier (même empreinte).
 # GitHub ne garde qu'un passage en attente : le plus récent remplace le précédent.
 concurrency:
@@ -57,14 +43,44 @@ jobs:
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
+        with:
+          # Deux commits : sur une PR, HEAD est le commit de fusion et HEAD^1 la pointe de main.
+          fetch-depth: 2
+
+      # Les chemins de documentation, hors de l'empreinte (tests/empreinte.mjs), ne demandent pas de banc. Une PR qui ne
+      # touche qu'eux finit verte ici ; dans le doute (diff illisible, workflow_dispatch), le banc tourne.
+      - name: Portée du diff
+        id: portee
+        env:
+          EVENEMENT: ${{ github.event_name }}
+          AVANT: ${{ github.event.before }}
+        run: |
+          base=''
+          case "$EVENEMENT" in
+            pull_request) base=HEAD^1 ;;
+            push) [ -n "$AVANT" ] && [ "$AVANT" != 0000000000000000000000000000000000000000 ] \
+                    && git fetch -q --depth=1 origin "$AVANT" && base="$AVANT" ;;
+          esac
+          if [ -n "$base" ] && fichiers=$(git diff --name-only "$base" HEAD); then
+            code=$(printf '%s\n' "$fichiers" | grep -vE '^(docs/|tests/docs/|\.claude/|tests/README\.md$|CLAUDE\.md$|README\.md$|MIGRATION\.md$)' | grep -c . || true)
+            if [ -n "$fichiers" ] && [ "$code" = 0 ]; then
+              echo "banc=false" >> "$GITHUB_OUTPUT"
+              echo "::notice title=BANC SANS RÉSULTAT::Banc non joué : seule la documentation change."
+              echo "Banc non joué : seule la documentation change." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          echo "banc=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
+        if: steps.portee.outputs.banc == 'true'
         with:
           node-version: 22
 
       # Playwright (paquet npm seulement) : l'empreinte a besoin de sa version et du chemin de Chromium, pas du navigateur.
       # La sortie du banc reste hors du dépôt, sinon elle entrerait dans l'empreinte.
       - name: Installer Playwright et fixer les chemins
+        if: steps.portee.outputs.banc == 'true'
         env:
           SUITES: ${{ inputs.suites }}
           GABARIT: ${{ inputs.gabarit }}
@@ -80,6 +96,7 @@ jobs:
           exit 0
 
       - name: Calculer l'empreinte du passage
+        if: steps.portee.outputs.banc == 'true'
         id: emp
         run: |
           h=$(node --input-type=module -e "import('./tests/empreinte.mjs').then(m => console.log(m.empreinte().hash))")
@@ -87,6 +104,7 @@ jobs:
           echo "Empreinte : $h"
 
       - name: Chercher un résultat déjà joué (même empreinte)
+        if: steps.portee.outputs.banc == 'true'
         id: cache
         uses: actions/cache/restore@v4
         with:
@@ -94,24 +112,25 @@ jobs:
           key: banc-${{ steps.emp.outputs.hash }}
 
       - name: Installer Chromium (seulement si le banc doit tourner)
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: steps.portee.outputs.banc == 'true' && steps.cache.outputs.cache-hit != 'true'
         # Ici, et seulement en CI : sur la machine de développement, ne jamais lancer « playwright install ».
         run: '"$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium'
 
       # KINBALL_CACHE=1 : empreinte déjà jouée → relecture du résultat ; sinon le banc tourne une fois.
       - name: Banc d'essai
+        if: steps.portee.outputs.banc == 'true'
         run: KINBALL_CACHE=1 node tests/run.mjs
 
       # Le résumé va dans l'onglet « Summary » ; le résumé et les échecs vont aussi en annotations, que outils/ci-banc.mjs
       # lit par l'API de GitHub (journaux et artefacts ne se téléchargent pas depuis un environnement à sortie restreinte).
       - name: Résumé du passage
-        if: always()
+        if: steps.portee.outputs.banc == 'true' && always()
         run: |
           node tests/resume-ci.mjs >> "$GITHUB_STEP_SUMMARY"
           node tests/resume-ci.mjs --annotations
 
       - name: Garder le résultat
-        if: always()
+        if: steps.portee.outputs.banc == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: banc-resultat
@@ -124,11 +143,11 @@ jobs:
       # Un passage vert et complet est rangé dans le cache par run.mjs ; on ne l'enregistre que s'il est nouveau.
       - name: Un résultat neuf à ranger ?
         id: a_ranger
-        if: success() && steps.cache.outputs.cache-hit != 'true'
+        if: steps.portee.outputs.banc == 'true' && success() && steps.cache.outputs.cache-hit != 'true'
         run: '[ -f "$HOME/.cache/kinball-banc/${{ steps.emp.outputs.hash }}.json" ] && echo "oui=true" >> "$GITHUB_OUTPUT" || exit 0'
 
       - name: Ranger le résultat dans le cache
-        if: steps.a_ranger.outputs.oui == 'true'
+        if: steps.portee.outputs.banc == 'true' && steps.a_ranger.outputs.oui == 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/kinball-banc
