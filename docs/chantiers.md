@@ -21,8 +21,6 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 ## Autres lignes
 | Id | Sujet | Remarque |
 |---|---|---|
-| R19-UX | Téléphone : REPRENDRE hors écran, corbeille de ligne à 34 px, `title` invisible au toucher, bouton coupé à 320 px | goût ; Q15 |
-| R15-B | « Actions » de l'historique et export « tous les matchs » comptent alignement et changements | D77 ; Q16 |
 | R15-C | Copies locales `deleted` gardées sans purge ; vides laissés par une fermeture brutale | mineurs, sans perte |
 | C08-B, C08-C | Export « tous les matchs » : gel à 120 000 lignes ; seul le match de `S` dédoublonné | mineurs |
 | F43-B | Bandeau `#syncBadge` dans le flux pendant `save()` (cause de la mise en page périmée après ↶) | consigné (D93) |
@@ -31,7 +29,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 | E4, E6, E8 | Relectures en double ; identifiants anciens écartés à l'import ; carte « nouvel appareil » | pour information |
 | Revue, mineurs restants | Données M1, M4, M6, M7, M8, M10 ; stats S7, S9 à S12 ; saisie N7 et propreté ; outillage (mineurs) | à reprendre quand on touche le code concerné |
 
-**Abandonnés** : F31, F32, F34, F36, CI-3 (protection de `main`).
+**Abandonnés** : F31, F32, F34, F36, CI-3 (protection de `main`) ; R19-UX et R15-B (Q15 et Q16 : « on ne change rien », 2026-10-16).
 
 ## Terminés (une ligne chacun ; détail dans `docs/decisions.md` et l'historique git)
 - Vagues 1 à 4 (C02 à C24) ; banc en CI, banc rapide, hooks, agents (PR #3, #6) ; C25 à C28 (import, garde-fous, stockage, exports).
@@ -41,5 +39,3 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 ## Questions pour l'utilisateur
 - **Q11** : règles supposées du moteur de probabilité (match gagné à 4 périodes, reprise du duel, cible à égalité).
 - **Q5** : questions prioritaires de la fiche joueur (C04).
-- **Q15** (posée le 2026-10-16) : sur téléphone, où mettre REPRENDRE (colonne figée, sous le nom, autre) ? Défaut : rien ne change.
-- **Q16** (posée le 2026-10-16) : la colonne « Actions » et l'export « tous les matchs » ignorent-ils alignement et changements ? Défaut : rien ne change (D77).
