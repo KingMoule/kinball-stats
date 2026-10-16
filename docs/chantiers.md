@@ -3,14 +3,14 @@
 Mis à jour le 2026-10-16 (revue complète et ménage de la doc). Ce fichier dit où en est le projet, ce qui vient ensuite et ce qu'on attend de l'utilisateur. Il reste sous 10 Ko : un chantier terminé tient en une ligne, le pourquoi va dans `docs/decisions.md`, la méthode dans `docs/processus.md`.
 
 ## État
-- `main` = `261a11b` (MIG-1 fusionnée) ; dernier code : PR #16, site `2026-10-12.5`. CI de `main` verte : 686/686, 18 connus (commit `804226c`).
+- `main` = `a9cf546` (PR #18, ménage de la doc, fusionnée) ; dernier code : PR #16, site `2026-10-12.5`. CI de `main` verte : 686/686, 18 connus (commit `804226c`).
 - Revue complète du 2026-10-16 : rapports dans `docs/revue-2026-10-16/` (1 saisie, 2 données, 3 stats, 4 outillage). On les cite par fichier et numéro (« données I1 »). Le dossier se supprime quand ses constats sont traités ou écartés.
-- ESSAI-5 (`docs/essai-ipad.md`) : à faire par l'utilisateur, ou fait sans retour ?
+- ESSAI-5 (`docs/essai-ipad.md`) : fait par l'utilisateur le 2026-10-16.
 
-## Plan (proposé le 2026-10-16, **à valider : Q17**)
+## Plan (validé par l'utilisateur le 2026-10-16, « fiabilité d'abord »)
 Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne touche pas `index.html` peut avancer en parallèle.
 
-1. **FIAB-1, sauvegarde et reprise** (complet). Données I1 (REPRENDRE charge la version de la base et la première action écrase la copie de secours : actions perdues), données I2 = saisie N1 (une écriture réussie efface l'état « en attente » d'une sauvegarde plus récente : plus de réessai, de copie ni d'alerte), données M2, M3, M5, saisie N6, N8 ; audit #13 : NOUVEAU match non protégé, réessai perdu en consultation d'archive.
+1. **FIAB-1, sauvegarde et reprise** (complet) : **prochain chantier**. Données I1 (REPRENDRE charge la version de la base et la première action écrase la copie de secours : actions perdues), données I2 = saisie N1 (une écriture réussie efface l'état « en attente » d'une sauvegarde plus récente : plus de réessai, de copie ni d'alerte), données M2, M3, M5, saisie N6, N8 ; audit #13 : NOUVEAU match non protégé, réessai perdu en consultation d'archive.
 2. **STAT-4, chiffres faux** (léger). Stats S1 (onglet Zones plante dans un duel sans Bleu), S2 (en-têtes « Par période » cassés sur téléphone, nom échappé deux fois), S3 (« Score final » exporté = score de la période en cours, souvent 0 : ajouter « Points marqués (match) » en fin de colonnes), S5, S8.
 3. **T-FP robustesse + garde commune** (complet). Une fonction de garde partagée par ↶, ⌂, TERMINER, FIN PÉRIODE, terrain et bandeau (cause de saisie N3, N4) ; F26 et E5 (appliquer la remise à zéro de période à `S` tout de suite, ne différer que l'affichage) ; F42 ; minuteur de fin de période (audit #13) ; D2 et double appui terrain ; saisie N2 (double ↶), N5 (`pointercancel`). Prépare REDO.
 4. **OUTIL-1, outillage** (aucun ; **en parallèle de 1 à 3**, ne touche pas `index.html` sauf `VERSION_AMONT`). Retirer `amont/`, `outils/resync.mjs`, son test et `MIGRATION.md` (figer `VERSION_AMONT`) ; `.gitattributes` LF ; Pages ne publie que le site (R24) ; actions `checkout@v5` ; `tests/local` et `simtest` en CI ; marquer `{ calme: true }` les vérifications chronométrées (outillage 2) ; `tests/lib.mjs` cherche aussi `npm root -g` ; `rapide.json` complété ; `ci-banc.mjs` sous Windows.
@@ -39,8 +39,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 - LIS-1 (PR #7, #15 ; D83, D92) ; T-FP affichage et geste (PR #16, D93) ; MIG-1, tout le suivi dans le dépôt (PR #17, D94).
 
 ## Questions pour l'utilisateur
-- **Q17** : valider le plan ci-dessus (ordre et contenu).
 - **Q11** : règles supposées du moteur de probabilité (match gagné à 4 périodes, reprise du duel, cible à égalité).
 - **Q5** : questions prioritaires de la fiche joueur (C04).
-- **Q15** (après ESSAI-5) : sur téléphone, où mettre REPRENDRE (colonne figée, sous le nom, autre) ? Défaut : rien ne change.
-- **Q16** (après ESSAI-5) : la colonne « Actions » et l'export « tous les matchs » ignorent-ils alignement et changements ? Défaut : rien ne change (D77).
+- **Q15** (posée le 2026-10-16) : sur téléphone, où mettre REPRENDRE (colonne figée, sous le nom, autre) ? Défaut : rien ne change.
+- **Q16** (posée le 2026-10-16) : la colonne « Actions » et l'export « tous les matchs » ignorent-ils alignement et changements ? Défaut : rien ne change (D77).
