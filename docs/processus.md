@@ -8,7 +8,7 @@ Le banc est un script : il ne consomme aucun token. Les tokens partent dans les 
 |---|---|---|
 | Pendant le travail | `node tests/rapide.mjs` : les suites que le diff peut casser, tablette seulement, 1 à 4 min. `--liste` montre le plan sans rien lancer. | une dizaine de lignes |
 | À chaque push | Le banc complet joue **en CI** (workflow « Banc d'essai », `.github/workflows/banc.yml`). | nul |
-| Lire le résultat | `node outils/ci-banc.mjs [--attendre]` : résumé court du passage du commit courant. | une dizaine de lignes |
+| Lire le résultat | `node outils/ci-banc.mjs --branche <b> [--attendre]` : résumé court du dernier passage de la branche (sans `--branche` : le commit courant du clone). Après un push, vérifier le commit entre crochets avant de conclure. | une dizaine de lignes |
 
 - **Un agent ne lance jamais le banc complet** (`node tests/run.mjs` sans filtre) et ne l'attend pas par sondage. Un passage complet local, quand la CI est indisponible, est une décision de l'utilisateur.
 - **Le cache par empreinte** (voir `tests/empreinte.mjs`) fait qu'un commit déjà joué, ou une PR qui ne change que la documentation, relit un résultat au lieu de rejouer 17 à 20 minutes. Une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `MIGRATION.md` ou `tests/README.md` ne déclenche pas la CI (`ci-banc.mjs` répond alors « aucun passage » : c'est normal). `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md` et `tests/README.md` n'entrent pas non plus dans l'empreinte.
@@ -52,6 +52,13 @@ Le brief donne le niveau. À défaut, l'Orchestrator tranche par cette table.
 | `garde-lecture` | `Read` d'un fichier de plus de 150 Ko sans `limit` (ou au-dessus de 800 lignes) ; `cat index.html` |
 
 Autotest : `bash .claude/hooks/test-hooks.sh`. Une définition ou un hook ajouté en cours de session n'est chargé qu'à la session suivante.
+
+## Environnement
+
+- **Session cloud** (claude.ai/code, ou une session liée au dépôt) : Node 22, Playwright 1.56 dans `/home/claude/.npm-global`, Chromium préinstallé (`/opt/pw-browsers`). Rien à installer ; ne jamais lancer `playwright install`.
+- **Ordinateur de l'utilisateur** (Claude Code en local) : Node 22, puis Playwright à la version de la CI (`PLAYWRIGHT_VERSION` dans `.github/workflows/banc.yml`) : `npm install -g playwright@<version>` puis `npx playwright@<version> install chromium`. `tests/lib.mjs` cherche Playwright dans `NODE_PATH`, puis dans `~/.npm-global/lib/node_modules` : avec une installation globale ailleurs, poser `NODE_PATH="$(npm root -g)"`. Les hooks de `.claude/hooks/` sont des scripts `bash` (macOS ou Linux).
+- **GitHub** : `gh` authentifié avec le droit d'écrire dans `KingMoule/kinball-stats` (pousser une branche, ouvrir une PR). Dans une session cloud, si `GH_TOKEN` est invalide, `env -u GH_TOKEN gh …` utilise le compte connecté de `gh`.
+- Les définitions d'agents, les skills et les hooks du dépôt sont chargés au démarrage de la session : une modification n'est prise en compte qu'à la session suivante. Si `codeur`, `auditeur` ou `relecteur` manquent à la liste des types d'agent, lancer `general-purpose` avec le modèle du rôle et « lis `.claude/agents/<rôle>.md` et `CLAUDE.md` » en tête du brief.
 
 ## Limites connues
 
