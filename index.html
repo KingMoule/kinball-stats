@@ -1688,6 +1688,15 @@ async function migrateLegacyMatches(){
    récupérable. Un mauvais geste un soir de tournoi ne coûte plus rien. */
 async function dbTrashMatch(id){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
+  /* FIAB-1 (M2) : le match de saisie lui-même (EN COURS, ou dont une écriture est en attente) part à la corbeille par sa propre
+     écriture, comme corbeilleSiMatchVide : S (ou LIVE_S) porte deleted:true, donc ni un réessai ni une action plus récente ne le
+     font réapparaître, et ses actions non encore écrites partent avec lui. */
+  const vivant = matchVivant();
+  if(vivant && vivant.id === id){
+    if(!vivant.deleted){ vivant.deleted = true; vivant.deletedAt = Date.now(); vivant.deletedBy = AUTHOR_ID || null; }
+    await ecrireVivant();   // déjà marqué (une première tentative a échoué) : on réécrit la version vivante, jamais celle de la base
+    return pendingSaveId !== id;
+  }
   const m = getMatchRecord(id) || DELETED_MATCHES.find(x=>x.id===id);
   if(!m) return false;
   const copie = Object.assign({}, m, {deleted:true, deletedAt:Date.now(), deletedBy:AUTHOR_ID || null});
@@ -1727,14 +1736,29 @@ let saveChain = Promise.resolve();
 let pendingSaveId = null;     // match dont une écriture reste à confirmer
 let retryTimer = null, retryStep = 0;
 const RETRY_DELAYS = [2000, 5000, 12000, 30000, 60000];
+/* FIAB-1 (I2) : numéro de chaque save() de la session. Une écriture terminée ne déclare « tout est enregistré » (pendingSaveId,
+   copie locale) que si aucun save() n'a eu lieu après qu'elle a pris son état : sinon l'écriture suivante, peut-être en échec,
+   perdrait son réessai, sa copie et l'alerte de fermeture. La copie locale porte son numéro et celui de la session. */
+let saveSeq = 0;
+const SAVE_SESSION = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+/* FIAB-1 : le match de SAISIE, même pendant la consultation d'une archive (S est alors l'archive, le match de saisie est LIVE_S). */
+function matchVivant(){ return viewingArchive ? LIVE_S : S; }
 
 function localBackupKey(id){ return 'kinball_backup_'+id; }
-function writeLocalBackup(snapshot){
-  try{ localStorage.setItem(localBackupKey(snapshot.id), JSON.stringify({savedToServer:false, at:Date.now(), match:snapshot})); }
+function writeLocalBackup(snapshot, seq){
+  try{ localStorage.setItem(localBackupKey(snapshot.id), JSON.stringify({savedToServer:false, at:Date.now(), seq: seq || 0, session: SAVE_SESSION, match:snapshot})); }
   catch(e){ /* stockage local indisponible : on continue sans */ }
 }
-function markLocalBackupSynced(id){
-  try{ localStorage.removeItem(localBackupKey(id)); }catch(e){}
+/* `jusqua` facultatif (FIAB-1, I2) : ne retirer que la copie déposée par un save() de cette session numéroté au plus `jusqua`,
+   ou par une session précédente. Sans `jusqua` (Ignorer, corbeille), la copie part sans condition. */
+function markLocalBackupSynced(id, jusqua){
+  try{
+    if(jusqua !== undefined){
+      const v = JSON.parse(localStorage.getItem(localBackupKey(id)) || 'null');
+      if(v && v.session === SAVE_SESSION && (v.seq || 0) > jusqua) return;   // déposée par un save() plus récent : elle reste
+    }
+    localStorage.removeItem(localBackupKey(id));
+  }catch(e){}
 }
 function listLocalBackups(){
   const out = [];
@@ -1755,13 +1779,26 @@ function scheduleRetry(){
   retryStep++;
   retryTimer = setTimeout(()=>{ retryTimer = null; if(pendingSaveId) save(true); }, delay);
 }
+/* `isRetry` (réessai, retour du réseau, RÉESSAYER) : pendant la consultation d'une archive, un réessai écrit le match de saisie
+   mis de côté (LIVE_S) au lieu d'être perdu (FIAB-1, audit #13). Un save() ordinaire y reste sans effet : l'archive n'est jamais
+   réécrite. */
 function save(isRetry){
-  if(viewingArchive) return saveChain;   // simple consultation : ne jamais réécrire l'archive
-  if(!S.id) return saveChain;            // écran d'accueil, aucun match actif
-  S.updatedAt = Date.now();
-  const snapshot = JSON.parse(JSON.stringify(S));
+  if(viewingArchive && !isRetry) return saveChain;   // simple consultation : ne jamais réécrire l'archive
+  return ecrireVivant();
+}
+function ecrireVivant(){
+  const M = matchVivant();
+  if(!M || !M.id){                       // écran d'accueil, aucun match actif
+    /* FIAB-1 (audit D1) : le match en attente n'est plus en mémoire (remis à neuf par une récupération depuis la corbeille) :
+       aucun réessai ne peut plus l'écrire ; sa copie locale reste et sera proposée au démarrage. Ne pas bloquer REPRENDRE ni
+       NOUVEAU MATCH pour toujours. */
+    if(pendingSaveId){ pendingSaveId = null; retryStep = 0; if(retryTimer){ clearTimeout(retryTimer); retryTimer = null; } }
+    return saveChain;
+  }
+  M.updatedAt = Date.now();
+  const snapshot = JSON.parse(JSON.stringify(M));
   pendingSaveId = snapshot.id;
-  writeLocalBackup(snapshot);
+  writeLocalBackup(snapshot, ++saveSeq);
   setSyncState(dbSyncState === 'error' ? 'error' : 'saving');
   saveChain = saveChain.then(async ()=>{
     await dbReady;
@@ -1769,11 +1806,13 @@ function save(isRetry){
     /* On renvoie l'état COURANT si c'est toujours le même match : un
        réessai ne doit jamais réécrire une version plus ancienne que ce que
        l'utilisateur a saisi entre-temps. */
-    const payload = (!viewingArchive && S.id === snapshot.id) ? JSON.parse(JSON.stringify(S)) : snapshot;
+    const vivant = matchVivant();
+    const seqPris = saveSeq;             // tous les save() jusqu'ici sont contenus dans payload
+    const payload = (vivant && vivant.id === snapshot.id) ? JSON.parse(JSON.stringify(vivant)) : snapshot;
     try{
       await writeMatchDoc(payload);
-      if(pendingSaveId === payload.id){ pendingSaveId = null; retryStep = 0; }
-      markLocalBackupSynced(payload.id);
+      if(seqPris === saveSeq && pendingSaveId === payload.id){ pendingSaveId = null; retryStep = 0; }   // FIAB-1 (I2) : un save() venu pendant l'écriture garde son réessai
+      markLocalBackupSynced(payload.id, seqPris);
       setSyncState('ok');
     }catch(e){
       console.error('Échec de sauvegarde du match', e);
@@ -1822,6 +1861,24 @@ function openSyncSheet(){
    compare à ce que le serveur connaît, et on propose de la récupérer
    plutôt que de la réappliquer en douce — c'est l'utilisateur qui sait si
    ce match compte. */
+/* Une copie locale à proposer : plus récente et au moins aussi fournie que la version enregistrée (ou absente de la base),
+   jamais `deleted`, jamais plus ancienne que la corbeille. Partagée par la bannière et par REPRENDRE (FIAB-1, I1). */
+function copieCandidate(b){
+  if(!b || !b.match || b.match.deleted) return false;
+  if(window.KBSite && KBSite.copieObsolete && KBSite.copieObsolete(b)) return false; /* MIGRATION M11 : copie plus ancienne que la corbeille */
+  const serveur = getMatchRecord(b.match.id);
+  if(!serveur) return (b.match.history || []).length > 0;
+  /* FIAB-1 (audit D2, saisie N7) : une copie déposée par save() (elle porte `session`) est l'état exact de cet appareil ;
+     plus récente, elle gagne même avec moins d'actions (↶ fait history.pop()). Ancien format : au moins aussi fournie. */
+  return (b.match.updatedAt || 0) > (serveur.updatedAt || 0)
+      && (!!b.session || (b.match.history || []).length >= (serveur.history || []).length);
+}
+let copieProposee = null;   // identifiant du match proposé par la bannière « Un match n'avait pas été sauvegardé »
+function masquerCopieProposee(id){
+  if(copieProposee !== id) return;
+  const box = document.getElementById('backupRecovery'); if(box) box.style.display = 'none';
+  copieProposee = null;
+}
 function checkLocalBackups(){
   if(backupChecked) return;
   const illisible = lecturesEchouees.size > 0;   // C27 · R1 : lecture en panne = la copie reste proposée, avec un avertissement, et la décision est reprise à la prochaine lecture réussie
@@ -1840,25 +1897,19 @@ function checkLocalBackups(){
       catch(e){ console.error('Suppression en attente non écrite, la copie locale est gardée', e); }
     })();
   });
-  const candidats = listLocalBackups().filter(b=>{
-    if(b.match.deleted) return false;
-    if(window.KBSite && KBSite.copieObsolete && KBSite.copieObsolete(b)) return false; /* MIGRATION M11 : copie plus ancienne que la corbeille */
-    const serveur = getMatchRecord(b.match.id);
-    if(!serveur) return (b.match.history || []).length > 0;
-    return (b.match.updatedAt || 0) > (serveur.updatedAt || 0)
-        && (b.match.history || []).length >= (serveur.history || []).length;
-  });
+  const candidats = listLocalBackups().filter(copieCandidate);
   const box = document.getElementById('backupRecovery');
   if(!box) return;
-  if(!candidats.length){ box.style.display = 'none'; return; }
+  if(!candidats.length){ box.style.display = 'none'; copieProposee = null; return; }
   const b = candidats.sort((x,y)=>(y.match.updatedAt||0)-(x.match.updatedAt||0))[0];
+  copieProposee = b.match.id;
   const serveur = getMatchRecord(b.match.id);
   const ecart = (b.match.history||[]).length - ((serveur && serveur.history) || []).length;
   /* MIGRATION M03 : texte « version enregistrée » / « stockage de cet appareil » (ci-dessous) */
   box.style.display = 'block';
   box.innerHTML = `<div class="rec-title">Un match n'avait pas été sauvegardé</div>
     <div class="rec-sub">« ${escapeHtml(b.match.matchName || 'match')} » — ${(b.match.history||[]).length} action(s) conservée(s) sur cet appareil${
-      serveur ? `, soit ${ecart} de plus que la version enregistrée` : ', absent du stockage de cet appareil'}.</div>
+      serveur ? (ecart >= 0 ? `, soit ${ecart} de plus que la version enregistrée` : `, soit ${-ecart} de moins que la version enregistrée (actions annulées)`) : ', absent du stockage de cet appareil'}.</div>
     ${illisible ? `<div class="rec-sub" style="color:var(--red)">Le stockage de cet appareil n'a pas pu être lu pour l'instant : la copie est gardée, rien n'est perdu. L'app réessaie la lecture ; « Récupérer » fonctionnera dès qu'elle sera revenue.</div>` : ''}
     <div class="rec-actions">
       <button class="ghost-btn" style="background:var(--bleu); color:#fff" onclick="restoreLocalBackup('${jsArg(b.match.id)}')">Récupérer ce match</button>
@@ -1874,16 +1925,18 @@ function restoreLocalBackup(id){
   }
   if(b.match.deleted) return;   // R15 : jamais remettre en saisie un match mis à la corbeille
   if(window.KBSite && KBSite.copieRefusee && KBSite.copieRefusee(b)) return; /* MIGRATION M11 : jamais d'écrasement d'un match plus récent */
-  exitArchiveView();
+  if(!gardeRemplacementS(b.match.id)) return;   // FIAB-1 (M3, N6) : la garde R19, comme REPRENDRE
+  quitterSaisie();
   S = JSON.parse(JSON.stringify(b.match));
   save();                       // repart dans la file d'écriture, réessais compris
-  document.getElementById('backupRecovery').style.display = 'none';
+  document.getElementById('backupRecovery').style.display = 'none'; copieProposee = null;
   navTo('match'); renderScoreboard();
 }
 function dismissLocalBackup(id){
   markLocalBackupSynced(id);
   const box = document.getElementById('backupRecovery');
   if(box) box.style.display = 'none';
+  copieProposee = null;
 }
 
 function retryNow(){
@@ -2099,8 +2152,15 @@ function corbeilleSiMatchVide(){
   S.deleted = true; S.deletedAt = Date.now(); S.deletedBy = AUTHOR_ID || null;
   save();
 }
+/* FIAB-1 (N8) : quand le match de saisie est ce match-là, c'est lui qui dit s'il se reprend (terminé ou mis à la corbeille en
+   mémoire alors que son écriture n'est pas encore confirmée : la base le croit encore en cours). */
+function reprenableVivant(m){
+  const vivant = matchVivant();
+  const v = (vivant && m && vivant.id === m.id) ? vivant : m;
+  return matchReprenable(v) && !v.deleted;
+}
 function findResumableMatch(){
-  const candidates = MATCHES_DB.filter(matchReprenable);
+  const candidates = MATCHES_DB.filter(reprenableVivant);
   if(!candidates.length) return null;
   candidates.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
   return candidates[0];
@@ -2245,28 +2305,55 @@ function checkResume(){
    pendant la session. Tant qu'une écriture reste à confirmer, on ne remplace donc pas S : message, et réessai immédiat. */
 function resumeMatch(id){
   const record = id ? getMatchRecord(id) : findResumableMatch();
-  if(!record || (id && !matchReprenable(record))) return;
-  abandonPeriodEndWait();
-  const vivant = viewingArchive ? LIVE_S : S;   // le match de saisie, même pendant la consultation d'une archive
-  if(vivant && vivant.id && vivant.id !== record.id && hasUnsavedWork()){
-    openSheet(`<div class="sheet-title">ENREGISTREMENT EN COURS</div>
-      <div class="empty" style="padding:0 0 16px">Le match « ${escapeHtml(vivant.matchName || 'match')} » n'est pas encore enregistré sur cet appareil. Pour ne perdre aucune action, il faut attendre la fin de l'enregistrement avant d'en reprendre un autre. Réessayez dans un instant.</div>
-      ${viewingArchive ? `<div class="section-sub">Quittez d'abord la consultation de l'archive (bouton retour) : pendant qu'on la regarde, rien ne s'écrit.</div>` : ''}
-      <div class="choice-row">
-        ${viewingArchive ? '' : `<button class="choice-btn" style="background:var(--bleu)" onclick="closeSheet(); retryNow()">RÉESSAYER L'ENREGISTREMENT</button>`}
-        <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">FERMER</button>
-      </div>`, true);
-    return;
-  }
+  if(!record || !reprenableVivant(record)) return;   // FIAB-1 (N8) : un match tout juste terminé n'est plus repris
+  if(!gardeRemplacementS(record.id)) return;
   /* On peut arriver ici depuis la consultation d'un match archivé : il faut
      en sortir AVANT de toucher à S, sinon viewingArchive resterait vrai et
      save() bloquerait silencieusement toutes les écritures du match repris. */
-  exitArchiveView();
+  const memeMatch = !!(S && S.id === record.id && !S.deleted && !viewingArchive);
+  quitterSaisie(memeMatch);
   /* Si S est déjà ce match, on le garde : l'état en mémoire est plus à jour
-     que la copie reçue par onSnapshot quand une écriture est encore en vol. */
-  if(!(S && S.id === record.id && !S.deleted)) S = JSON.parse(JSON.stringify(record));
+     que la copie reçue par onSnapshot quand une écriture est encore en vol.
+     FIAB-1 (I1) : sinon, une copie locale plus récente que la base (actions jamais écrites) est reprise à la place de la
+     version de la base, puis réécrite ; la première action ne l'écrase donc plus. */
+  if(!(S && S.id === record.id && !S.deleted)){
+    const copie = listLocalBackups().find(b => b.match.id === record.id);
+    if(copie && copieCandidate(copie)){
+      S = JSON.parse(JSON.stringify(copie.match));
+      save();
+      masquerCopieProposee(record.id);
+      if(!reprenableVivant(S)){   // audit D3 : la copie dit le match terminé (ou à la corbeille) : on l'enregistre, sans rouvrir le terrain
+        checkResume();
+        openSheet(`<div class="sheet-title">MATCH TERMINÉ</div><div class="empty" style="padding:0 0 16px">« ${escapeHtml(S.matchName || 'match')} » avait été terminé sur cet appareil. Sa dernière version est enregistrée ; il est dans l'historique.</div><button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>`, true);
+        return;
+      }
+    } else S = JSON.parse(JSON.stringify(record));
+  }
   navStack = ['home'];
   navTo('match');
+}
+/* FIAB-1 : garde commune de REPRENDRE, « Récupérer ce match » et NOUVEAU MATCH (R19, données M3, saisie N6, audit #13).
+   Remplacer S par un autre match pendant qu'une écriture d'un match reste à confirmer ferait réécrire l'autre match par son
+   réessai : refus avec un message, et réessai offert. `cibleId` : le match qui va devenir S (null pour un match neuf).
+   Vrai = on peut remplacer S. */
+function gardeRemplacementS(cibleId){
+  if(!hasUnsavedWork() || pendingSaveId === cibleId) return true;
+  const vivant = matchVivant();
+  const nom = (vivant && vivant.id === pendingSaveId && vivant.matchName) || 'en cours';
+  openSheet(`<div class="sheet-title">ENREGISTREMENT EN COURS</div>
+    <div class="empty" style="padding:0 0 16px">Le match « ${escapeHtml(nom)} » n'est pas encore enregistré sur cet appareil. Pour ne perdre aucune action, il faut attendre la fin de l'enregistrement avant d'ouvrir un autre match. Réessayez dans un instant.</div>
+    <div class="choice-row">
+      <button class="choice-btn" style="background:var(--bleu)" onclick="closeSheet(); retryNow()">RÉESSAYER</button>
+      <button class="choice-btn" style="background:var(--surface2)" onclick="closeSheet()">FERMER</button>
+    </div>`, true);
+  return false;
+}
+/* Avant de remplacer S : abandonner l'attente de fin de période, sortir de la consultation d'une archive, et jeter la saisie
+   en cours (`pending`), qui appartient au match quitté (saisie N6). `garderSaisie` : on reprend le match déjà dans S. */
+function quitterSaisie(garderSaisie){
+  abandonPeriodEndWait();
+  exitArchiveView();
+  if(!garderSaisie){ pending = null; pendingPeriodWinner = null; playerPickCont = null; }
 }
 /* ---------- NOUVEAU MATCH (écran de configuration) ----------
    L'accueil ne sert plus de formulaire : il ne fait qu'orienter vers les
@@ -2438,7 +2525,8 @@ function finishMatchNow(){
 }
 
 function startMatch(){
-  abandonPeriodEndWait();
+  if(!gardeRemplacementS(null)) return;   // FIAB-1 (audit #13) : NOUVEAU MATCH ne remplace pas un match dont l'écriture est en attente
+  quitterSaisie();
   /* Un alignement, c'est exactement 4 joueurs — ou aucun (pas de stats
      individuelles). Entre les deux, c'est presque sûrement un oubli : on
      bloque plutôt que de récolter des stats sur un terrain incomplet. */
@@ -3483,6 +3571,14 @@ async function discardMatch(){
   try{ await writeMatchDoc(copie); setSyncState('ok'); }
   catch(e){ console.error('Échec de la mise à la corbeille du match', e); setSyncState('error'); ok = false; }
   lastDiscarded = ok ? copie : null;
+  if(!ok){
+    /* FIAB-1 (M5) : l'écriture a échoué, le match n'est pas à la corbeille. Ses actions non encore écrites ne doivent pas
+       disparaître : il redevient le match de saisie (réessai, copie locale, alerte de fermeture), ou, si un autre match a
+       pris sa place entre-temps, sa copie locale est redéposée (proposée au prochain démarrage). */
+    const garde = JSON.parse(JSON.stringify(copie)); delete garde.deleted; delete garde.deletedAt; delete garde.deletedBy;
+    if(!S.id && !viewingArchive){ S = garde; save(); }
+    else writeLocalBackup(garde);
+  }
   openSheet(ok
     ? `<div class="sheet-title">MATCH NON ENREGISTRÉ</div>
        <div class="empty" style="padding:0 0 16px">« ${escapeHtml(nom)} » est sorti de l'historique et des statistiques. Il reste dans la corbeille, sous « Sauvegarde des données ».</div>
@@ -3491,7 +3587,7 @@ async function discardMatch(){
          <button class="choice-btn" style="background:var(--green); color:#0B1220" onclick="closeSheet()">TERMINÉ</button>
        </div>`
     : `<div class="sheet-title" style="color:var(--red)">${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'STOCKAGE INACCESSIBLE' : 'PAS PU JOINDRE LE SERVEUR'}</div>
-       <div class="empty" style="padding:0 0 16px">« ${escapeHtml(nom)} » est toujours dans l'historique. Réessayez de le mettre à la corbeille depuis l'historique ${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'dès que le stockage de cet appareil répond de nouveau' : 'dès que la connexion revient'}.</div>
+       <div class="empty" style="padding:0 0 16px">« ${escapeHtml(nom)} » est toujours dans l'historique, avec toutes ses actions. Réessayez de le mettre à la corbeille depuis l'historique ${window.KBSite && KBSite.local /* MIGRATION M11 : texte local */ ? 'dès que le stockage de cet appareil répond de nouveau' : 'dès que la connexion revient'}.</div>
        <button class="ghost-btn" style="width:100%" onclick="closeSheet()">Fermer</button>`, true);
 }
 /* Le tout dernier recours, offert sur-le-champ : une seule touche remet le
@@ -6206,8 +6302,8 @@ function renderMatchHistoryList(){
       {key:'etat', label:'État', val:r=>r.m.status==='completed' ? 1 : 0,
        fmt:r=>`<span class="status-badge ${r.m.status==='completed'?'done':'progress'}">${r.m.status==='completed'?'TERMINÉ':'EN COURS'}</span>`
              + (r.m.advancedMode?' <span class="status-badge" style="background:rgba(47,107,255,.18);color:var(--bleu-ink)">AVANCÉ</span>':'')},
-      {key:'repr', label:'', val:r=>matchReprenable(r.m) ? 1 : 0,
-       fmt:r=>matchReprenable(r.m) ? `<button class="row-resume" onclick="event.stopPropagation(); resumeMatch('${jsArg(r.m.id)}')" aria-label="Reprendre le match ${escapeHtml(r._name || 'match')}">REPRENDRE</button>` : ''},
+      {key:'repr', label:'', val:r=>reprenableVivant(r.m) ? 1 : 0,
+       fmt:r=>reprenableVivant(r.m) ? `<button class="row-resume" onclick="event.stopPropagation(); resumeMatch('${jsArg(r.m.id)}')" aria-label="Reprendre le match ${escapeHtml(r._name || 'match')}">REPRENDRE</button>` : ''},
       {key:'suppr', label:'', val:r=>0,
        fmt:r=>`<button class="row-delete" onclick="event.stopPropagation(); confirmDeleteMatch('${jsArg(r.m.id)}')" aria-label="Supprimer ce match">🗑</button>`},
     ],
