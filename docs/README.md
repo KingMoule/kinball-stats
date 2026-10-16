@@ -34,6 +34,7 @@ Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la 
 ## Suivi du projet
 
 - `chantiers.md` : **le seul registre** (état, plan, autres lignes, questions à l'utilisateur), sous 10 Ko.
+- `couts.md` : coût en tokens de chaque chantier (une ligne après chaque fusion).
 - `processus.md` : méthode de travail. Skills du dépôt : `.claude/skills/kinball-deleguer`, `kinball-banc`, `kinball-audit` ; agents : `.claude/agents/`.
 
 ## Ce qui n'est pas à jour exprès
