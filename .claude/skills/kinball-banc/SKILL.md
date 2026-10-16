@@ -11,7 +11,7 @@ Dépôt : `KingMoule/kinball-stats`. Banc : Playwright, tablette et téléphone,
 **Le banc complet se joue en CI** (workflow « Banc d'essai », `.github/workflows/banc.yml`), jamais dans ta session. Un agent ne lance jamais `node tests/run.mjs` sans filtre et ne l'attend pas par sondage. Un passage complet local, quand la CI est indisponible, est une décision de l'utilisateur.
 
 ## Pendant le travail : le banc rapide
-- `node tests/rapide.mjs` joue les suites que ton diff peut casser, sur la tablette, en 1 à 4 min (smoke et undo toujours inclus). `--liste` montre le plan sans rien lancer ; `--fond` au-delà de 8 min ; `--tel` ajoute le téléphone.
+- `node tests/rapide.mjs` joue les suites que ton diff peut casser, sur la tablette, en 1 à 4 min (smoke et undo toujours inclus). `--liste` montre le plan sans rien lancer ; `--fond` au-delà de 8 min ; `--tel` joue sur le téléphone, `--tous` sur les deux gabarits.
 - Une suite précise : `KINBALL_ONLY=<id>[,smoke,undo]`. Une vérification précise : `C23_ONLY` / `C21_ONLY=<regex>`.
 - Un rapide vert ne remplace pas la CI. La table `tests/rapide.json` est indicative : si la CI révèle qu'une suite manquait, signale-le pour qu'on la corrige.
 - Contrôle négatif : `KINBALL_HTML=<copie d'avant> KINBALL_ONLY=<id>` doit échouer (la CI ne le fait pas : il reste manuel).
@@ -28,7 +28,7 @@ Dépôt : `KingMoule/kinball-stats`. Banc : Playwright, tablette et téléphone,
 ## Règles de machine
 - Un seul banc à la fois (un hook refuse le second). Une commande dure au plus 10 min : un passage long se lance par `(setsid nohup … &)`, puis `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
 - On tue un processus par son PID, jamais par `pkill -f` (un hook le refuse).
-- Session cloud : `NODE_PATH=/home/claude/.npm-global/lib/node_modules`, Chromium préinstallé (`/opt/pw-browsers`) : ne lance jamais `playwright install`. Sur un ordinateur : « Environnement » dans `docs/processus.md`.
+- Session cloud : `export NODE_PATH="$(npm root -g)"`, Chromium préinstallé (`/opt/pw-browsers`) : ne lance jamais `playwright install`. Sur un ordinateur : « Environnement » dans `docs/processus.md`.
 - `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
 - `rapide.mjs` ne couvre pas C20 (DÉF ILL) : pour un diff sur les fautes, ajoute `KINBALL_ONLY=C20`.
 - On lit `node tests/attendre.mjs` ou `resultat.json`, jamais le journal en entier.

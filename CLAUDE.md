@@ -1,6 +1,6 @@
 # Kin-Ball Stats : règles pour les agents
 
-**Session principale (celle que l'utilisateur ouvre) : tu es l'Orchestrator.** Lis `docs/orchestrateur.md`, puis `docs/handoff.md`, puis `docs/chantiers.md` (le seul registre). Tout l'état du projet vit dans le dépôt ; rien n'est ailleurs. Un sous-agent suit sa définition (`.claude/agents/`) et son brief, pas ce paragraphe.
+**Session d'un fil (un fil = un chantier) :** lis `docs/chantiers.md` (le seul registre : état, plan, questions), puis seulement ce que `docs/README.md` indique pour ton chantier. Tout l'état du projet vit dans le dépôt. Un sous-agent suit sa définition (`.claude/agents/`) et son brief, pas ce paragraphe. Méthode de travail : `docs/processus.md`.
 
 ## Invariants de l'app (index.html)
 - Navigation : uniquement par `showOnly` / `navTo` / `navBack` / `navHome`.
@@ -11,28 +11,27 @@
 - Pas de migration des données : les champs nouveaux sont lus avec une valeur par défaut sûre.
 - Tout texte saisi passe par `escapeHtml`, y compris dans les attributs.
 - Les règles CSS du téléphone sont préfixées `.phone`.
-- Le bouton d'annulation dans une feuille appelle `undo()`, sauf à l'étage « joueurs » d'une saisie en cours (QUI A LANCÉ ? / QUI A FAIT LA FAUTE ?) : il appelle `cancelPendingEvent()`, car `undo()` refuse tant que `pending` existe.
+- « Annuler cette saisie » (saisie en cours, `pending` existe) appelle `cancelPendingEvent()`, car `undo()` refuse tant que `pending` existe ; ailleurs, le bouton d'annulation appelle `undo()`.
 
-## Banc et machine (2 cœurs)
-En cas de contradiction avec un skill `kinball-*`, ce fichier et `docs/processus.md` font foi.
-- **Le banc complet se joue en CI**, jamais dans ta session (`.github/workflows/banc.yml`, cache par empreinte). Tu pousses ta branche, puis `node outils/ci-banc.mjs --branche <b>` donne le résultat ; sans `--branche`, il lit le commit courant du clone. `--attendre` : jusqu'à 9 min par appel. Ne sonde pas.
-- **En travail** : `node tests/rapide.mjs` joue les suites touchées par ton diff, sur la tablette (`--liste` : le plan ; `--fond` au-delà de 8 min). Une suite : `KINBALL_ONLY=<id>[,smoke,undo]`. Un rapide vert ne remplace pas la CI.
-- Un seul banc à la fois sur la machine. Une commande dure au plus 10 min : un passage long se lance par `(setsid nohup … &)`, puis `node tests/attendre.mjs` (codes 0, 1, 2), pas par `sleep` + `tail`.
-- On lit `node tests/attendre.mjs` ou `resultat.json`, jamais le journal en entier. `KINBALL_CACHE=seul node tests/run.mjs` relit un passage déjà joué, sans rien lancer.
-- On tue un processus par son PID, jamais avec `pkill -f` (cela tue aussi le shell) ; un hook le refuse.
-- Session cloud (claude.ai/code) : `NODE_PATH=/home/claude/.npm-global/lib/node_modules`, Chromium préinstallé ; ne lance jamais `playwright install` (réservé à la CI). Sur un ordinateur, voir « Environnement » dans `docs/processus.md`. `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
+## Banc
+- **Le banc complet se joue en CI, sur une PR vers `main`** (`.github/workflows/banc.yml`) : une branche poussée sans PR n'a aucun passage, donc on ouvre une PR brouillon dès le premier push. Résultat : `node outils/ci-banc.mjs --branche <b>` (sans `--branche`, il lit le commit courant du clone) ; `--attendre` patiente 9 min par appel, un passage en dure 17 à 20. Vérifier le commit entre crochets avant de conclure. Ne sonde pas.
+- **En travail** : `node tests/rapide.mjs` (suites touchées par le diff, tablette ; `--liste` : le plan). Une suite : `KINBALL_ONLY=<id>[,smoke,undo] node tests/run.mjs`. Un diff sur les fautes joue aussi C20. Un rapide vert ne remplace pas la CI.
+- Jamais le banc complet dans une session. Un seul banc à la fois (2 cœurs). Au-delà de 8 min : `--fond`, puis `node tests/attendre.mjs` (codes 0, 1, 2). On lit `attendre.mjs` ou `resultat.json`, jamais le journal entier.
+- On tue un processus par son PID, jamais `pkill -f` (un hook le refuse).
+- Session cloud : `export NODE_PATH="$(npm root -g)"` (Playwright y est préinstallé avec Chromium) ; jamais `playwright install`. `KINBALL_SORTIE` et `KINBALL_AVANT` pointent hors du dépôt.
 
 ## Lecture du code
-- Ne lis jamais `index.html` en entier (354 Ko, environ 95 000 tokens) : `node outils/carte.mjs <regex>`, puis Read avec `offset` et `limit`. Un hook le refuse.
+- Ne lis jamais `index.html` en entier (environ 95 000 tokens ; un hook le refuse) : `node outils/carte.mjs <regex>`, puis Read avec `offset` et `limit`.
+- Les commentaires qui parlent de serveurs, de claude.ai ou d'un plafond de 5 000 documents sont périmés : `docs/donnees.md` fait foi.
 
 ## Publication
-- Après modification d'un fichier du site (index.html, kb*.js, sw.js, polices, icônes, manifest, vendor) : lance `node outils/check-release.mjs --ecrire`, puis `node outils/check-release.mjs` doit passer. Sinon M04·8 est rouge.
-- **Toute PR s'ouvre avec `base: main`** ; un hook le vérifie. `gh pr create --base main …`, ou `gh api repos/KingMoule/kinball-stats/pulls -f title=… -f head=… -f base=main -f body=…`.
-- Un agent ne fusionne jamais une PR et ne committe jamais sur `main`.
+- Après modification d'un fichier du site (index.html, kb*.js, sw.js, polices, icônes, manifest, vendor) : `node outils/check-release.mjs --ecrire`, puis `node outils/check-release.mjs` doit passer (sinon M04·8 est rouge).
+- **Toute PR s'ouvre avec `base: main`** (un hook le vérifie) ; si `gh pr create` est refusé : `gh api repos/KingMoule/kinball-stats/pulls -f title=… -f head=… -f base=main -f body=…` (préfixer `env -u GH_TOKEN` si le jeton est invalide).
+- Clone peu profond : `git fetch origin main` avant tout push ; le diff d'une PR se lit par `gh api …/pulls/<n> -H 'Accept: application/vnd.github.v3.diff'`.
+- Un agent ne fusionne jamais une PR et ne committe jamais sur `main` : l'utilisateur fusionne.
 
-## Où trouver la doc
-- `docs/handoff.md` et `docs/chantiers.md` : état du projet, chantiers ouverts, questions à l'utilisateur. `docs/orchestrateur.md` : rôle de la session principale.
-- Skills du dépôt (`.claude/skills/`) : `kinball-deleguer`, `kinball-banc`, `kinball-audit`.
-- `docs/README.md` : architecture et guide. `docs/processus.md` : qui joue le banc, niveau d'audit, modèles, hygiène de session.
-- `tests/README.md` : banc ; détail par suite dans `tests/docs/<id>.md`.
-- `node outils/carte.mjs [regex]` : carte « fonction → ligne » du code (ex. `wp`, `saisie`, `^undo`).
+## Pièges de test
+- `undoBlockedUntil` (400 ms) garde ↶, ⌂ et TERMINER après un appui de feuille ; pendant le message de fin de période (≈ 1,95 s après un échappé au seuil), tout appui sauf « Annuler » est ignoré (`periodEndBusy()`) : un test attend la fin de la fenêtre.
+- Après ↶, la mise en page du terrain reste périmée ≈ 20 ms (bandeau `#syncBadge`) : les tests attendent par `fieldStable()`.
+- `navHome()` s'exécute avant la déclaration de `pending` (TDZ) : tout code appelé par `navHome` teste `pending` en dernier.
+- `tests/rapide.json` reconnaît les sections de `index.html` par leur commentaire : une section ajoutée doit y figurer.

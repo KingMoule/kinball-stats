@@ -16,8 +16,10 @@ Le code fait foi sur ces documents. Quand un fait de cette documentation ne corr
 | le déploiement, le service worker, la version du site, la collecte facultative, une PR | `site.md` |
 | le pourquoi d'un choix existant (avant de le remettre en cause) | `decisions.md` |
 | le banc d'essai (lancer, attendre, ajouter une suite) | `tests/README.md`, puis `tests/docs/<id>.md` |
-| qui joue le banc, le niveau d'audit d'un chantier, le choix du modèle, la consommation de tokens, l'installation sur un ordinateur | `processus.md` |
-| l'état du projet, le prochain chantier, une question en attente | `handoff.md`, puis `chantiers.md` |
+| la méthode (un fil = un chantier), qui joue le banc, le niveau d'audit, le modèle, la consommation de tokens, l'installation sur un ordinateur | `processus.md` |
+| l'état du projet, le prochain chantier, une question en attente | `chantiers.md` |
+| un essai sur iPad | `essai-ipad.md` |
+| un constat de la revue du 2026-10-16 cité par le registre | `revue-2026-10-16/<n>-….md`, à la section citée |
 
 Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la machine, publication).
 
@@ -29,14 +31,10 @@ Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la 
 - `node tests/rapide.mjs [--liste]` : banc rapide, les suites touchées par le diff.
 - `node sim/simtest.mjs` : tests du moteur de simulation (doit afficher « TOUT PASSE »).
 
-## Suivi du projet (lu par la session principale)
+## Suivi du projet
 
-- `handoff.md` : état en 40 lignes, première action de la prochaine session, pièges. Réécrit à chaque fin de session.
-- `chantiers.md` : **le seul registre** (chantiers ouverts et terminés, questions à l'utilisateur, décisions récentes en une ligne). 15 Ko au plus.
-- `orchestrateur.md` : rôle de la session principale (déléguer, relire, consigner, ne pas coder).
-- Skills du dépôt : `.claude/skills/kinball-deleguer`, `kinball-banc`, `kinball-audit` ; agents : `.claude/agents/`.
-
-Depuis le 2026-10-16 (D94), tout vit dans le dépôt : il n'y a plus de Projet claude.ai ni de document hors de GitHub.
+- `chantiers.md` : **le seul registre** (état, plan, autres lignes, questions à l'utilisateur), sous 10 Ko.
+- `processus.md` : méthode de travail. Skills du dépôt : `.claude/skills/kinball-deleguer`, `kinball-banc`, `kinball-audit` ; agents : `.claude/agents/`.
 
 ## Ce qui n'est pas à jour exprès
 
