@@ -6,7 +6,7 @@ Tout ce qui se passe entre un geste sur le terrain et un événement dans l'hist
 
 Sur `#field`, trois écouteurs (`pointerdown`, `pointermove`, `pointerup`). Un glisser de plus de 15 px est un lancer ; moins, c'est une faute directe. Le geste ouvre un événement en attente, `pending` = `{type, details, before}`, où `before` est `snapshotBefore()` (pointages, possession, période, périodes gagnées, éliminée, duel, attentes, situation, alignements). Aucun point n'est attribué à ce stade : l'utilisateur peut encore abandonner. `commitEvent()` pousse `pending` dans `S.history` puis appelle `save()`.
 
-Le terrain refuse tout geste tant qu'une feuille est ouverte, qu'une couche radiale est ouverte ou en fermeture, que le match attend un choix de possession (`awaitingInitial`, `awaitingDuelStart`) ou que `periodEndTimer` est non nul (fenêtre de fin de période). Le terrain affiche aussi la grille 3×3 des zones (`#gridLayer`, inerte), la période, le duel, la situation (ARRÊTÉ ou CONTINU) et « MODE AVANCÉ ».
+Le terrain refuse tout geste tant qu'une feuille est ouverte, qu'une couche radiale est ouverte ou en fermeture, que le match attend un choix de possession (`awaitingInitial`, `awaitingDuelStart`) ou que la fenêtre de fin de période est ouverte (`periodEndBusy()` : éclair, feuille des détails, message). Le rectangle du terrain et la rotation (`fieldGeom()`) sont figés au `pointerdown` et servent à `pointermove` et `pointerup` du même geste : la mise en page peut bouger sur une image après ↶ sans transformer une faute directe en lancer (F43, D93). Le terrain affiche aussi la grille 3×3 des zones (`#gridLayer`, inerte), la période, le duel, la situation (ARRÊTÉ ou CONTINU) et « MODE AVANCÉ ».
 
 ## Deux présentations : radiale ou feuille
 
@@ -63,13 +63,21 @@ Table `FORMATS`, deux axes indépendants. Ajouter un format = ajouter une entré
 
 Un match stocke toujours trois emplacements d'équipe ; `S.activeTeams` dit lesquels jouent. En duel direct, `duelActive` est vrai dès le départ et reste vrai d'une période à l'autre. `getFormat(m)` relit la table par `id` : les matchs enregistrés avant l'ajout d'un champ du format en profitent sans migration, et un match sans `format` est lu comme un 9/11.
 
-### Fin de période : la fenêtre de 1,4 s
+### Fin de période : le message de 1,4 s
 
-`finishPeriod(vainqueur)` compte la période gagnée tout de suite, affiche « PÉRIODE N TERMINÉE », puis une minuterie gardée dans `periodEndTimer` (1 400 ms) fait le reste : période suivante, pointages à zéro, possession (l'éliminée repart en format à trois équipes ; en duel, le perdant), fin du duel sauf format à deux équipes, `save()`. Entre les deux, l'état est transitoire (pointage au seuil, période déjà comptée). Tant que `periodEndTimer` est non nul :
+`finishPeriod(vainqueur)` compte la période gagnée tout de suite puis `showPeriodEnd` affiche « PÉRIODE N TERMINÉE » avec un bouton « Annuler » ; une minuterie gardée dans `periodEndTimer` (1 400 ms pleines) fait le reste : période suivante, pointages à zéro, possession (l'éliminée repart en format à trois équipes ; en duel, le perdant), fin du duel sauf format à deux équipes, `save()`. Entre les deux, l'état est transitoire (pointage au seuil, période déjà comptée). Trois chemins :
+
+- **faute directe et fin à la main** : le message apparaît tout de suite (1,4 s, comme avant) ;
+- **ballon échappé au seuil (lancer, DÉF ILL comprise)** (R14, F33, D93) : `checkPeriodState` appelle `finishPeriod(vainqueur, false, true)` : la période est comptée au même endroit qu'avant (la copie enregistrée par `commitEvent` la porte déjà, ce que `reopenMatchSheets` suppose) mais le message est différé. `applyResult` affiche l'éclair « ÉCHAPPÉ » (550 ms, `flashTimer`), puis `afterFlashPeriodEnd` ouvre le message : remise à zéro ≈ 1,95 s après le geste ;
+- **mode avancé** : à la fin de l'éclair s'ouvre la feuille « DÉTAILS AVANCÉS » comme avant (sauf DÉF ILL ou aucun alignement) ; la fin de période attend (`periodEndWait.phase === 'detail'`) et reprend dans `closeSheet()` quand la feuille est validée, fermée d'un appui à côté ou refermée par le code. Aucun minuteur ne ferme une feuille ouverte par la personne.
+
+`periodEndWait` (`{winner, eliminated, phase:'flash'|'detail'}`) et `flashTimer` sont des variables de module, jamais dans S ; `periodEndBusy()` = `periodEndTimer` ou `periodEndWait`. Tant que la fenêtre est ouverte (éclair, feuille des détails, message) :
 
 - `finishPeriod` ne fait rien (une seule fin de période à la fois) ;
-- le terrain et `openLineupSheet` refusent tout geste ;
-- `undo()` annule le minuteur avant de défaire le dernier événement. Pour une fin de période automatique (seuil), cet événement est l'action qui l'a provoquée : ↶ pendant le message défait la fin de période et cette action, et l'état restauré le reste. Pour une fin manuelle, voir plus bas.
+- le terrain, `openLineupSheet`, `goHome`, `openFinishMenu` (TERMINER), `openStats`, `endPeriodByLeader`, `endPeriodManually` et `reopenMatchSheets` refusent : le geste est ignoré, jamais mis en file (Q14, F38) ;
+- `undo()` annule `periodEndTimer`, `periodEndWait` et `flashTimer` avant de défaire le dernier événement, donc ↶ pendant l'éclair ou l'attente ne laisse aucun minuteur. Pour une fin de période automatique (seuil), cet événement est l'action qui l'a provoquée : ↶ défait la fin de période et cette action, et l'état restauré le reste. Pour une fin manuelle, voir plus bas ;
+- la feuille du message recouvre ↶ : le bouton « Annuler » du message (≥ 44 px) passe par `undoPeriodEnd()` puis `undo()`, le même chemin que ↶ (à inclure dans tout balayage des boutons d'annulation). Il n'est pas retenu par `undoBlockedUntil`, mais `undoPeriodEnd` ignore tout appui reçu moins de `UNDO_REARM_MS` (400 ms) après l'ouverture du message (`periodMsgAt`) : c'est le rebond du bouton qui l'a ouvert (TERMINÉ de la feuille des détails rebondit à ≈ 330 ms, hors de `SHEET_DOUBLE_MS`) ;
+- `navHome`, `navBack`, `navTab`, `startMatch` et `resumeMatch` appellent `abandonPeriodEndWait()` (avant `closeSheet()`) : l'attente (phase 'detail') et `flashTimer` sont remis à zéro sans rien afficher ; la période reste comptée et `reopenMatchSheets` la rejoue à la reprise.
 
 Un match rechargé pendant cette fenêtre : `reopenMatchSheets()` rejoue la fin de période une seule fois (retire d'abord le point de période s'il était déjà compté). Elle ne le fait que si le dernier événement est un lancer ou une faute directe de la même période ; sinon l'état est indécidable et rien n'est fait.
 

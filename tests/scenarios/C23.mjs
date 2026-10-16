@@ -144,14 +144,14 @@ export default async function ({ gabarit, check: check0 }) {
         await a.close(); apps.pop();
       }
     });
-    /* 2. chemin « ballon échappé », vrai appui sur ↶ entre 600 et 1300 ms */
-    await chk(`${P} · 2 · ballon échappé : vrai appui sur ↶ à +700 ms (message éclair déjà fermé) restaure l'état exact et le garde 2 s`, async () => {
+    /* 2. chemin « ballon échappé », ↶ entre 600 et 1300 ms (T-FP : l'éclair dure 550 ms puis le message de période recouvre ↶ jusqu'à +1950 ms ; ↶ par undo(), le bouton Annuler du message est vérifié par TFP1) */
+    await chk(`${P} · 2 · ballon échappé : ↶ (undo()) à +700 ms (message de période affiché, qui recouvre le bouton) restaure l'état exact et le garde 2 s`, async () => {
       for (const [nom, opts] of MODES) for (const k of ['duel11', 'elim']) {
         const a = await open(opts);
         const { E0, E0rub, how, t } = await fenetreUndo(a, { path: 'echappe', cfg: CFG.echappe[k], at: 700 });
         mesures['c2_' + k + '_' + nom] = { how, t };
         assert(t >= 600 && t <= 1300, `appui hors fenêtre : +${t} ms`);
-        assert(how[0] === 'appui', `↶ non atteint par un vrai appui à +${t} ms (${how})`);
+        assert(how[0] === 'undo()', `T-FP : le message de période devrait recouvrir ↶ à +${t} ms (${how})`);
         await verifieRestaure(a, E0, E0rub, `${nom}, ${k}, ↶ par ${how} à +${t} ms`);
         assert(a.errors.length === 0, a.errors.join(' | '));
         await a.close(); apps.pop();
