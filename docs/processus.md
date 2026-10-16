@@ -8,6 +8,7 @@ Le projet se mène dans un Projet Claude : la session du projet reçoit les dema
 3. Lire la CI (`node outils/ci-banc.mjs --branche <b>`). Rouge : distinguer une vérification instable (relancer le job échoué) d'un vrai échec.
 4. Contrôle selon le niveau (table ci-dessous). L'audit est confié à l'agent `auditeur` : il repart à froid et prouve les critères sans réutiliser le scénario du codeur. Correctif ou contre-audit : `SendMessage` au même agent.
 5. Dans la même PR : une ligne au registre (`docs/chantiers.md`), la raison complète d'une décision dans `docs/decisions.md`, la doc touchée corrigée. Puis la PR passe « prête » et l'utilisateur fusionne.
+6. Après la fusion : `get_session` sur la session du fil (lectures et écritures du cache, sortie, coût, contexte final) et tokens de chaque sous-agent (sa notification de fin) ; une ligne dans `docs/couts.md`, et la cause en une ligne si le coût dépasse nettement les chantiers du même niveau.
 
 La session du fil code elle-même. L'agent `codeur` sert quand deux chantiers indépendants avancent en parallèle (jamais deux sur `index.html` : série stricte) ; son brief suit le skill `kinball-deleguer`. On ne demande à l'utilisateur que ce qui est irréversible, les règles du kin-ball et ses goûts, une seule fois, avec un défaut.
 
@@ -39,7 +40,7 @@ Le **relecteur** (Opus, revue transversale) passe avant une publication importan
 - Un sous-agent coûte environ 200 000 tokens (mesuré le 2026-10-16) : on n'en lance pas pour une petite tâche, et on ne lui fait pas relire ce que la session sait déjà.
 - Sonnet pour le code, les audits et la routine ; Opus pour le relecteur, une architecture ou une règle du jeu.
 - Contexte léger : documents cités, jamais collés ; registre sous 10 Ko ; jamais `index.html` en entier. La réponse finale d'un agent tient en 30 lignes, le détail va dans son rapport sur disque.
-- Mesurer avant d'optimiser : `/usage` en fin de chantier. Si la lecture d'`index.html` domine, le découpage (R13) passe devant.
+- Mesurer avant d'optimiser : une ligne par chantier dans `couts.md` (étape 6). Le coût vient surtout du nombre d'appels d'outils, car chacun relit tout le contexte : regrouper les commandes, lire le banc une fois, ouvrir un fil neuf pour un travail tardif. Si la lecture d'`index.html` domine, le découpage (R13) passe devant.
 
 ## Garde-fous automatiques (`.claude/hooks/`)
 
