@@ -5,12 +5,12 @@
    Usage : node outils/check-release.mjs [--racine <dossier>] [--ecrire | --lister]
 
    « Fichiers du site » = fichiers suivis par git sous la racine (hors dépôt git : parcours
-   du dossier), moins docs/, tests/, amont/, outils/, sim/, collecte/, .github/, les fichiers dont
+   du dossier), moins docs/, tests/, outils/, sim/, collecte/, .github/, les fichiers dont
    le nom commence par un point, *.md, *.txt, et sw.js lui-même.
    Vérifie : chaque entrée du précache existe ; chaque fichier du site est dans le précache ;
    l'empreinte globale (sha256 de la liste triée « chemin + sha256 du fichier ») est celle
-   de sw.js ; VERSION de sw.js = version de kbsite.js ; « amont » de kbsite.js = sha256 réel
-   d'amont/kinball.amont.html (8 premiers caractères). Écart : code de sortie 1.
+   de sw.js ; VERSION de sw.js = version de kbsite.js. Écart : code de sortie 1.
+   (VERSION_AMONT de kbsite.js est une constante figée, ni vérifiée ni écrite ici.)
    --ecrire : si quelque chose a changé, nouvelle version (date du jour ; rang + 1 si la
    date est la même, sinon 1) écrite d'abord dans kbsite.js, puis l'empreinte recalculée
    et écrite dans sw.js. Rien n'a changé : n'écrit rien.
@@ -28,7 +28,7 @@ const iR = args.indexOf('--racine');
 const racine = path.resolve(iR >= 0 ? args[iR + 1] : path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-const EXCLUS_DOSSIERS = ['docs/', 'tests/', 'amont/', 'outils/', 'sim/', 'collecte/', '.github/'];
+const EXCLUS_DOSSIERS = ['docs/', 'tests/', 'outils/', 'sim/', 'collecte/', '.github/'];
 
 function estExclu(rel) {
   if (EXCLUS_DOSSIERS.some(d => rel.startsWith(d))) return true;
@@ -69,14 +69,12 @@ function empreinteGlobale(liste) {
 
 const cheminSW = path.join(racine, 'sw.js');
 const cheminKB = path.join(racine, 'kbsite.js');
-const cheminAmont = path.join(racine, 'amont', 'kinball.amont.html');
 const lire = (p) => fs.readFileSync(p, 'utf8');
 
 const RE_PRECACHE = /\/\* PRECACHE:DEBUT \*\/([\s\S]*?)\/\* PRECACHE:FIN \*\//;
 const RE_VER_SW = /(const VERSION = ')([^']*)(';)/;
 const RE_EMP_SW = /(const EMPREINTE = ')([^']*)(';)/;
 const RE_VER_KB = /(var VERSION_SITE = ')([^']*)(';)/;
-const RE_AMONT_KB = /(var VERSION_AMONT = ')([^']*)(';)/;
 
 function lirePrecache(src) {
   const m = src.match(RE_PRECACHE);
@@ -108,16 +106,13 @@ function examiner() {
   for (const f of dansListe) if (!site.includes(f) && fs.existsSync(path.join(racine, f))) ecarts.push('précache hors « fichiers du site » (exclu ou non suivi) : ' + f);
   const listeOk = ecarts.length === 0;
   const empreinte = empreinteGlobale(site);
-  const mV = sw.match(RE_VER_SW), mE = sw.match(RE_EMP_SW), mK = kb.match(RE_VER_KB), mA = kb.match(RE_AMONT_KB);
+  const mV = sw.match(RE_VER_SW), mE = sw.match(RE_EMP_SW), mK = kb.match(RE_VER_KB);
   if (!mV || !mE) ecarts.push('VERSION ou EMPREINTE introuvable dans sw.js');
-  if (!mK || !mA) ecarts.push('constantes VERSION:DEBUT/FIN introuvables dans kbsite.js');
-  let amontReel = null;
-  try { amontReel = sha(fs.readFileSync(cheminAmont)).slice(0, 8); } catch { ecarts.push('amont/kinball.amont.html introuvable'); }
-  const etat = { ecarts, listeOk, empreinte, sw, kb, mV, mE, mK, mA, amontReel, precache, site };
-  if (mV && mE && mK && mA) {
+  if (!mK) ecarts.push('constantes VERSION:DEBUT/FIN introuvables dans kbsite.js');
+  const etat = { ecarts, listeOk, empreinte, sw, kb, mV, mE, mK, precache, site };
+  if (mV && mE && mK) {
     if (mE[2] !== empreinte) ecarts.push('empreinte différente : sw.js ' + mE[2].slice(0, 12) + '… ≠ calculée ' + empreinte.slice(0, 12) + '…');
     if (mV[2] !== mK[2]) ecarts.push('VERSION de sw.js (' + mV[2] + ') ≠ version de kbsite.js (' + mK[2] + ')');
-    if (amontReel && mA[2] !== amontReel) ecarts.push('« amont » de kbsite.js (' + mA[2] + ') ≠ sha256 réel d\'amont/ (' + amontReel + ')');
   }
   return etat;
 }
@@ -129,7 +124,7 @@ function dateDuJour() {
 
 let etat = examiner();
 if (ecrire) {
-  if (!etat.listeOk || !etat.mV || !etat.mK || !etat.amontReel) {
+  if (!etat.listeOk || !etat.mV || !etat.mK) {
     console.error('Impossible d\'écrire : corriger d\'abord la liste de précache et les fichiers.');
     for (const e of etat.ecarts) console.error('  - ' + e);
     process.exit(1);
@@ -143,8 +138,8 @@ if (ecrire) {
   const jour = dateDuJour();
   const rang = (m && m[1] === jour) ? Number(m[2]) + 1 : 1;
   const version = jour + '.' + rang;
-  /* 1) kbsite.js : version et amont */
-  let kb = etat.kb.replace(RE_VER_KB, (_, a, __, c) => a + version + c).replace(RE_AMONT_KB, (_, a, __, c) => a + etat.amontReel + c);
+  /* 1) kbsite.js : version */
+  let kb = etat.kb.replace(RE_VER_KB, (_, a, __, c) => a + version + c);
   fs.writeFileSync(cheminKB, kb);
   /* 2) empreinte recalculée (kbsite.js fait partie des fichiers du site), puis sw.js */
   const empreinte = empreinteGlobale(fichiersSite());
@@ -159,4 +154,4 @@ if (etat.ecarts.length) {
   for (const e of etat.ecarts) console.error('  - ' + e);
   process.exit(1);
 }
-console.log('check-release : OK — version ' + etat.mK[2] + ', amont ' + etat.mA[2] + ', ' + etat.precache.length + ' entrées de précache, empreinte ' + etat.empreinte.slice(0, 12) + '…');
+console.log('check-release : OK — version ' + etat.mK[2] + ', ' + etat.precache.length + ' entrées de précache, empreinte ' + etat.empreinte.slice(0, 12) + '…');

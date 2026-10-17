@@ -1,5 +1,5 @@
 /* Empreinte d'un passage du banc : tout ce qui peut changer son résultat.
-   - sha256 de chaque fichier du dépôt (site, tests/**, sim/, outils/, amont/…), sauf la documentation pure
+   - sha256 de chaque fichier du dépôt (site, tests/**, sim/, outils/…), sauf la documentation pure
      (docs/, .claude/, tests/docs/, tests/README.md, CLAUDE.md) et .git ;
    - KINBALL_HTML (copie testée, hors dépôt) et le contenu de KINBALL_AVANT (versions d'avant présentes) ;
    - versions de Playwright et de Chromium (chemin de l'exécutable, qui porte la révision) ;

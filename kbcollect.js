@@ -1,6 +1,6 @@
 /* kbcollect.js — M08 : collecte FACULTATIVE des matchs terminés (consentement, boîte d'envoi, retrait).
-   Chargé par kbsite.js SEULEMENT si config.js donne une adresse de collecte ET un contact, et
-   jamais dans claude.ai. Sans cela ce fichier n'est pas lu : aucune carte, aucune requête.
+   Chargé par kbsite.js SEULEMENT si config.js donne une adresse de collecte ET un contact.
+   Sans cela ce fichier n'est pas lu : aucune carte, aucune requête.
 
    Principes (voir collecte/MODE-D-EMPLOI.md et le rapport M07 pour le contrat du serveur) :
    - désactivé par défaut ; l'accord est rangé par KBLocal.meta, valable pour CETTE identité seulement,
@@ -16,7 +16,7 @@
   'use strict';
   var KBSite = global.KBSite, KB = global.KBLocal;
   var cfg = KBSite && KBSite.collecteConfig;
-  if (!KBSite || !KB || !cfg || global.claude || KBSite.collecte) return;
+  if (!KBSite || !KB || !cfg || KBSite.collecte) return;
 
   var CLE_ACCORD = 'site.collecte.accord';        // {accorde, at, id}
   var CLE_FILE = 'site.collecte.file';            // matchId -> entrée de la boîte d'envoi

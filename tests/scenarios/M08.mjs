@@ -180,7 +180,7 @@ export default async function ({ gabarit, check }) {
           eq(sortantes, [], 'requêtes hors origine');
           assert(!A.errors.some(e => /pageerror/.test(e)), A.errors.join(' | '));
         });
-        await check(`${P}·1b configuration incomplète ou invalide : toujours rien (URL seule, contact seul, http hors machine locale, claude.ai)`, async () => {
+        await check(`${P}·1b configuration incomplète ou invalide : toujours rien (URL seule, contact seul, http hors machine locale)`, async () => {
           for (const v of [{ collecteUrl: faux.url, contact: '' }, { collecteUrl: '', contact }, { collecteUrl: 'http://exemple.invalid/exec', contact }, { collecteUrl: '   ', contact: '  ' }, { collecteUrl: 5, contact: 7 }]) {
             cfg.valeur = v;
             await recharger(A.page);
@@ -188,11 +188,6 @@ export default async function ({ gabarit, check }) {
             eq(await A.page.evaluate(() => !!document.getElementById('kbCollecte') || typeof KBSite.collecte !== 'undefined'), false, JSON.stringify(v));
           }
           cfg.valeur = CFG;
-          await A.page.addInitScript(() => { window.claude = { use: () => Promise.reject(new Error('absent')) }; });
-          await A.page.reload({ waitUntil: 'domcontentloaded' });
-          await A.page.waitForFunction(() => typeof KBSite !== 'undefined' && typeof KBSite.version === 'object', null, { timeout: 8000 });
-          await attendre(400);
-          eq(await A.page.evaluate(() => KBSite.collecteConfig), null, 'sous claude.ai : jamais');
           eq(sortantes, [], 'requêtes hors origine');
         });
         await check(`${P}·13a confidentialite.html : contact vide = « contact non renseigné » avec repli (responsable du site, issue GitHub), page lisible et mise en page`, async () => {

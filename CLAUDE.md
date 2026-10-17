@@ -22,7 +22,6 @@
 
 ## Lecture du code
 - Ne lis jamais `index.html` en entier (environ 95 000 tokens ; un hook le refuse) : `node outils/carte.mjs <regex>`, puis Read avec `offset` et `limit`.
-- Les commentaires qui parlent de serveurs, de claude.ai ou d'un plafond de 5 000 documents sont périmés : `docs/donnees.md` fait foi.
 
 ## Publication
 - Après modification d'un fichier du site (index.html, kb*.js, sw.js, polices, icônes, manifest, vendor) : `node outils/check-release.mjs --ecrire`, puis `node outils/check-release.mjs` doit passer (sinon M04·8 est rouge).

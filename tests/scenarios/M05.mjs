@@ -99,17 +99,7 @@ export default async function ({ gabarit, check }) {
         { id: 'JSON match', appel: () => exportJSON(), nom: NOM_NET + '.json', type: 'application/json' },
         { id: 'sauvegarde complète', appel: () => exportFullBackup(), nom: 'kinball_sauvegarde_' + jour + '.json', type: 'application/json' },
       ];
-      /* Un match terminé vieux de plus de 180 jours pour l'archivage (écriture par l'app elle-même). */
-      const idVieux = await p.evaluate(async () => {
-        const rec = JSON.parse(JSON.stringify(MATCHES_DB.find(m => m.id === S.id)));
-        rec.id = 'm05_vieux'; rec.matchName = 'vieux match'; rec.updatedAt = Date.now() - 200 * 86400000; rec.createdAt = rec.updatedAt;
-        await writeMatchDoc(rec);
-        return rec.id;
-      });
-      await p.waitForFunction((id) => MATCHES_DB.some(m => m.id === id), idVieux, { timeout: 5000, polling: 20 });
-      const nomArchive = 'kinball_archive_' + jour + '.json';
-
-      await check(`${P}·1 les 6 appelants partagent exactement un File (nom, type, taille, contenu relu), sans téléchargement, saveFile vrai, kb:fichier {partage}`, async () => {
+      await check(`${P}·1 les 5 appelants partagent exactement un File (nom, type, taille, contenu relu), sans téléchargement, saveFile vrai, kb:fichier {partage}`, async () => {
         let telechargements = 0; p.on('download', () => telechargements++);
         for (const c of SIX) {
           await reinit(p);
@@ -135,35 +125,14 @@ export default async function ({ gabarit, check }) {
             eq(j.matchName, NOM_MATCH, 'JSON du match : nom'); assert(Array.isArray(j.history) && j.history.length >= 12, 'JSON : historique');
           } else {
             const j = JSON.parse(octets.toString('utf8'));
-            eq(j.format, 'kinball_backup', 'format de la sauvegarde'); assert(j.matches.length >= 2, 'matchs : ' + j.matches.length);
+            eq(j.format, 'kinball_backup', 'format de la sauvegarde'); assert(j.matches.length >= 1, 'matchs : ' + j.matches.length);
           }
         }
-        /* archivage (carte masquée en mode local : appel direct) */
-        await reinit(p);
-        await p.evaluate(() => confirmArchiveOldMatches(180));
-        await p.waitForFunction(() => window.__sf.length === 1, null, { timeout: 8000 });
-        const f = await lire(p, 0);
-        eq(f.nom, nomArchive, 'archive : nom'); eq(f.type, 'application/json', 'archive : type'); eq(f.nb, 1);
-        const j = JSON.parse(Buffer.from(f.b64, 'base64').toString('utf8'));
-        eq(j.format, 'kinball_archive', 'archive : format'); eq(j.matches.map(m => m.id), [idVieux], 'archive : le vieux match');
-        eq(await p.evaluate(() => window.__sf), [true], 'archive : saveFile');
-        eq(await p.evaluate(() => window.__evts), [{ filename: nomArchive, moyen: 'partage' }], 'archive : kb:fichier');
-        await p.waitForFunction((id) => !MATCHES_DB.some(m => m.id === id), idVieux, { timeout: 8000, polling: 20 });
         eq(telechargements, 0, 'téléchargements');
         assert(app.errors.length === 0, app.errors.join(' | '));
       });
 
-      /* Remet le vieux match (il a été retiré par l'archivage réussi) pour les essais suivants. */
-      const remettre = async () => {
-        await p.evaluate(async () => {
-          const rec = JSON.parse(JSON.stringify(MATCHES_DB.find(m => m.id === S.id)));
-          rec.id = 'm05_vieux2'; rec.matchName = 'vieux match 2'; rec.updatedAt = Date.now() - 200 * 86400000; rec.createdAt = rec.updatedAt;
-          await writeMatchDoc(rec);
-        });
-        await p.waitForFunction(() => MATCHES_DB.some(m => m.id === 'm05_vieux2'), null, { timeout: 5000, polling: 20 });
-      };
-
-      await check(`${P}·2 AbortError : saveFile faux, pas de « Export impossible », pas de kb:fichier ; archivage : « Export annulé », le match est toujours là`, async () => {
+      await check(`${P}·2 AbortError : saveFile faux, pas de « Export impossible », pas de kb:fichier`, async () => {
         let telechargements = 0; p.on('download', () => telechargements++);
         for (const c of SIX) {
           await reinit(p);
@@ -175,16 +144,6 @@ export default async function ({ gabarit, check }) {
           eq(await p.evaluate(() => window.__evts), [], c.id + ' : kb:fichier');
           eq(await p.evaluate(() => window.__fichiers.length), 1, c.id + ' : un seul essai');
         }
-        await remettre();
-        await reinit(p);
-        await p.evaluate(() => { window.__mode = 'AbortError'; });
-        await p.evaluate(() => confirmArchiveOldMatches(180));
-        await p.waitForFunction(() => window.__sf.length === 1, null, { timeout: 8000 });
-        eq(await p.evaluate(() => window.__sf), [false]);
-        eq(await p.evaluate(() => document.getElementById('backupStatus').textContent), 'Export annulé : rien n\'a été supprimé.');
-        eq(await p.evaluate(() => MATCHES_DB.some(m => m.id === 'm05_vieux2')), true, 'le match est toujours là');
-        eq(await p.evaluate(() => window.__evts), []);
-        eq(await p.evaluate(() => window.__flash.filter(t => /Export impossible/.test(t))), []);
         eq(telechargements, 0, 'téléchargements');
       });
 

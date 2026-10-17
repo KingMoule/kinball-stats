@@ -19,8 +19,7 @@
     { "motif": "^sim/", "suites": ["C13B", "C23"], "commandes": ["node sim/simtest.mjs"] },
     { "motif": "^tests/local/", "suites": [], "commandes": ["node tests/local/kblocal.test.mjs", "node tests/local/collecte.test.mjs"] },
     { "motif": "^outils/check-release\\.mjs$", "suites": ["M04"] },
-    { "motif": "^(outils/resync\\.mjs|amont/)", "suites": ["M04", "M06"], "commandes": ["node tests/local/resync.test.mjs"] },
-    { "motif": "^(docs/|tests/docs/|tests/README\\.md$|tests/(rapide|resume-ci)\\.(mjs|json)$|\\.claude/|\\.github/|CLAUDE\\.md$|README\\.md$|MIGRATION\\.md$|\\.gitignore$|\\.nojekyll$|outils/(carte|ci-banc)\\.mjs$)", "suites": [] }
+    { "motif": "^(docs/|tests/docs/|tests/README\\.md$|tests/(rapide|resume-ci)\\.(mjs|json)$|\\.claude/|\\.github/|CLAUDE\\.md$|README\\.md$|\\.gitignore$|\\.nojekyll$|outils/(carte|ci-banc)\\.mjs$)", "suites": [] }
   ],
 
   "commandes_index": ["node outils/check-release.mjs"],
@@ -32,7 +31,7 @@
     { "motif": "FORMATS DE MATCH|NOUVEAU MATCH|MODE DE PRISE DE STATS|CHOIX DU FORMAT|SÉLECTEUR D'ÉQUIPES|ALIGNEMENTS|GESTION DES ÉQUIPES", "suites": ["C19", "C25", "C26", "R15", "R16", "LIS1", "FIAB1"] },
     { "motif": "FORMATS DE MATCH", "suites": ["C08", "C15", "C20"], "note": "FAULTS et faultLabel" },
     { "motif": "CHOIX DU FORMAT", "suites": ["C14", "C23", "C24", "TFP1"], "note": "renderScoreboard" },
-    { "motif": "BASE D'ÉQUIPES|STOCKAGE SERVEUR|SYNCHRONISATION|OÙ VIVENT|QUI A PRIS|MIGRATION|CORBEILLE|SAUVEGARDE D'UN MATCH|RÉCUPÉRATION", "suites": ["C26", "C27", "M03", "M06", "M11", "R15", "R16", "FIAB1", "TFP2"] },
+    { "motif": "BASE D'ÉQUIPES|STOCKAGE|SYNCHRONISATION|OÙ VIVENT|QUI A PRIS|MIGRATION|CORBEILLE|SAUVEGARDE D'UN MATCH|RÉCUPÉRATION", "suites": ["C26", "C27", "M03", "M06", "M11", "R15", "R16", "FIAB1", "TFP2"] },
     { "motif": "^NAVIGATION", "suites": ["C25", "C26", "R15", "R16", "fuzz", "TFP1", "TFP2", "FIAB1"] },
     { "motif": "JOUEURS PENDANT LE MATCH|Glisser-déposer", "suites": ["C19", "C24"] },
     { "motif": "GARDE-FOUS CONTRE LE FAUX CLIC|^SHEET", "suites": ["C22", "C23", "C24", "C26", "R16", "LIS1", "TFP1", "TFP2"] },
