@@ -2,7 +2,7 @@
 
 Liste à cocher sur la version en ligne, app installée. Lu seulement au moment d'un essai ; le registre dit quel essai est attendu.
 
-## ESSAI-7 (après REDO et TERRAIN)
+## ESSAI-7 (après REDO, TERRAIN et F8)
 - ↷ « Rétablir » à droite de ↶ (ruban de l'iPad, barre du téléphone) : inactif tant que rien n'est défait.
 - Trois actions, ↶ ↶ ↶ puis ↷ ↷ ↷ : pointage, possession et stats reviennent à l'identique.
 - ↶ puis une nouvelle action : ↷ redevient inactif.
@@ -10,6 +10,7 @@ Liste à cocher sur la version en ligne, app installée. Lu seulement au moment 
 - Élimination : ↶ dans la feuille du duel, puis ↷ : la feuille « DUEL — QUI REPREND LE BALLON ? » revient.
 - Changement de joueur annulé dans la feuille de l'équipe, puis ↷ : l'échange revient.
 - Terrain (TERRAIN) : vert foncé, liseré clair, grille bleue 3×3, cercle au centre, comme la maquette ; un glisser commencé dans une case est compté dans cette case (onglet Zones) ; un menu radial ouvert dans un coin n'est pas coupé par l'arrondi.
+- Courbe (F8) : après une trentaine d'actions en 9/11, Stats → « % victoire » : le calcul se termine en quelques secondes, la dernière valeur de chaque équipe est celle des barres du ruban ; toucher la courbe lit un point ; MATCH / PÉRIODE change de courbe ; même courbe en rouvrant le match terminé depuis l'Historique.
 
 ## ESSAI-6 (après VIS-1) : fait le 2026-10-17, tout confirmé
 
