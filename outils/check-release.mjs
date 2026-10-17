@@ -2,10 +2,10 @@
 /* check-release.mjs — vérifie (et au besoin écrit) la version du site, son empreinte et
    la liste de précache du service worker. Node seul, aucune dépendance.
 
-   Usage : node outils/check-release.mjs [--racine <dossier>] [--ecrire]
+   Usage : node outils/check-release.mjs [--racine <dossier>] [--ecrire | --lister]
 
    « Fichiers du site » = fichiers suivis par git sous la racine (hors dépôt git : parcours
-   du dossier), moins tests/, docs/, outils/, sim/, collecte/, .github/, les fichiers dont
+   du dossier), moins docs/, tests/, outils/, sim/, collecte/, .github/, les fichiers dont
    le nom commence par un point, *.md, *.txt, et sw.js lui-même.
    Vérifie : chaque entrée du précache existe ; chaque fichier du site est dans le précache ;
    l'empreinte globale (sha256 de la liste triée « chemin + sha256 du fichier ») est celle
@@ -13,7 +13,9 @@
    (VERSION_AMONT de kbsite.js est une constante figée, ni vérifiée ni écrite ici.)
    --ecrire : si quelque chose a changé, nouvelle version (date du jour ; rang + 1 si la
    date est la même, sinon 1) écrite d'abord dans kbsite.js, puis l'empreinte recalculée
-   et écrite dans sw.js. Rien n'a changé : n'écrit rien. */
+   et écrite dans sw.js. Rien n'a changé : n'écrit rien.
+   --lister : écrit, un par ligne, les fichiers à publier (fichiers du site, sw.js et les licences
+   *.txt des polices et de vendor/), sans rien vérifier ; pages.yml ne publie que ceux-là. */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -26,7 +28,7 @@ const iR = args.indexOf('--racine');
 const racine = path.resolve(iR >= 0 ? args[iR + 1] : path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-const EXCLUS_DOSSIERS = ['tests/', 'docs/', 'outils/', 'sim/', 'collecte/', '.github/'];
+const EXCLUS_DOSSIERS = ['docs/', 'tests/', 'outils/', 'sim/', 'collecte/', '.github/'];
 
 function estExclu(rel) {
   if (EXCLUS_DOSSIERS.some(d => rel.startsWith(d))) return true;
@@ -53,6 +55,12 @@ function fichiersSuivis() {
   return parcourir(racine);
 }
 const fichiersSite = () => fichiersSuivis().filter(f => !estExclu(f)).sort();
+
+if (args.includes('--lister')) {
+  const licences = fichiersSuivis().filter(f => /^(fonts|vendor)\/LICENCE[^/]*\.txt$/.test(f));
+  console.log([...fichiersSite(), 'sw.js', ...licences].sort().join('\n'));
+  process.exit(0);
+}
 
 function empreinteGlobale(liste) {
   const lignes = liste.map(f => f + '\t' + sha(fs.readFileSync(path.join(racine, f))));

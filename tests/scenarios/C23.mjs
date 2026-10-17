@@ -156,7 +156,7 @@ export default async function ({ gabarit, check: check0 }) {
         assert(a.errors.length === 0, a.errors.join(' | '));
         await a.close(); apps.pop();
       }
-    });
+    }, { calme: true });   // borne de temps réel (+600 à +1300 ms) : jouée au calme (outillage B-1)
     /* 3. fin à la main */
     await chk(`${P} · 3 · fin à la main (menu TERMINER, FIN PÉRIODE du format libre) puis ↶ pendant le message : défait la fin de période seule (C26 · R6), état d'avant exactement, dernière action intacte, stable 2 s ; historique vide : ↶ défait aussi la fin de période`, async () => {
       for (const [nom, opts] of MODES) {
@@ -558,7 +558,9 @@ export default async function ({ gabarit, check: check0 }) {
     }, KNOWN_AVANT);
 
     fs.mkdirSync(SORTIE, { recursive: true });
-    fs.writeFileSync(`${SORTIE}/C23-mesures-${gabarit}.json`, JSON.stringify(mesures, null, 1));
+    { const f = `${SORTIE}/C23-mesures-${gabarit}.json`;   // C23·2 est jouée au calme : les deux phases écrivent ce fichier, on fusionne
+      let avant = {}; if (process.env.KINBALL_PHASE === 'calme') { try { avant = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {} }
+      fs.writeFileSync(f, JSON.stringify({ ...avant, ...mesures }, null, 1)); }
   } finally {
     for (const a of apps) { try { await a.close(); } catch {} }
   }

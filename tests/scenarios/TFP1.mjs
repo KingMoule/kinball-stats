@@ -80,7 +80,7 @@ export default async function ({ gabarit, check }) {
       eq(S1.period, 2, 'période suivante'); eq(S1.history.length, E0.history.length + 1, 'une seule action ajoutée');
       assert(app.errors.length === 0, app.errors.join(' | '));
     }, { timescale: 1, saisie });
-  });
+  }, { calme: true });   // bornes de temps réel : jouées au calme (outillage B-1)
   for (const k of ['faute', 'menu']) {
     await check(`${P} · 1b · chemin ${k === 'faute' ? 'faute directe' : 'fin à la main'} : message 1,4 s inchangé (remise à zéro à ≈ 1,4 s)`, async () => {
       await un(gabarit, async app => {
@@ -92,7 +92,7 @@ export default async function ({ gabarit, check }) {
         assert(L.reset - L.debut >= 1300 && L.reset - L.debut <= 1700, `durée ${L.reset - L.debut} ms`);
         assert(app.errors.length === 0, app.errors.join(' | '));
       });
-    });
+    }, { calme: true });
   }
   await check(`${P} · 1c · mode avancé sans alignement (aucune feuille à ouvrir) : éclair puis message, comme en direct`, async () => {
     await un(gabarit, async app => {
@@ -102,7 +102,7 @@ export default async function ({ gabarit, check }) {
       const L = lire(await frise(app), 1);
       assert(L.debut >= 480 && L.debut <= 800 && L.fin - L.debut >= 1300 && L.reset >= 1850 && L.reset <= 2300, JSON.stringify(L));
     });
-  });
+  }, { calme: true });
 
   /* ---------- 2 · mode avancé : la feuille des détails n'est jamais refermée d'office ---------- */
   const versDetails = async app => {
@@ -135,7 +135,7 @@ export default async function ({ gabarit, check }) {
       eq(ev.target_player_id, 'Gris_p1', 'receveur enregistré');
       assert(app.errors.length === 0, app.errors.join(' | '));
     });
-  });
+  }, { calme: true });
   await check(`${P} · 2b · mode avancé : feuille des détails fermée d'un appui à côté (fond) : message puis remise à zéro, comme après TERMINÉ`, async () => {
     await un(gabarit, async app => {
       await versDetails(app);
@@ -274,7 +274,7 @@ export default async function ({ gabarit, check }) {
       await app.page.waitForTimeout(150);
       const d = diff(await app.state(), E0); assert(!d, 'après l\'appui à 450 ms : ' + d);
     });
-  });
+  }, { calme: true });
   await check(`${P} · 2d · navHome() pendant la feuille des détails : ni message sur l'accueil, ni attente résiduelle ; le match repris rejoue la fin de période puis accepte un geste`, async () => {
     await un(gabarit, async app => {
       await versDetails(app);

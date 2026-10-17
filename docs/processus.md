@@ -27,11 +27,11 @@ Le **relecteur** (Opus, revue transversale) passe avant une publication importan
 | Quand | Quoi | Coût en tokens |
 |---|---|---|
 | Pendant le travail | `node tests/rapide.mjs` (1 à 4 min, tablette) | une dizaine de lignes |
-| À chaque push sur une PR | banc complet **en CI** (17 à 20 min) | nul |
+| À chaque push sur une PR | banc complet **en CI** (17 à 20 min), plus `sim/simtest.mjs` et `tests/local/*.test.mjs` | nul |
 | Lire le résultat | `node outils/ci-banc.mjs --branche <b> [--attendre]` | une dizaine de lignes |
 
 - Un agent ne lance jamais le banc complet et ne l'attend pas par sondage. Un passage complet local est une décision de l'utilisateur.
-- **Cache par empreinte** (`tests/empreinte.mjs`) : un commit déjà joué relit son résultat. Une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md` ou `tests/README.md` ne déclenche pas la CI (« aucun passage » est normal).
+- **Cache par empreinte** (`tests/empreinte.mjs`) : un commit déjà joué relit son résultat. Une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md` ou `tests/README.md` finit verte sans jouer le banc (le contrôle « banc », exigé pour fusionner, doit exister sur toute PR).
 - Un push n'annule pas le passage en cours ; le suivant attend, puis relit le cache si l'empreinte n'a pas changé.
 - `tests/rapide.json` (fichier ou section → suites) est indicatif : quand la CI révèle une suite manquante, on corrige la table.
 - Les modes animés (`KINBALL_ANIM=1`) se jouent seulement pour l'audit d'une publication ; C21, C22 et C23 fixent déjà leur mode.

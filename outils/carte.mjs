@@ -2,13 +2,17 @@
    node outils/carte.mjs            : tout (index.html, puis kbsite.js, kblocal.js, kbcollect.js)
    node outils/carte.mjs <regex>    : seulement les fonctions dont le nom, ou le titre de la section, correspond
                                       (sans distinction de casse), ex. : saisie | wp | radial | ^undo | export
+   node outils/carte.mjs --sections : garde aussi les sections sans fonction (tests/rapide.mjs s'en sert : sinon leurs
+                                      lignes seraient attribuées à la section précédente)
    Sortie : « == SECTION (ligne) » puis « ligne nom » groupés sur des lignes de 110 caractères au plus. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEPOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const filtre = process.argv[2] ? new RegExp(process.argv[2], 'i') : null;
+const sections = process.argv.includes('--sections');
+const motif = process.argv.slice(2).find(a => a !== '--sections');
+const filtre = motif ? new RegExp(motif, 'i') : null;
 const FICHIERS = ['index.html', 'kbsite.js', 'kblocal.js', 'kbcollect.js'];
 
 function carte(fichier) {
@@ -30,7 +34,7 @@ function carte(fichier) {
     else if ((m = l.match(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/))) g.fns.push([n, m[1]]);
     else if ((m = l.match(/^\s*(KB[A-Za-z]+(?:\.[A-Za-z_$][\w$]*)+)\s*=\s*(?:async\s+)?function\b/))) g.fns.push([n, m[1]]);
   });
-  return groupes.map(x => ({ ...x, fns: filtre && !filtre.test(x.titre) ? x.fns.filter(([, nom]) => filtre.test(nom)) : x.fns })).filter(x => x.fns.length);
+  return groupes.map(x => ({ ...x, fns: filtre && !filtre.test(x.titre) ? x.fns.filter(([, nom]) => filtre.test(nom)) : x.fns })).filter(x => x.fns.length || (sections && !filtre && x.titre !== '(début)'));
 }
 
 const sortie = [];
