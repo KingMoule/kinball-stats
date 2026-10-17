@@ -12,7 +12,6 @@ La racine du dépôt est le site (GitHub Pages ; voir `site.md`). Ce qui compte 
 | `kbcollect.js`, `config.js` | Collecte facultative des matchs terminés (voir `site.md`). |
 | `sw.js` | Service worker (voir `site.md`). |
 | `sim/simcore.js` | Moteur de simulation des chances de victoire, copié tel quel dans `index.html` (voir `probabilite-victoire.md`). |
-| `amont/` | Dernière version venue de l'artifact claude.ai, figée ; `check-release` s'y réfère encore. |
 
 Ordre de chargement dans `index.html` : `vendor/xlsx.full.min.js`, `kblocal.js`, le script de l'app, puis `kbsite.js`.
 
@@ -59,9 +58,9 @@ Reprise d'un match (R19) : `resumeMatch(id)` sans argument reprend le match en c
 
 Verrou portrait (`applyPhoneOrientation`) : un site ne peut pas bloquer la rotation sur iPhone ; quand le téléphone est couché, l'interface est tournée de ±90° à l'inverse (classes `rot-neg`, `rot-pos`, variables `--ui-w` et `--ui-h`) et `uiRotation` vaut -90, 0 ou 90. `fieldPoint()` et `uiVec()` convertissent les coordonnées. Limites : un bref effet de rotation du système, et le clavier ou les listes natives qui s'affichent en paysage.
 
-## Capacités et mode hors claude.ai
+## Capacités
 
-`capabilityEntry(nom)` est la porte d'entrée des capacités `db`, `user`, `downloads` : `window.claude` s'il existe, sinon `KBLocal`, sinon rien. Sans aucun stockage, l'app joue en mémoire et affiche un bandeau « stockage indisponible ». Le banc tourne ainsi (voir `tests/README.md`).
+`capabilityEntry(nom)` est la porte d'entrée des capacités `db`, `user`, `downloads` : `KBLocal`, sinon rien. Sans aucun stockage, l'app joue en mémoire et affiche un bandeau « stockage indisponible ». Le banc tourne ainsi (voir `tests/README.md`).
 
 ## Identité visuelle
 

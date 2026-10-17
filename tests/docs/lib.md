@@ -22,7 +22,7 @@ Un scénario peut aussi garder l'animation seul : `launch(gabarit, { anim: true 
 
 `clickSheet(call)` clique comme une personne, **sans `force`** : il attend que `#sheet` porte `open`, ne porte pas `closing`, n'ait plus d'animation (`getAnimations().length === 0`), que le bouton existe, et que l'appui ne soit pas un « double appui » au sens de l'app (`sheetLastTap`, `SHEET_DOUBLE_MS`, `SHEET_DOUBLE_PX`) ; Playwright vérifie ensuite que le bouton reçoit bien l'appui. `undo()` attend la fin du réarmement de ↶ (`undoBlockedUntil`) puis clique sans `force` ; `undoInSheet()` clique le bouton `undo()` placé dans la feuille (feuille du duel) ; `settle()` attend aussi la fin de la classe `closing`. Les variables de l'app ajoutées par C22B sont lues sous garde `typeof` : le banc tourne encore sur une ancienne copie (`KINBALL_HTML=backups/kinball.C22B.avant.html`).
 
-Chemins : plus aucun chemin local en dur. `KINBALL_SORTIE` et `KINBALL_AVANT` ont pour défaut un dossier du dossier temporaire du système ; sans `KINBALL_AVANT` pointant sur les sauvegardes « d'avant », C13B, C19 et C23 donnent des KNOWN supplémentaires. Playwright : `NODE_PATH`, sinon `~/.npm-global/lib/node_modules`. `tests/local/resync.test.mjs` vérifie l'absence de nom et de fragment d'adresse personnels dans MIGRATION.md par empreintes sha256 (aucun mot en clair dans le dépôt).
+Chemins : plus aucun chemin local en dur. `KINBALL_SORTIE` et `KINBALL_AVANT` ont pour défaut un dossier du dossier temporaire du système ; sans `KINBALL_AVANT` pointant sur les sauvegardes « d'avant », C13B, C19 et C23 donnent des KNOWN supplémentaires. Playwright : `NODE_PATH`, sinon `~/.npm-global/lib/node_modules`.
 
 ## Lanceur, résultat et cache (chantier harnais-banc)
 

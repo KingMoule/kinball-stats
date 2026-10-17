@@ -177,13 +177,13 @@ export default async function ({ gabarit, check }) {
     try {
       await attendreBase(p);
       const INTERDITS = /serveur|connexion|en ligne|Claude|synchronis/i;
-      await check(`${P}·6 textes du mode local : accueil, carte d'archivage, badge, feuille, échec de corbeille`, async () => {
+      await check(`${P}·6 textes du mode local : accueil, pas de carte d'archivage, badge, feuille, échec de corbeille`, async () => {
         const t = await p.evaluate(() => ({
           sub: document.querySelector('[onclick="openBackup()"] .hc-sub').textContent,
-          arch: document.querySelector('[onclick^="startArchiveOldMatches("]').closest('.backup-card').querySelector('.bc-sub').textContent,
+          arch: !!document.getElementById('archiveDaysInput') || typeof window.startArchiveOldMatches !== 'undefined',
         }));
         eq(t.sub, 'Exporter, importer', 'sous-titre');
-        assert(!INTERDITS.test(t.arch) && /de plus de 180 jours/.test(t.arch), 'carte d’archivage : ' + t.arch);
+        eq(t.arch, false, 'carte d’archivage retirée');
         await p.evaluate(() => setSyncState('error'));
         const badge = await p.evaluate(() => document.getElementById('syncBadgeText').textContent);
         assert(!INTERDITS.test(badge), 'badge : ' + badge);
