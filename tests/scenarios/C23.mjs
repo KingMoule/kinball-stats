@@ -278,7 +278,7 @@ export default async function ({ gabarit, check: check0 }) {
       console.log(`  atteignabilité C23 [${gabarit}] : ` + JSON.stringify(mesures.atteignabilite));
     });
     /* 6. sans annulation, rien ne change */
-    await chk(`${P} · 6 · sans annulation : chronologie inchangée (message, +1 400 ms période + 1, pointages à zéro, un seul save() au minuteur) ; ↶ après la fenêtre restaure E0 ; rejouer après une annulation dans la fenêtre : une seule fin`, async () => {
+    await chk(`${P} · 6 · sans annulation : chronologie inchangée à l'écran (message, +1 400 ms période + 1 affichée, pointages à zéro ; S et l'enregistrement déjà dans la période suivante) ; ↶ après la fenêtre restaure E0 ; rejouer après une annulation dans la fenêtre : une seule fin`, async () => {
       for (const [nom, opts] of MODES) {
         const a = await open(opts);
         await setup(a, CFG.faute.duel11);
@@ -286,14 +286,15 @@ export default async function ({ gabarit, check: check0 }) {
         const E0 = await stateOf(a);
         await PATHS.faute(a);
         await atMs(a, 300);
-        const mid = await a.ev(() => ({ period: S.period, sc: { ...S.scores }, wins: { ...S.periodWins }, msg: !!document.querySelector('#sheet .msg-center'), pe: typeof periodEndTimer === 'undefined' ? 'absent' : periodEndTimer !== null }));
-        eq([mid.period, mid.sc.Bleu, mid.wins.Bleu, mid.msg], [1, 11, E0.periodWins.Bleu + 1, true], `${nom} : pendant le message`);
+        /* T-FP robustesse : S est déjà dans la période suivante ; le ruban (periodEndView) montre encore la période qui finit */
+        const mid = await a.ev(() => { const V = periodEndView || S; return { period: V.period, sc: { ...V.scores }, wins: { ...S.periodWins }, msg: !!document.querySelector('#sheet .msg-center'), sPeriod: S.period, pe: typeof periodEndTimer === 'undefined' ? 'absent' : periodEndTimer !== null }; });
+        eq([mid.period, mid.sc.Bleu, mid.wins.Bleu, mid.msg, mid.sPeriod], [1, 11, E0.periodWins.Bleu + 1, true, 2], `${nom} : pendant le message`);
         await atMs(a, 1700); await a.settle();
         const fin = await stateOf(a);
         eq([fin.period, fin.scores, fin.possession, fin.periodWins.Bleu, fin.periodWins.Gris, fin.duelActive, fin.awaitingDuelStart],
           [2, { Bleu: 0, Gris: 0, Noir: 0 }, 'Gris', E0.periodWins.Bleu + 1, E0.periodWins.Gris, true, false], `${nom} : après 1 400 ms`);
         const apres = await a.ev(() => window.__saves.filter(x => !x.r && x.t - window.__t0 >= 1300).length);
-        eq(apres, 1, `${nom} : un seul save() au minuteur`);
+        eq(apres, 0, `${nom} : aucun save() au minuteur (T-FP robustesse : la remise à zéro part avec l'action)`);
         eq(await peState(a), null, 'periodEndTimer nul après le minuteur');
         await tapUndo(a); await a.settle();
         /* Le geste suivant est un appui sur le terrain : comme App.undo(), attendre que le terrain ait fini de se re-mettre en page après ↶

@@ -212,7 +212,7 @@ export default async function ({ gabarit, check }) {
           const E0 = await etat(app);
           const H0 = E0.history.length;
           const sig = x => JSON.stringify([x.scores, x.period, x.periodWins, x.possession, x.eliminated, x.duelActive, x.stopped, x.lineups]);
-          if (cas === 'libre') { await clic(app, '[onclick="endPeriodByLeader()"]'); if (await app.sheetHas("endPeriodManually('')")) { const m = await app.ev(() => { const e = ATEAMS().filter(t => t !== S.eliminated); const max = Math.max(...e.map(t => S.scores[t])); return e.find(t => S.scores[t] === max); }); await app.clickSheet(`endPeriodManually('${m}')`); } }
+          if (cas === 'libre') { await app.page.waitForFunction(() => Date.now() >= undoBlockedUntil + 10); /* T-FP robustesse : FIN PÉRIODE passe par barreLibre */ await clic(app, '[onclick="endPeriodByLeader()"]'); if (await app.sheetHas("endPeriodManually('')")) { const m = await app.ev(() => { const e = ATEAMS().filter(t => t !== S.eliminated); const max = Math.max(...e.map(t => S.scores[t])); return e.find(t => S.scores[t] === max); }); await app.clickSheet(`endPeriodManually('${m}')`); } }
           else if (cas === 'menu') { await app.ev(() => openFinishMenu()); await app.clickSheet("endPeriodManually('Gris')"); }
           else if (cas === 'sans') { await app.ev(() => openFinishMenu()); await app.clickSheet("endPeriodManually('')"); }
           else { await app.ev(() => openFinishMenu()); await app.clickSheet("endPeriodManually('Noir')"); }

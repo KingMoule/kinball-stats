@@ -31,7 +31,7 @@
 - Un agent ne fusionne jamais une PR et ne committe jamais sur `main` : l'utilisateur fusionne.
 
 ## Pièges de test
-- `undoBlockedUntil` (400 ms) garde ↶, ⌂ et TERMINER après un appui de feuille ; pendant le message de fin de période (≈ 1,95 s après un échappé au seuil), tout appui sauf « Annuler » est ignoré (`periodEndBusy()`) : un test attend la fin de la fenêtre.
+- `barreLibre()` garde ↶, ⌂, TERMINER et FIN PÉRIODE : `undoBlockedUntil` (400 ms après un appui de feuille, 120 ms après ↶), saisie radiale, fenêtre de fin de période. Le terrain ignore 300 ms un appui au point d'un abandon (`abandonTap`) : `App.abandon()` attend cette fenêtre. Pendant la fenêtre de fin de période (≈ 1,95 s après un échappé au seuil), tout appui sauf « Annuler » est ignoré (`periodEndBusy()`) et `S` est déjà dans la période suivante : le ruban lit `periodEndView`, un test attend `!periodEndBusy()`.
 - Après ↶, la mise en page du terrain reste périmée ≈ 20 ms (bandeau `#syncBadge`) : les tests attendent par `fieldStable()`.
 - `navHome()` s'exécute avant la déclaration de `pending` (TDZ) : tout code appelé par `navHome` teste `pending` en dernier.
 - `tests/rapide.json` reconnaît les sections de `index.html` par leur commentaire : une section ajoutée doit y figurer.
