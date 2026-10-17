@@ -5,3 +5,4 @@ Une ligne par chantier, ajoutée par la session du fil juste après la fusion (m
 | Chantier | Niveau | Date | Coût session | Contexte final | Lectures du cache | Sortie | Sous-agents | Remarque |
 |---|---|---|---|---|---|---|---|---|
 | FIAB-1 (PR #20) | complet | 2026-10-16 | 6,89 $ | 241 k | 16,9 M | 139 k | auditeur 177 k | ~80 appels ; l'essentiel du coût = relecture du contexte à chaque appel |
+| STAT-4 (PR #23) | léger | 2026-10-17 | ≈ 4,7 $ (avant la fusion) | 215 k | 12,4 M | 55 k | auditeur 100 k | ~60 appels ; banc rapide de 21 suites (11 min) attendu en deux appels |

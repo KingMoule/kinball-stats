@@ -251,10 +251,10 @@ export default async function ({ gabarit, check }) {
       const wb = XLSX.read(await telecharger(app, 'exportXLSX()'), { type: 'buffer' });
       /* Équipes : 13 colonnes d'avant, puis trois neuves */
       const eqp = feuille(wb, 'Équipes');
-      eq(eqp[0].slice(13), ['Attaques (avec fautes)', 'Attaques réussies (avec fautes)', 'Efficacité offensive (%) (avec fautes)'], 'Équipes : trois colonnes neuves en fin de ligne');
+      eq(eqp[0].slice(13, 16), ['Attaques (avec fautes)', 'Attaques réussies (avec fautes)', 'Efficacité offensive (%) (avec fautes)'], 'Équipes : trois colonnes neuves en fin de ligne');
       eq(eqp[0].slice(0, 13), ['Équipe', 'Score final', 'Périodes gagnées', 'Attaques', 'Attaques réussies', 'Efficacité offensive (%)', 'Ballons reçus', 'Ballons attrapés', 'Efficacité défensive (%)', 'Actions offensives', 'Fautes directes', 'Fautes (%)', 'Défensives illégales']);
       eq(eqp.slice(1).map(l => l.slice(0, 13)), [['Bleu', 6, 0, 2, 1, 50, 1, 0, 0, 2, 0, 0, 0], ['Gris', 5, 0, 2, 1, 50, 2, 1, 50, 3, 1, 33.3, 0], ['Noir', 3, 0, 1, 1, 100, 2, 1, 50, 4, 3, 75, 0]], 'Équipes : colonnes anciennes aux valeurs de main');
-      eq(eqp.slice(1).map(l => l.slice(13)), [[2, 1, 50], [3, 1, 33.3], [4, 1, 25]], 'Équipes : colonnes neuves');
+      eq(eqp.slice(1).map(l => l.slice(13, 16)), [[2, 1, 50], [3, 1, 33.3], [4, 1, 25]], 'Équipes : colonnes neuves');
       /* Zones */
       const zn = feuille(wb, 'Zones');
       eq(zn[0].slice(6), ['Tentatives (avec fautes)', 'Réussites (avec fautes)', 'Efficacité (%) (avec fautes)'], 'Zones : colonnes neuves');
@@ -316,7 +316,7 @@ export default async function ({ gabarit, check }) {
         const out = { ov: ATEAMS().map(t => [o[t].offTentatives === o[t].offAttempts, JSON.stringify(o[t].offZonesF) === JSON.stringify(o[t].offZones), o[t].fautes]),
           sit: ATEAMS().map(t => ['arretee', 'continue'].every(x => JSON.stringify(st[t]['offF_' + x]) === JSON.stringify(st[t]['off_' + x]))),
           per: JSON.stringify(computeOffDefByPeriod(S).periods),
-          eq: teamSummaryAoa().slice(1).map(l => [l.slice(3, 6), l.slice(13)]), act: buildActionRows() };
+          eq: teamSummaryAoa().slice(1).map(l => [l.slice(3, 6), l.slice(13, 16)]), act: buildActionRows() };
         const acc = {}; accumulatePlayerStats(S, 'Gris', acc); out.pl = Object.values(acc).map(x => [x.throws === x.throwsF, x.throws_arretee === x.throwsF_arretee, x.throws_continue === x.throwsF_continue]);
         out.jo = playerAoa().slice(1).map(l => [l.slice(2, 11), l.slice(16)]);
         out.act = out.act.rows.map(x => [x['Réussite offensive'], x['Réussite offensive (avec fautes)']]);
