@@ -131,10 +131,9 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
   position:relative; flex:1; border-radius:14px; padding:8px 14px; display:flex; align-items:center; justify-content:space-between;
   min-width:0; overflow:hidden;
 }
-.team-chip:has(.poss-dot)::after{
-  content:''; position:absolute; left:14px; right:14px; bottom:0; height:3px;
-  background:currentColor; border-radius:2px 2px 0 0; box-shadow:0 0 10px currentColor;
-}
+/* VIS-1 : l'équipe qui a le ballon, « allumée » : liseré blanc plein et halo (plus de barre sous le nom ; le point reste).
+   Passe devant ses voisines pour que le halo ne soit pas recouvert. */
+.team-chip:has(.poss-dot){z-index:1; box-shadow:inset 0 0 0 3px #fff, 0 0 12px 2px rgba(255,255,255,.5);}
 .team-chip .tname{font-size:15px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:7px;}
 .team-chip .tscore{font-size:34px; line-height:1; font-family:'Barlow Condensed',sans-serif; font-weight:800; text-shadow:0 2px 10px rgba(0,0,0,.25);}
 .team-chip:has(.wp){padding-bottom:18px;}   /* C13B : place des deux barres de % (+10 px de ruban) */
@@ -154,8 +153,9 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .twins b{font-size:11px; font-weight:800; letter-spacing:.04em; line-height:1; opacity:.9;}
 .icon-btn.periode{width:auto; padding:0 12px; background:var(--amber); color:#0B1220; font-size:11px; font-weight:800; line-height:1.15; letter-spacing:.03em;}
 .poss-dot{width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 8px currentColor;}
-.chip-bleu{background:var(--bleu); color:white;}
-.chip-gris{background:var(--gris-d); color:white;}
+/* VIS-1 : Bleu et Gris portent le même liseré blanc que Noir. */
+.chip-bleu{background:var(--bleu); color:white; box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);}
+.chip-gris{background:var(--gris-d); color:white; box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);}
 /* L'équipe Noire : un vrai noir, tenu à distance du fond de l'app par un
    liseré clair — sans ce liseré, le bloc disparaîtrait dans l'interface. */
 .chip-noir{background:var(--noir); color:var(--noir-ink); box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);}
@@ -756,7 +756,6 @@ html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}   /* Safari grossit 
 .phone .team-chip .tscore{font-size:34px;}
 .phone .team-chip .tright{flex-direction:row; align-items:baseline; justify-content:space-between; gap:6px;}
 .phone .twins i{width:7px; height:7px;}
-.phone .team-chip:has(.poss-dot)::after{left:10px; right:10px;}
 .phone .team-chip:has(.wp){padding-bottom:25px;}
 .phone .wp{height:30px; padding:0 10px 5px;}
 .phone #scoreboard.two-teams .team-chip .tscore{font-size:40px;}
@@ -3105,12 +3104,16 @@ function uiVec(dx, dy){
   if(uiRotation === 90) return {x:dy, y:-dx};
   return {x:dx, y:dy};
 }
+/* VIS-1 : la flèche prend la couleur de l'équipe qui lance (TEAM_BG) ; la Noire est cernée de blanc pour rester visible sur le terrain. */
 function drawDrag(p1,p2){
+  const c = TEAM_BG[S.possession] || 'var(--bleu)', noir = S.possession === 'Noir';
+  const contour = noir ? `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="white" stroke-width="9"/>` : '';
   dragLayer.innerHTML = `<svg width="100%" height="100%" style="position:absolute;inset:0;overflow:visible">
-    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="var(--bleu)" stroke-width="5" marker-end="url(#arrow)"/>
-    <circle cx="${p1.x}" cy="${p1.y}" r="9" fill="var(--bleu)" stroke="white" stroke-width="2"/>
+    ${contour}
+    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${c}" stroke-width="5" marker-end="url(#arrow)"/>
+    <circle cx="${p1.x}" cy="${p1.y}" r="9" fill="${c}" stroke="white" stroke-width="2"/>
     <circle cx="${p2.x}" cy="${p2.y}" r="9" fill="var(--red)" stroke="white" stroke-width="2"/>
-    <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--bleu)"/></marker></defs>
+    <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" overflow="visible"><path d="M0,0 L6,3 L0,6 Z" fill="${c}"${noir ? ' stroke="white" stroke-width="0.8" stroke-linejoin="round"' : ''}/></marker></defs>
   </svg>`;
 }
 /* T-FP robustesse (D2) : le second appui d'un double appui sur « Annuler cette saisie », le voile ou le fond tombe sur le terrain, la
@@ -3986,9 +3989,10 @@ function wpActive(){
   return !!(WP_ENABLED && S.id && !viewingArchive && S.status === 'in_progress' && getFormat(S).periodAt);
 }
 /* Entre l'action qui termine la période (ou l'élimination) et le choix de
-   reprise : on ne calcule jamais sur un état de transition. */
+   reprise : on ne calcule jamais sur un état de transition. VIS-1 : pendant le message de fin de période, S est déjà
+   dans la période suivante mais le ruban montre encore celle qui finit (periodEndView) : les barres attendent aussi. */
 function wpTransition(){
-  if(S.awaitingInitial || S.awaitingDuelStart) return true;
+  if(periodEndView || S.awaitingInitial || S.awaitingDuelStart) return true;
   const pa = getFormat(S).periodAt;
   return ATEAMS().some(t => S.scores[t] >= pa);
 }
