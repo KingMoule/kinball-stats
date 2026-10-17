@@ -4,7 +4,7 @@ La procédure détaillée de resynchronisation avec l'ancienne source (`amont/`)
 
 ## Hébergement et mise en ligne
 
-Le site est servi par GitHub Pages depuis la racine du dépôt `KingMoule/kinball-stats` (adresse `https://kingmoule.github.io/kinball-stats/`). Le workflow `.github/workflows/pages.yml` se déclenche à chaque poussée sur `main` : il lance `node outils/check-release.mjs` (échec si la version ou l'empreinte ne correspondent pas aux fichiers), puis publie la racine entière. Conséquence : `tests/`, `collecte/`, `outils/`, `MIGRATION.md` et `amont/kinball.amont.html` sont aussi en ligne.
+Le site est servi par GitHub Pages depuis la racine du dépôt `KingMoule/kinball-stats` (adresse `https://kingmoule.github.io/kinball-stats/`). Le workflow `.github/workflows/pages.yml` se déclenche à chaque poussée sur `main` : il lance `node outils/check-release.mjs` (échec si la version ou l'empreinte ne correspondent pas aux fichiers), puis ne publie que les fichiers donnés par `node outils/check-release.mjs --lister` : les fichiers du site, `sw.js` et les licences des polices et de `vendor/`. Ni la documentation, ni `tests/`, `outils/`, `amont/` ou `.claude/` ne sont en ligne.
 
 Procédure d'un changement :
 1. Travailler sur une branche (jamais directement sur `main`), commiter.
@@ -17,7 +17,7 @@ Le banc d'essai est décrit dans `tests/README.md` ; il doit être vert avant la
 
 ## Version et empreinte : `check-release`
 
-`VERSION` (dans `sw.js`) et `VERSION_SITE` (dans `kbsite.js`) sont la version du site, de la forme `AAAA-MM-JJ.rang` (rang + 1 le même jour). `EMPREINTE` (dans `sw.js`) est le sha256 de la liste triée « chemin + sha256 du fichier » de tous les fichiers du site. Sont des fichiers du site les fichiers suivis par git moins `tests/`, `amont/`, `outils/`, `sim/`, `collecte/`, `.github/`, les fichiers et dossiers cachés, `*.md`, `*.txt` et `sw.js` lui-même.
+`VERSION` (dans `sw.js`) et `VERSION_SITE` (dans `kbsite.js`) sont la version du site, de la forme `AAAA-MM-JJ.rang` (rang + 1 le même jour). `EMPREINTE` (dans `sw.js`) est le sha256 de la liste triée « chemin + sha256 du fichier » de tous les fichiers du site. Sont des fichiers du site les fichiers suivis par git moins `docs/`, `tests/`, `amont/`, `outils/`, `sim/`, `collecte/`, `.github/`, les fichiers et dossiers cachés, `*.md`, `*.txt` et `sw.js` lui-même.
 
 - `node outils/check-release.mjs` vérifie : chaque entrée du précache existe, chaque fichier du site est dans le précache, l'empreinte est celle de `sw.js`, les deux versions concordent, et le champ « amont » de `kbsite.js` est le sha256 réel de `amont/kinball.amont.html` (8 premiers caractères). Un écart donne le code de sortie 1.
 - `--ecrire` écrit une nouvelle version (date du jour) dans `kbsite.js`, recalcule l'empreinte et l'écrit dans `sw.js`. Rien n'a changé : rien n'est écrit.

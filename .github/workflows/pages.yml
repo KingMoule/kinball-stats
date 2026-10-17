@@ -24,19 +24,24 @@ jobs:
       url: ${{ steps.deploiement.outputs.page_url }}
     steps:
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       # Le déploiement échoue si la version ou l'empreinte de sw.js / kbsite.js ne correspondent pas aux fichiers
       # (oubli de « node outils/check-release.mjs --ecrire » : les appareils ne verraient jamais la mise à jour).
       - name: Vérifier la cohérence version et empreinte
         run: node outils/check-release.mjs
-      - name: Configurer Pages (activation automatique)
-        uses: actions/configure-pages@v5
+      # Seuls les fichiers du site partent en ligne (liste de check-release) : ni docs/, ni tests/, ni outils/, ni .claude/.
+      - name: Rassembler les fichiers du site
+        run: |
+          node outils/check-release.mjs --lister > "$RUNNER_TEMP/site.txt"
+          mkdir _site
+          while IFS= read -r f; do mkdir -p "_site/$(dirname "$f")" && cp "$f" "_site/$f"; done < "$RUNNER_TEMP/site.txt"
+          echo "$(wc -l < "$RUNNER_TEMP/site.txt") fichiers publiés"
+      - name: Configurer Pages
+        uses: actions/configure-pages@v6
+      - name: Envoyer les fichiers du site comme artefact Pages
+        uses: actions/upload-pages-artifact@v5
         with:
-          enablement: true
-      - name: Envoyer la racine comme artefact Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
+          path: _site
       - name: Déployer
         id: deploiement
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
