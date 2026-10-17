@@ -130,7 +130,7 @@ export default async function ({ gabarit, check }) {
         const leg = document.querySelector('.heat-legend').textContent.replace(/\s+/g, ' ');
         return {
           act: [...document.querySelectorAll('#statsBody .heat-btn.active')].map(b => b.textContent.trim()),
-          n: +(leg.match(/(\d+) lancer/) || [0, -1])[1], circles: document.querySelectorAll('.heat-field circle').length,
+          n: +(leg.match(/(\d+) lancer/) || [0, -1])[1], circles: document.querySelectorAll('.heat-field circle.heat-pt').length,
           cells: document.querySelectorAll('.heat-field svg g').length,
           attendu: ['offense', 'defense'].map(m => heatPointsFrom(S, heatTeam || ATEAMS()[0], m, 'all').length),
         };

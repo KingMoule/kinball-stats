@@ -102,11 +102,48 @@ export default async function ({ gabarit, check }) {
     }
   });
 
-  if (gabarit === 'tablette') await check(`${P}·4 heat map inchangée : fieldLinesSVG garde son tracé (cadre, quatre lignes pointillées, carré central)`, async () => {
+  await check(`${P}·4 écrans de stats (heat map en grille et en points, schéma des zones) : même fond vert, grille aux tiers, cercle central, liseré ; plus aucune ligne pointillée ; cases sans données transparentes ; points comptés à part`, async () => {
     const app = await launch(gabarit);
     try {
-      const h = await app.ev(() => { const d = document.createElement('div'); d.innerHTML = `<svg>${fieldLinesSVG()}</svg>`; return { rect: d.querySelectorAll('rect').length, pointilles: d.querySelectorAll('[stroke-dasharray]').length, x: [...d.querySelectorAll('line')].map(l => l.getAttribute('x1')).join(',') }; });
-      eq(h.rect, 2, 'cadre et carré central'); eq(h.pointilles, 5, 'quatre lignes et le carré pointillés'); eq(h.x, '72,328,4,4', 'lignes à 72 et 328');
+      await app.startMatch({ format: '9_11' });
+      await app.initialPossession('Bleu');
+      await app.lancer({ from: [0.2, 0.2], to: [0.5, 0.5], target: 'Gris', caught: false });
+      await app.lancer({ from: [0.8, 0.8], to: [0.5, 0.2], target: 'Noir', caught: true });
+      /* Lecture géométrique : centre de chaque ligne et du cercle en fraction de la boîte de l'hôte. */
+      const lireTrace = sel => app.ev(sel => {
+        const h = document.querySelector(sel), svg = h.matches('svg') ? h : h.querySelector('svg'), hq = h.getBoundingClientRect();
+        const fr = el => { const q = el.getBoundingClientRect(); return [(q.left + q.width / 2 - hq.left) / hq.width, (q.top + q.height / 2 - hq.top) / hq.height]; };
+        const L = [...svg.querySelectorAll('line')].filter(l => !l.closest('pattern'));
+        const c = [...svg.querySelectorAll('circle')].filter(x => !x.classList.contains('heat-pt'));
+        return { fond: getComputedStyle(h).backgroundImage, pointilles: svg.querySelectorAll('[stroke-dasharray]').length,
+          v: L.filter(l => l.getAttribute('x1') === l.getAttribute('x2')).map(l => fr(l)[0]).sort(), hz: L.filter(l => l.getAttribute('y1') === l.getAttribute('y2')).map(l => fr(l)[1]).sort(),
+          cercles: c.map(x => fr(x)), liseré: svg.querySelectorAll(':scope > rect[rx]').length,
+          pts: svg.querySelectorAll('circle.heat-pt').length, vides: [...svg.querySelectorAll('g > rect:first-child')].filter(r => r.getAttribute('fill') === 'none').length,
+          cases: svg.querySelectorAll('g').length };
+      }, sel);
+      const tiers = (t, ou) => {
+        assert(/linear-gradient/.test(t.fond), `${ou} : fond vert en dégradé (${t.fond})`);
+        eq(t.pointilles, 0, `${ou} : aucune ligne pointillée`);
+        for (const [nom, p] of [['verticales', t.v], ['horizontales', t.hz]]) {
+          eq(p.length, 2, `${ou} : deux ${nom}`);
+          assert(Math.abs(p[0] - 1 / 3) < 0.006 && Math.abs(p[1] - 2 / 3) < 0.006, `${ou} : ${nom} aux tiers (${p.map(x => x.toFixed(3))})`);
+        }
+        eq(t.cercles.length, 1, `${ou} : un cercle central`);
+        assert(Math.abs(t.cercles[0][0] - 0.5) < 0.006 && Math.abs(t.cercles[0][1] - 0.5) < 0.006, `${ou} : cercle au centre`);
+        eq(t.liseré, 1, `${ou} : liseré`);
+      };
+      await app.openStatsTab('heat');
+      const g = await lireTrace('.heat-field');
+      tiers(g, 'heat map en grille'); eq(g.cases, 9, 'neuf cases'); assert(g.vides >= 7, 'cases sans données transparentes : ' + g.vides);
+      await app.page.locator(`#statsBody [onclick="setHeatView('dots')"]`).first().click();
+      const d = await lireTrace('.heat-field');
+      tiers(d, 'heat map en points');
+      eq(d.pts, await app.ev(() => heatPointsFrom(S, heatTeam || ATEAMS()[0], heatMode, 'all').length), 'un point par lancer, le cercle central à part');
+      await app.shot(`${process.env.KINBALL_SORTIE || '/tmp'}/TERRAIN-heat-${gabarit}.png`);
+      await app.openStatsTab('zones');
+      tiers(await lireTrace('.zone-diagram-wrap svg'), 'schéma des zones');
+      await app.shot(`${process.env.KINBALL_SORTIE || '/tmp'}/TERRAIN-zones-${gabarit}.png`);
+      assert(!app.errors.length, app.errors.join('\n'));
     } finally { await app.close(); }
   });
 }
