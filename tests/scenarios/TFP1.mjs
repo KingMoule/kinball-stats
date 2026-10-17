@@ -35,7 +35,7 @@ const record = app => app.ev(() => {
   for (const n of ['applyResult', 'applyFault', 'endPeriodManually']) {
     const o = window[n]; window[n] = function (...a) { if (window.__t0 === null) window.__t0 = performance.now(); return o.apply(this, a); };
   }
-  setInterval(() => { const sh = document.getElementById('sheet'); window.__log.push({ t: performance.now(), open: sh.classList.contains('open'), txt: sh.textContent.replace(/\s+/g, ' ').trim(), sc: JSON.stringify(S.scores), per: S.period }); }, 10);
+  setInterval(() => { const sh = document.getElementById('sheet'); window.__log.push({ t: performance.now(), open: sh.classList.contains('open'), txt: sh.textContent.replace(/\s+/g, ' ').trim(), sc: JSON.stringify((periodEndView || S).scores), per: (periodEndView || S).period }); }, 10);   /* T-FP robustesse : ce que le ruban affiche */
 });
 const frise = app => app.ev(() => window.__log.map(l => ({ ...l, t: Math.round(l.t - window.__t0) })));
 /* Premier et dernier instants (relatifs à t0) où le message de période est affiché, instant de la remise à zéro. */
@@ -47,7 +47,7 @@ async function un(gabarit, f, opts = { timescale: 1 }) {
   const app = await launch(gabarit, opts);
   try { return await f(app); } finally { await app.close(); }
 }
-const periodEtat = app => app.ev(() => ({ wait: periodEndWait ? periodEndWait.phase : null, timer: periodEndTimer !== null, flash: flashTimer !== null, per: S.period, h: S.history.length, sc: JSON.stringify(S.scores), pw: JSON.stringify(S.periodWins) }));
+const periodEtat = app => app.ev(() => ({ wait: periodEndWait ? periodEndWait.phase : null, timer: periodEndTimer !== null, flash: flashTimer !== null, per: (periodEndView || S).period, h: S.history.length, sc: JSON.stringify((periodEndView || S).scores), pw: JSON.stringify(S.periodWins) }));   /* affiché (T-FP robustesse : S est déjà dans la période suivante) */
 /* Appui réel (souris ou doigt) au centre d'un élément. */
 async function tapEl(app, sel) {
   const r = await app.ev(s => { const b = document.querySelector(s).getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, w: b.width, h: b.height }; }, sel);
@@ -128,7 +128,7 @@ export default async function ({ gabarit, check }) {
       await app.clickSheet('closeAdvancedDetailSheet()');
       await msgUp(app);
       const t1 = await app.ev(() => performance.now());
-      await until(app, () => S.period === 2, null, 4000);
+      await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
       const dt = (await app.ev(() => performance.now())) - t1;
       assert(dt >= 1100 && dt <= 1700, `remise à zéro ${Math.round(dt)} ms après le début du message`);
       const ev = await app.ev(i => S.history[i].details, idx);
@@ -142,7 +142,7 @@ export default async function ({ gabarit, check }) {
       await app.page.waitForTimeout(700);
       await app.page.mouse.click(8, 8);
       await msgUp(app);
-      await until(app, () => S.period === 2, null, 4000);
+      await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
       eq((await app.state()).scores.Bleu, 0, 'scores remis à zéro');
       eq(await sheetOpen(app), false, 'feuille fermée à la fin');
     });
@@ -206,7 +206,7 @@ export default async function ({ gabarit, check }) {
       await PATHS.faute(app);
       await until(app, () => window.__early !== undefined, null, 3000);
       eq(await app.ev(() => window.__early), h0 + 1, 'l\'appui précoce n\'a rien défait');
-      await until(app, () => S.period === 2, null, 4000);
+      await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
       eq((await app.state()).history.length, h0 + 1, 'la période s\'est terminée normalement');
     });
   });
@@ -229,7 +229,7 @@ export default async function ({ gabarit, check }) {
         }, [pt.x, pt.y]);
         eq(r.screen, 'match', 'écran'); eq(r.same, true, 'la feuille affichée n\'a pas changé'); eq(r.h, 0, 'historique');
         eq(r.dragging, false, 'glisser'); eq(r.lineup, null, 'feuille des changements'); eq(r.pend, false, 'saisie en cours'); eq(r.status, 'in_progress', 'statut');
-        if (phase === 'message') { await until(app, () => S.period === 2, null, 4000); eq(await app.ev(() => S.scores.Bleu), 0, 'la période se termine normalement'); }
+        if (phase === 'message') { await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000); eq(await app.ev(() => S.scores.Bleu), 0, 'la période se termine normalement'); }
         assert(app.errors.length === 0, app.errors.join(' | '));
       });
     });
@@ -267,7 +267,7 @@ export default async function ({ gabarit, check }) {
       await until(app, () => Date.now() - periodMsgAt >= 330, null, 2000);
       await app.ev(() => document.querySelector('#sheet .period-undo').click());
       await app.page.waitForTimeout(40);
-      const e = await app.ev(() => ({ h: S.history.length, sc: JSON.stringify(S.scores), per: S.period, msg: /TERMINÉE/.test(document.getElementById('sheet').textContent), timer: periodEndTimer !== null }));
+      const e = await app.ev(() => ({ h: S.history.length, sc: JSON.stringify((periodEndView || S).scores), per: (periodEndView || S).period, msg: /TERMINÉE/.test(document.getElementById('sheet').textContent), timer: periodEndTimer !== null }));
       eq(e.h, E0.history.length + 1, 'historique inchangé par le rebond'); assert(/"Bleu":11/.test(e.sc) && e.per === 1 && e.msg && e.timer, JSON.stringify(e));
       await until(app, () => Date.now() - periodMsgAt >= 450, null, 2000);
       await tapEl(app, '#sheet .period-undo');
@@ -365,7 +365,7 @@ export default async function ({ gabarit, check }) {
   await check(`${P} · 5 · aucune erreur console sur un match joué jusqu'à la fin de deux périodes, ↶ compris`, async () => {
     await un(gabarit, async app => {
       await setup(app, CFG.faute);
-      await PATHS.faute(app); await msgUp(app); await until(app, () => S.period === 2, null, 4000);
+      await PATHS.faute(app); await msgUp(app); await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
       await app.settle(); await app.fieldStable();
       await app.faute({}); await app.undo();
       assert(app.errors.length === 0, app.errors.join(' | '));

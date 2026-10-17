@@ -240,6 +240,9 @@ export class App {
     await this._tap(at);
     await this.clickSheet('cancelPendingEvent()');
     await this.settle();
+    /* T-FP robustesse (D98) : le terrain ignore 300 ms un appui au point de l'abandon (second appui d'un double appui) ;
+       le geste suivant du banc, tiré au hasard, peut y tomber : on attend la fin de cette fenêtre. */
+    await this.page.waitForFunction(() => typeof abandonTap === 'undefined' || Date.now() >= abandonTap.t + SHEET_DOUBLE_MS + 10, null, { timeout: 4000, polling: 10 });
   }
   async duelStart(team) {
     await this.clickSheet(`chooseDuelStart('${team}')`);

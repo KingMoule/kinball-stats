@@ -235,7 +235,10 @@ export default async function ({ gabarit, check }) {
 
   /* ----- Volet C ----- */
   /* Joue de vrais gestes jusqu'à une fin de période et rapporte (1) l'état écrit par le premier save() de l'action
-     (celui de commitEvent : c'est lui qui peut survivre à un rechargement dans la fenêtre de 1,4 s), (2) l'état final. */
+     (celui de commitEvent : c'est lui qui peut survivre à un rechargement dans la fenêtre de 1,4 s), (2) l'état final.
+     T-FP robustesse (D98) : ce premier save() est déjà dans la période suivante ; l'état « au seuil » qu'écrivaient les
+     versions d'avant est reconstruit à partir de ce que le ruban affichait (periodEndView), pour vérifier que
+     reopenMatchSheets le répare toujours. */
   async function jusquaFin(chemin) {
     const app = await launch(gabarit);
     try {
@@ -248,7 +251,7 @@ export default async function ({ gabarit, check }) {
         S.scores = sc; S.possession = po;
         if (el) { S.eliminated = el; S.duelActive = true; S.awaitingDuelStart = false; }
         renderScoreboard();
-        window.__saves = []; const o = window.save; window.save = function (...a) { window.__saves.push(JSON.parse(JSON.stringify(S))); return o.apply(this, a); };
+        window.__saves = []; const o = window.save; window.save = function (...a) { window.__saves.push(JSON.parse(JSON.stringify({ ...S, __vue: typeof periodEndView === 'undefined' ? null : periodEndView }))); return o.apply(this, a); };
       }, [cfg.scores, cfg.poss, cfg.elim]);
       if (chemin === 'faute') await app.faute({ code: 'APPEL' });
       else await app.lancer({ target: 'Gris', caught: false });
@@ -261,10 +264,15 @@ export default async function ({ gabarit, check }) {
   const cles = s => JSON.stringify(CLES.map(k => s[k]));
   for (const [i, chemin] of [[8, 'faute'], [9, 'echappe'], [10, 'elim']]) {
     await check(`${P}·${i} fin de période reprise (état enregistré par ${chemin === 'faute' ? 'une faute' : chemin === 'echappe' ? 'un ballon échappé' : 'un ballon échappé en duel après élimination'}) : menée à terme une seule fois`, async () => {
-      const { snap, final } = await jusquaFin(chemin);
-      assert(snap, 'aucun save() capté');
-      eq(snap.scores.Bleu, snap.format.periodAt, 'l\'état enregistré devrait être au seuil');
+      const { snap: neuf, final } = await jusquaFin(chemin);
+      assert(neuf, 'aucun save() capté');
       eq(final.period, 2, 'période finale (jeu normal)');
+      eq(cles(neuf), cles(final), 'T-FP robustesse : l\'état enregistré par l\'action est déjà l\'état final');
+      assert(neuf.__vue && neuf.__vue.scores.Bleu === neuf.format.periodAt, 'le ruban montrait le seuil pendant la fenêtre');
+      /* l'état d'une version d'avant : au seuil ; par une faute, la période n'était pas encore comptée */
+      const snap = JSON.parse(JSON.stringify(neuf)); delete snap.__vue;
+      Object.assign(snap, { period: neuf.__vue.period, scores: neuf.__vue.scores, possession: neuf.__vue.possession, eliminated: neuf.__vue.eliminated, duelActive: neuf.__vue.duelActive, stopped: neuf.__vue.stopped, awaitingDuelStart: false });
+      if (chemin === 'faute') snap.periodWins.Bleu -= 1;
       const app = await freshWith(gabarit, snap);
       try {
         await app.page.waitForFunction(() => typeof periodEndTimer !== 'undefined' && periodEndTimer === null && S.period === 2, null, { timeout: 8000, polling: 20 });

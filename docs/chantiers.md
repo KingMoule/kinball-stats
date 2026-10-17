@@ -1,9 +1,9 @@
 # Chantiers — Kin-Ball Stats (seul registre)
 
-Mis à jour le 2026-10-17 (STAT-4). Ce fichier dit où en est le projet, ce qui vient ensuite et ce qu'on attend de l'utilisateur. Il reste sous 10 Ko : un chantier terminé tient en une ligne, le pourquoi va dans `docs/decisions.md`, la méthode dans `docs/processus.md`.
+Mis à jour le 2026-10-17 (T-FP robustesse). Ce fichier dit où en est le projet, ce qui vient ensuite et ce qu'on attend de l'utilisateur. Il reste sous 10 Ko : un chantier terminé tient en une ligne, le pourquoi va dans `docs/decisions.md`, la méthode dans `docs/processus.md`.
 
 ## État
-- `main` = `343db3d` (PR #22, coût des chantiers) ; dernier code : PR #20 (FIAB-1). STAT-4 : PR #23 (site `2026-10-17.1`).
+- `main` = `fd62203` (PR #23, STAT-4, site `2026-10-17.1`). T-FP robustesse en PR (site `2026-10-17.3`).
 - Revue complète du 2026-10-16 : rapports dans `docs/revue-2026-10-16/` (1 saisie, 2 données, 3 stats, 4 outillage). On les cite par fichier et numéro (« données I1 »). Le dossier se supprime quand ses constats sont traités ou écartés.
 - ESSAI-5 (`docs/essai-ipad.md`) : fait par l'utilisateur le 2026-10-16.
 
@@ -12,7 +12,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 
 1. **FIAB-1, sauvegarde et reprise** (complet) : **fait** (PR #20, D96, suite FIAB1 ; corrige aussi saisie N7 et le reste de R21). Données I1 (REPRENDRE charge la version de la base et la première action écrase la copie de secours : actions perdues), données I2 = saisie N1 (une écriture réussie efface l'état « en attente » d'une sauvegarde plus récente : plus de réessai, de copie ni d'alerte), données M2, M3, M5, saisie N6, N8 ; audit #13 : NOUVEAU match non protégé, réessai perdu en consultation d'archive.
 2. **STAT-4, chiffres faux** (léger) : **fait** (PR #23, D97, suite STAT4). Stats S1 (onglet Zones d'un duel sans Bleu), S2 (en-têtes « Par période »), S3 (« Points marqués (match) » en fin de « Équipes » ; « Score final » documenté comme score de la période en cours), S5 (même dénominateur des zones de fautes), S8.
-3. **T-FP robustesse + garde commune** (complet). Une fonction de garde partagée par ↶, ⌂, TERMINER, FIN PÉRIODE, terrain et bandeau (cause de saisie N3, N4) ; F26 et E5 (appliquer la remise à zéro de période à `S` tout de suite, ne différer que l'affichage) ; F42 ; minuteur de fin de période (audit #13) ; D2 et double appui terrain ; saisie N2 (double ↶), N5 (`pointercancel`). Prépare REDO.
+3. **T-FP robustesse + garde commune** (complet) : **en PR** (D98, suite TFP2 ; TFP1 et C23 lisent l'affichage). Une fonction de garde partagée par ↶, ⌂, TERMINER, FIN PÉRIODE, terrain et bandeau (cause de saisie N3, N4) ; F26 et E5 (appliquer la remise à zéro de période à `S` tout de suite, ne différer que l'affichage) ; F42 ; minuteur de fin de période (audit #13) ; D2 et double appui terrain ; saisie N2 (double ↶), N5 (`pointercancel`). Prépare REDO.
 4. **OUTIL-1, outillage** (aucun ; **en parallèle de 1 à 3**, ne touche pas `index.html` sauf `VERSION_AMONT`). Retirer `amont/`, `outils/resync.mjs`, son test et `MIGRATION.md` (figer `VERSION_AMONT`) ; `.gitattributes` LF ; Pages ne publie que le site (R24) ; actions `checkout@v5` ; `tests/local` et `simtest` en CI ; marquer `{ calme: true }` les vérifications chronométrées (outillage 2) ; `tests/lib.mjs` cherche aussi `npm root -g` ; `rapide.json` complété ; `ci-banc.mjs` sous Windows.
 5. **MÉNAGE-1, code mort et commentaires périmés** (aucun, après 3). Branche `window.claude`, `migrateLegacyMatches`, archivage (vraie suppression masquée), `zoneSection`, `playerPickTeam`, commentaires « serveur » ; puis lire `docs/couts.md` pour décider de R13.
 6. **ESSAI-6 iPad** puis publication. Puis MAJ 4 : **VIS-1** (#8, #9, #11), **REDO** (#7, après la garde commune ; pile `{ev, after}` hors de `S`, vidée à la prochaine action ou au rechargement), **TERRAIN** (#12, image de la maquette à fournir ; les lignes actuelles à 0,18 / 0,82 ne sont pas les tiers des zones : le nouveau tracé corrige cet écart ; pas d'`overflow:hidden` sur les coins).

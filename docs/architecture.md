@@ -22,7 +22,7 @@ L'app est un seul `<script>` classique avec plus de 250 fonctions globales et en
 
 - Pas de modules ES, pas de second `<script>` dans `index.html` : les `onclick` appellent des fonctions globales par leur nom.
 - Renommer une fonction casse en silence les `onclick` en chaîne et les sélecteurs de `kbsite.js` (il repère des boutons par le texte de leur `onclick`, par exemple `startMatch(`). Après un renommage : `grep` du nom dans `index.html`, `kbsite.js` et `tests/`.
-- Plusieurs `let` sont déclarés loin sous leur premier usage (`pending`, `pendingPeriodWinner`, `periodEndTimer`, les variables de la couche radiale). Une fonction qui les lit ne doit jamais s'exécuter pendant le chargement du script (zone morte temporelle). C'est pourquoi `reopenMatchSheets()` n'est appelée que par `onEnterScreen('match')`.
+- Plusieurs `let` sont déclarés loin sous leur premier usage (`pending`, les variables de la couche radiale ; `periodEndTimer` et `periodEndView` sont déclarés avant `navHome` avec `periodEndWait`). Une fonction qui les lit ne doit jamais s'exécuter pendant le chargement du script (zone morte temporelle). C'est pourquoi `reopenMatchSheets()` n'est appelée que par `onEnterScreen('match')`.
 - Le code est réparti en zones à bandeau de commentaire (téléphone, formats, stockage, navigation, saisie, probabilité, stats, export, équipes, historique, données). `node outils/carte.mjs` les liste avec leurs fonctions.
 
 Globales à connaître : `S` (le match courant, voir `donnees.md`), `TEAMS_DB`, `MATCHES_DB`, `DELETED_MATCHES` (alimentées seulement par les abonnements du stockage), `FORMATS`, `STAT_SECTIONS`, `SCREENS`, `WP` (état du calcul de probabilité), `pending` (événement en cours de saisie), `viewingArchive`.
