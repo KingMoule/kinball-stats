@@ -50,11 +50,11 @@ Le **relecteur** (Opus, revue transversale) passe avant une publication importan
 | `garde-pr` | une PR dont la base n'est pas `main` |
 | `garde-lecture` | `Read` d'un fichier de plus de 150 Ko sans `limit` (ou au-dessus de 800 lignes) ; `cat index.html` |
 
-Autotest : `bash .claude/hooks/test-hooks.sh`. Agents, skills et hooks du dépôt sont chargés au démarrage d'une session (ou quand le dépôt est attaché) : une modification vaut pour la suivante. Les hooks sont en `bash` : sous Windows ils laissent passer sans prévenir (revue outillage, point 3).
+Autotest : `bash .claude/hooks/test-hooks.sh`. Agents, skills et hooks du dépôt sont chargés au démarrage d'une session (ou quand le dépôt est attaché) : une modification vaut pour la suivante. Les hooks sont en `bash` ; Windows n'est pas pris en charge (décidé le 2026-10-17).
 
 ## Environnement
 - **Session cloud** : Node 22, Playwright préinstallé sous `npm root -g`, Chromium dans `/opt/pw-browsers`. Rien à installer.
-- **Ordinateur** : Node 22, puis Playwright à la version de la CI (`PLAYWRIGHT_VERSION` dans `.github/workflows/banc.yml`) : `npm install -g playwright@<version>`, `npx playwright@<version> install chromium`, `NODE_PATH="$(npm root -g)"`. Sous Windows, `ci-banc.mjs --attendre` et les hooks ne marchent pas encore (revue outillage, points 3 à 5).
+- **Ordinateur** : Node 22, puis Playwright à la version de la CI (`PLAYWRIGHT_VERSION` dans `.github/workflows/banc.yml`) : `npm install -g playwright@<version>`, `npx playwright@<version> install chromium`, `NODE_PATH="$(npm root -g)"`.
 - **GitHub** : `gh` doit pouvoir pousser une branche et ouvrir une PR. Journaux et artefacts de la CI sont illisibles depuis une session cloud (403) : `ci-banc.mjs` lit les annotations (résumé et dix premiers échecs) ; le reste s'ouvre dans GitHub.
 
 ## Limites connues
