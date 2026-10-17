@@ -1,6 +1,6 @@
 # Chantiers — Kin-Ball Stats (seul registre)
 
-Mis à jour le 2026-10-17 (ESSAI-6, REDO, TERRAIN). Ce fichier dit où en est le projet, ce qui vient ensuite et ce qu'on attend de l'utilisateur. Il reste sous 10 Ko : un chantier terminé tient en une ligne, le pourquoi va dans `docs/decisions.md`, la méthode dans `docs/processus.md`.
+Mis à jour le 2026-10-17 (ESSAI-6, REDO, TERRAIN, EXPORT-1). Ce fichier dit où en est le projet, ce qui vient ensuite et ce qu'on attend de l'utilisateur. Il reste sous 10 Ko : un chantier terminé tient en une ligne, le pourquoi va dans `docs/decisions.md`, la méthode dans `docs/processus.md`.
 
 ## État
 - `main` = `6c9f51f` (PR #28 et #29, VIS-1). REDO : PR #30 (site `2026-10-17.9`). TERRAIN : PR #32 (site `2026-10-17.10`).
@@ -17,7 +17,8 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 5. **OUTIL-2, CI** : **fait** (PR #27). Pages ne publie que le site (R24 ; `docs/` sorti des fichiers du site, ce qui rétablit le déploiement cassé par la PR #25) ; actions sur Node 24 ; `simtest` et `tests/local` en CI ; outillage B-1 (TFP1, C23·2 au calme) et B-5 (`rapide.json`, `carte.mjs --sections`).
 6. **VIS-1** : **fait** (PR #28, D100, suite VIS1). Liseré blanc des trois blocs d'équipe, possession allumée (plus de barre), flèche du glissé à la couleur du lanceur, aucun calcul du % de victoire pendant le message de fin de période.
 7. **ESSAI-6 iPad** : **fait** le 2026-10-17 (liserés, flèche du glissé, halo de possession, barres du % de victoire pendant « PÉRIODE N TERMINÉE » : tout confirmé ; site publié par Pages à chaque fusion). **REDO** (#7, complet) : **fait** (PR #30, D101, suite REDO ; audit : 6 critères tenus, ↶ d'un ancien événement sans `before` corrigé) : ↷ à droite de ↶ ; pile `{ev, after, id, n}` hors de `S`, vidée par toute action, un choix de possession, un changement de match et le rechargement ; couvre `fin_periode`, changements de joueur, duel, fenêtre de fin de période. **TERRAIN** (#12, complet) : **fait** (PR #32, D102, suite TERRAIN) : terrain de saisie d'après la maquette `docs/maquettes/terrain-3x3.png` (fond vert en dégradé, liseré, grille 3×3 aux tiers des zones, cercle central ; heat maps inchangées) ; les anciennes lignes à 0,18 / 0,82 disparaissent ; `#field` sans bordure ni `overflow:hidden`.
-8. **Fonctions nouvelles, à choisir après TERRAIN** : F8 (courbe du % de victoire au fil du match), C04 (fiche joueur cumulée, attend Q5), identifiant d'équipe permanent dans les exports (stats S6), « Situation (avec fautes) » dans le CSV (stats S4), F7 (calibration, attend une vingtaine de matchs).
+8. **EXPORT-1** (léger) : **fait** (PR #34, D103, suite EXPORT1). Stats S4 (« Situation (avec fautes) » en fin des Actions et de « tous les matchs ») et S6 (« ID équipe » dans la feuille « Match » et « ID équipe 1/2/3 » dans « tous les matchs »).
+9. **Fonctions nouvelles, à choisir** : F8 (courbe du % de victoire au fil du match), C04 (fiche joueur cumulée, attend Q5), F7 (calibration, attend une vingtaine de matchs).
 
 ## Autres lignes
 | Id | Sujet | Remarque |
