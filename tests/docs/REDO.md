@@ -10,5 +10,6 @@ Suite `tests/scenarios/REDO.mjs`, tablette et téléphone, une page par vérific
 6. Vrais délais : « Annuler » du message de fin de période puis ↷ : `S` = l'état de la fenêtre, aucun message rejoué ; `redo()` refusé pendant une saisie, la pile reste.
 7. Format libre, fin de période à la main : ↶ ↷ rétablit `fin_periode` et la période 2.
 8. Deux appuis réels à 40 ms sur ↷ : une action ; historique allongé ailleurs : ↷ refusé, de nouveau possible à la même longueur ; pile vide après rechargement et après NOUVEAU MATCH.
+9. ↷ refusé en consultation d'archive et sur un match terminé ; ↶ d'un ancien événement sans `before` ne lève rien.
 
-Contrôle négatif : `KINBALL_HTML=<copie de main avant REDO> KINBALL_ONLY=REDO` : les 16 vérifications échouent (aucun bouton ↷, ni `redo`).
+Contrôle négatif : `KINBALL_HTML=<copie de main avant REDO> KINBALL_ONLY=REDO` : les 18 vérifications échouent (aucun bouton ↷, ni `redo`).

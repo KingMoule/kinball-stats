@@ -199,4 +199,30 @@ export default async function ({ gabarit, check }) {
       eq(app.errors, [], 'aucune erreur de page');
     });
   });
+
+  await check(`${P}·9 ↷ refusé sur un match terminé et en consultation d'archive ; ↶ d'un ancien événement sans before ne lève rien`, async () => {
+    await un(gabarit, async app => {
+      await app.startMatch({ format: '9_11' });
+      await app.initialPossession('Bleu');
+      await app.lancer({ target: 'Gris', caught: true });
+      await app.lancer({ target: 'Noir', caught: true });
+      await app.undo();
+      /* archive : S est un autre objet (copie du match), ↷ ne s'y applique pas */
+      const id = await app.ev(() => S.id);
+      await app.ev(id => { viewArchivedMatchStats(id); }, id);
+      eq(await app.ev(() => [viewingArchive, redoPossible()]), [true, false], 'consultation d\'archive');
+      await app.ev(() => { const h = S.history.length; redo(); return h; });
+      await app.ev(() => exitArchiveView());
+      /* match terminé */
+      await app.ev(() => { S.status = 'completed'; });
+      const e = await app.state();
+      await app.ev(() => redo());
+      eq([await app.state(), await app.ev(() => redoPossible())], [e, false], 'match terminé');
+      await app.ev(() => { S.status = 'in_progress'; renderScoreboard(); });
+      /* ancien événement sans before */
+      const r = await app.ev(() => { delete S.history[S.history.length - 1].before; try { undo(); return null; } catch (x) { return String(x); } });
+      eq(r, null, 'aucune exception');
+      eq(app.errors, [], 'aucune erreur de page');
+    });
+  });
 }

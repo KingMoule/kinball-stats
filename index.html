@@ -3647,7 +3647,7 @@ function undo(){
   if(redoPile.length && !redoPossible()) redoPile = [];                        // REDO : pile d'un autre état, jamais rejouée
   const after = snapshotBefore();                                              // REDO : l'état que ↷ rétablira (pris avant le pop)
   const ev = S.history.pop();
-  Object.assign(S, JSON.parse(JSON.stringify(ev.before)));                     // REDO : copie, `ev` peut revenir dans l'historique
+  Object.assign(S, ev.before ? JSON.parse(JSON.stringify(ev.before)) : {});   // REDO : copie, `ev` peut revenir dans l'historique ; ancien événement sans `before` : rien
   redoPile.push({ev, after, id:S.id, n:S.history.length});
   closeSheet();
   renderScoreboard();
