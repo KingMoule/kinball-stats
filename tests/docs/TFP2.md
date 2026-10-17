@@ -6,7 +6,7 @@ Suite `tests/scenarios/TFP2.mjs`, tablette et téléphone, vrais délais (timesc
 2. Fin à la main : `S` et l'unique écriture dans la période 2 tout de suite ; « Annuler » du message (après 400 ms) rend l'état d'avant, sans fenêtre résiduelle.
 3. F42 : état en suspens d'une ancienne version (`fin_periode` compté, période pas avancée) : la reprise rejoue le message une fois, la période n'est comptée qu'une fois ; ↶ pendant ce message rend l'état d'avant la fin.
 4. Audit #13 : `navHome` pendant le message coupe le minuteur et l'affichage différé ; une feuille ouverte à l'accueil n'est pas refermée 1,7 s plus tard ; la reprise est dans la période 2, sans message.
-5. Saisie N2 : deux appuis réels sur ↶ à 80 ms défont une action ; à 350 ms, deux.
+5. Saisie N2 : deux appuis réels sur ↶ à 40 ms (rebond) défont une action ; à 350 ms, deux (la rafale à 150 ms est C22 · 6c).
 6. Saisie N3 : bandeau `#syncBadge` touché pendant une saisie radiale : aucune feuille, la couche et `pending` restent, la faute s'enregistre.
 7. Saisie N4 : format libre, FIN PÉRIODE 100 ms après « Annuler cette saisie » : ignoré ; 450 ms après : la période se termine.
 8. D2 (feuille et radiale) : second appui au point d'« Annuler cette saisie », 150 ms après, quand ce point est sur le terrain (toujours en radiale) : ignoré ; un appui ailleurs au même moment ouvre une saisie (C21 · 6l).

@@ -142,13 +142,13 @@ export default async function ({ gabarit, check }) {
   });
 
   /* ---------- 5 · saisie N2 : double appui sur ↶ ---------- */
-  await check(`${P}·5 N2 : deux appuis sur ↶ à 80 ms défont une seule action ; à 350 ms, deux`, async () => {
+  await check(`${P}·5 N2 : rebond sur ↶ (40 ms) : une seule action défaite ; à 350 ms, deux`, async () => {
     await un(gabarit, async app => {
       await app.startMatch({ format: '9_11' }); await app.initialPossession('Bleu');
       for (let k = 0; k < 4; k++) { await app.faute({ at: [0.5, 0.5] }); }
       eq((await app.state()).history.length, 4, 'quatre fautes');
       await app.page.waitForTimeout(450);
-      await tapEl(app, undoSel(phone)); await app.page.waitForTimeout(80); await tapEl(app, undoSel(phone));
+      await tapEl(app, undoSel(phone)); await app.page.waitForTimeout(40); await tapEl(app, undoSel(phone));
       await app.page.waitForTimeout(400);
       eq((await app.state()).history.length, 3, 'double appui : une seule action défaite');
       await tapEl(app, undoSel(phone)); await app.page.waitForTimeout(350); await tapEl(app, undoSel(phone));

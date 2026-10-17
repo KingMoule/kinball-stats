@@ -2890,7 +2890,7 @@ function holdButtonHTML(label, hint, action){
      second est avalé (premier appui gagne). Aucun autre délai.
    - UNDO_REARM_MS : ↶ du ruban / de la barre ignoré après un appui dans une feuille.
    Variables de module, pas dans S. */
-const SHEET_CLOSE_MS = 240, SHEET_DOUBLE_MS = 300, SHEET_DOUBLE_PX = 32, UNDO_REARM_MS = 400;
+const SHEET_CLOSE_MS = 240, SHEET_DOUBLE_MS = 300, SHEET_DOUBLE_PX = 32, UNDO_REARM_MS = 400, UNDO_REBOND_MS = 120;
 let sheetDismissable = false;   // R27 : la feuille ouverte se ferme-t-elle d'un appui à côté ? État d'interface, plus rien dans S
 let sheetCloseTimer = null, sheetLastTap = {t:0, x:-1e9, y:-1e9}, undoBlockedUntil = 0, abandonTap = {t:0, x:-1e9, y:-1e9};
 /* T-FP robustesse : garde commune des boutons du ruban et de la barre du match (↶, ⌂, TERMINER, FIN PÉRIODE ; le bandeau #syncBadge
@@ -3681,9 +3681,9 @@ function endPeriodManually(team){
 function undoTap(){
   if(!barreLibre()) return;     // appui de feuille tout récent (double appui), saisie radiale, fin de période
   undo();
-  /* T-FP robustesse (saisie N2) : un rebond du doigt ou un double appui sur ↶ ne défait qu'une action ; deux ↶ voulus
-     restent possibles à SHEET_DOUBLE_MS (300 ms) d'écart. Bloque aussi ⌂, TERMINER et FIN PÉRIODE le même temps. */
-  undoBlockedUntil = Math.max(undoBlockedUntil, Date.now() + SHEET_DOUBLE_MS);
+  /* T-FP robustesse (saisie N2) : un rebond du doigt sur ↶ ne défait qu'une action ; des ↶ voulus en rafale (150 ms
+     d'écart, C22 · 6c) passent tous. Bloque aussi ⌂, TERMINER et FIN PÉRIODE le même temps. */
+  undoBlockedUntil = Math.max(undoBlockedUntil, Date.now() + UNDO_REBOND_MS);
 }
 function undo(){
   if(pending || !S.history.length || S.status !== 'in_progress') return;   // C26 · R7 : ↶ refusé sur un match terminé
