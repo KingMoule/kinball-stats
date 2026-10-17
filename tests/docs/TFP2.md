@@ -14,4 +14,4 @@ Suite `tests/scenarios/TFP2.mjs`, tablette et téléphone, vrais délais (timesc
 
 `App.abandon()` (`tests/lib.mjs`) attend désormais la fin de la fenêtre de 300 ms après l'abandon : le fuzz tire le geste suivant au hasard et pouvait tomber au même point.
 
-Contrôle négatif : `KINBALL_HTML=<copie de main avant T-FP robustesse> KINBALL_ONLY=TFP2` : les 24 vérifications échouent (la 4 par le minuteur resté actif).
+Contrôle négatif : `KINBALL_HTML=<copie de main avant T-FP robustesse> KINBALL_ONLY=TFP2` : 23 des 24 vérifications échouent (la 4 par le minuteur resté actif).
