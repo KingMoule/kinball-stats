@@ -30,7 +30,7 @@ Chemins : plus aucun chemin local en dur. `KINBALL_SORTIE` et `KINBALL_AVANT` on
 
 **Sortie.** Les lignes des processus fils arrivent au fil de l'eau. Par défaut, seuls les FAIL, les KNOWN et le résumé sont affichés ; `KINBALL_VERBEUX=1` affiche tout, en préfixant les lignes libres par `[gabarit#n]`.
 
-**Phase au calme.** `check(nom, fn, { calme: true })` marque une vérification qui mesure une durée réelle (C13B·13). Pendant le passage parallèle, elle est reportée ; elle est ensuite jouée seule, un gabarit après l'autre. `KINBALL_CALME=0` supprime cette phase : cela ne sert qu'aux essais de robustesse sous charge.
+**Phase au calme.** `check(nom, fn, { calme: true })` marque une vérification qui mesure une durée réelle (C13B·13, LIS1, TFP1·1a à 1c, 2a et 3e, C23·2). Une telle vérification prépare elle-même son état (sa propre page), car la phase au calme ne joue pas les autres vérifications de la suite. Pendant le passage parallèle, elle est reportée ; elle est ensuite jouée seule, un gabarit après l'autre. `KINBALL_CALME=0` supprime cette phase : cela ne sert qu'aux essais de robustesse sous charge.
 
 **Fichiers écrits dans `KINBALL_SORTIE`.**
 - `en-cours.json` : écrit pendant le passage ; il contient le pid, la progression et le chemin du journal.

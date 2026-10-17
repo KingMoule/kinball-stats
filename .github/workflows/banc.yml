@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Deux commits : sur une PR, HEAD est le commit de fusion et HEAD^1 la pointe de main.
           fetch-depth: 2
@@ -72,7 +72,7 @@ jobs:
           fi
           echo "banc=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.portee.outputs.banc == 'true'
         with:
           node-version: 22
@@ -106,7 +106,7 @@ jobs:
       - name: Chercher un résultat déjà joué (même empreinte)
         if: steps.portee.outputs.banc == 'true'
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.cache/kinball-banc
           key: banc-${{ steps.emp.outputs.hash }}
@@ -121,6 +121,24 @@ jobs:
         if: steps.portee.outputs.banc == 'true'
         run: KINBALL_CACHE=1 node tests/run.mjs
 
+      # Moteur de simulation et tests locaux (≈ 30 s), joués même si le banc a rougi. Ils sont dans l'empreinte : un
+      # résultat relu du cache les a déjà vus passer. Un échec rend le passage rouge (rien n'est rangé dans le cache) et
+      # laisse une annotation « BANC FAIL », que outils/ci-banc.mjs affiche.
+      - name: Moteur de simulation et tests locaux
+        if: steps.portee.outputs.banc == 'true' && steps.cache.outputs.cache-hit != 'true' && !cancelled()
+        run: |
+          code=0
+          for t in sim/simtest.mjs tests/local/kblocal.test.mjs tests/local/collecte.test.mjs; do
+            if ! node "$t" > "$RUNNER_TEMP/local.log" 2>&1; then
+              code=1
+              cat "$RUNNER_TEMP/local.log"
+              echo "::error title=BANC FAIL::$t : échec (voir le journal de l'étape « Moteur de simulation et tests locaux »)"
+            else
+              echo "$t : OK ($(tail -n 1 "$RUNNER_TEMP/local.log"))"
+            fi
+          done
+          exit $code
+
       # Le résumé va dans l'onglet « Summary » ; le résumé et les échecs vont aussi en annotations, que outils/ci-banc.mjs
       # lit par l'API de GitHub (journaux et artefacts ne se téléchargent pas depuis un environnement à sortie restreinte).
       - name: Résumé du passage
@@ -131,7 +149,7 @@ jobs:
 
       - name: Garder le résultat
         if: steps.portee.outputs.banc == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: banc-resultat
           path: |
@@ -148,7 +166,7 @@ jobs:
 
       - name: Ranger le résultat dans le cache
         if: steps.portee.outputs.banc == 'true' && steps.a_ranger.outputs.oui == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.cache/kinball-banc
           key: banc-${{ steps.emp.outputs.hash }}

@@ -45,7 +45,7 @@ if (val('--suites')) {
 
   /* ---- lignes modifiées de index.html → sections de carte.mjs ---- */
   const sections = [];
-  const carte = sh(process.execPath, [path.join(DEPOT, 'outils', 'carte.mjs')]);
+  const carte = sh(process.execPath, [path.join(DEPOT, 'outils', 'carte.mjs'), '--sections']);
   let fichierCarte = null;
   for (const l of (carte.stdout || '').split('\n')) {
     const f = l.match(/^# (.+)$/); if (f) { fichierCarte = f[1]; continue; }
@@ -69,6 +69,7 @@ if (val('--suites')) {
         if (!rs.length) { T.section_inconnue.suites.forEach(s => suites.add(s)); notes.push(`section « ${t} » : ${T.section_inconnue.note}`); }
         for (const r of rs) { r.suites.forEach(s => suites.add(s)); elargir(r.gabarit); }
       }
+      (T.commandes_index || []).forEach(c => commandes.add(c));
       vus.push(`index.html : ${titres.size} section(s) touchée(s)${avant ? ' + zone avant les sections' : ''}`);
       continue;
     }

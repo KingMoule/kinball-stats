@@ -1,5 +1,5 @@
 {
-  "_lisez-moi": "Table du banc rapide (tests/rapide.mjs). Indicative : elle dit quelles suites jouer d'abord pour un fichier ou une section modifiée, jamais qu'il suffit de les jouer. Le banc complet (CI) fait foi. Pour une section de index.html, les motifs portent sur le titre donné par `node outils/carte.mjs`. À corriger dès qu'un échec de la CI montre qu'une suite manquait ici.",
+  "_lisez-moi": "Table du banc rapide (tests/rapide.mjs). Indicative : elle dit quelles suites jouer d'abord pour un fichier ou une section modifiée, jamais qu'il suffit de les jouer. Le banc complet (CI) fait foi. Pour une section de index.html, les motifs portent sur le titre donné par `node outils/carte.mjs --sections` ; toutes les règles qui reconnaissent un titre s'ajoutent. À corriger dès qu'un échec de la CI montre qu'une suite manquait ici.",
 
   "toujours": ["smoke", "undo"],
 
@@ -9,33 +9,40 @@
     { "motif": "^tests/scenarios/([^/]+)\\.mjs$", "suites": ["$1"] },
     { "motif": "^tests/(smoke|undo|fuzz)\\.mjs$", "suites": ["$1"] },
     { "motif": "^tests/(lib|model|run|empreinte|serveur|attendre)\\.mjs$", "suites": [], "complet_requis": "l'outillage du banc a changé" },
-    { "motif": "^kbsite\\.js$", "suites": ["M04", "M06", "M08", "FIAB1"] },
-    { "motif": "^sw\\.js$", "suites": ["M02", "M04"] },
-    { "motif": "^kblocal\\.js$", "suites": ["M03", "M05", "M06", "M11", "C27"], "commandes": ["node tests/local/kblocal.test.mjs"] },
-    { "motif": "^(kbcollect\\.js|config\\.js|collecte/)", "suites": ["M08"], "commandes": ["node tests/local/collecte.test.mjs"] },
-    { "motif": "^(manifest\\.webmanifest|icons/|fonts/)", "suites": ["M02", "M04"] },
-    { "motif": "^vendor/", "suites": ["M02", "C28"] },
-    { "motif": "^sim/", "suites": ["C13B"], "commandes": ["node sim/simtest.mjs"] },
+    { "motif": "^kbsite\\.js$", "suites": ["M04", "M05", "M06", "M08", "M11", "C13B", "C25", "C27", "C28", "FIAB1"], "commandes": ["node outils/check-release.mjs"] },
+    { "motif": "^sw\\.js$", "suites": ["M02", "M04"], "commandes": ["node outils/check-release.mjs"] },
+    { "motif": "^kblocal\\.js$", "suites": ["M03", "M04", "M05", "M06", "M08", "M11", "C27"], "commandes": ["node tests/local/kblocal.test.mjs", "node outils/check-release.mjs"] },
+    { "motif": "^(kbcollect\\.js|config\\.js)$", "suites": ["M04", "M08", "C25", "C28"], "commandes": ["node tests/local/collecte.test.mjs", "node outils/check-release.mjs"] },
+    { "motif": "^collecte/", "suites": ["M08"], "commandes": ["node tests/local/collecte.test.mjs"] },
+    { "motif": "^(manifest\\.webmanifest|icons/|fonts/|confidentialite\\.html$)", "suites": ["M02", "M04"], "commandes": ["node outils/check-release.mjs"] },
+    { "motif": "^vendor/", "suites": ["M02", "C08", "C28", "C29"], "commandes": ["node outils/check-release.mjs"] },
+    { "motif": "^sim/", "suites": ["C13B", "C23"], "commandes": ["node sim/simtest.mjs"] },
+    { "motif": "^tests/local/", "suites": [], "commandes": ["node tests/local/kblocal.test.mjs", "node tests/local/collecte.test.mjs"] },
     { "motif": "^outils/check-release\\.mjs$", "suites": ["M04"] },
     { "motif": "^(outils/resync\\.mjs|amont/)", "suites": ["M04", "M06"], "commandes": ["node tests/local/resync.test.mjs"] },
-    { "motif": "^(docs/|tests/docs/|tests/README\\.md$|tests/(rapide|resume-ci)\\.(mjs|json)$|\\.claude/|\\.github/|CLAUDE\\.md$|README\\.md$|MIGRATION\\.md$|confidentialite\\.html$|\\.gitignore$|\\.nojekyll$|outils/carte\\.mjs$)", "suites": [] }
+    { "motif": "^(docs/|tests/docs/|tests/README\\.md$|tests/(rapide|resume-ci)\\.(mjs|json)$|\\.claude/|\\.github/|CLAUDE\\.md$|README\\.md$|MIGRATION\\.md$|\\.gitignore$|\\.nojekyll$|outils/(carte|ci-banc)\\.mjs$)", "suites": [] }
   ],
+
+  "commandes_index": ["node outils/check-release.mjs"],
 
   "avant_les_sections": { "suites": ["C14", "C18", "C19", "C20", "R16"], "gabarit": "tous", "note": "HTML ou CSS avant la première section du script : la mise en page peut changer sur téléphone" },
 
   "sections": [
     { "motif": "TÉLÉPHONE", "suites": ["C19", "C20", "C24"], "gabarit": "tous" },
-    { "motif": "FORMATS DE MATCH|NOUVEAU MATCH|CHOIX DU FORMAT|SÉLECTEUR D'ÉQUIPES|ALIGNEMENTS|GESTION DES ÉQUIPES", "suites": ["C19", "C25", "C26", "R15", "R16", "LIS1", "FIAB1"] },
+    { "motif": "FORMATS DE MATCH|NOUVEAU MATCH|MODE DE PRISE DE STATS|CHOIX DU FORMAT|SÉLECTEUR D'ÉQUIPES|ALIGNEMENTS|GESTION DES ÉQUIPES", "suites": ["C19", "C25", "C26", "R15", "R16", "LIS1", "FIAB1"] },
+    { "motif": "FORMATS DE MATCH", "suites": ["C08", "C15", "C20"], "note": "FAULTS et faultLabel" },
+    { "motif": "CHOIX DU FORMAT", "suites": ["C14", "C23", "C24", "TFP1"], "note": "renderScoreboard" },
     { "motif": "BASE D'ÉQUIPES|STOCKAGE SERVEUR|SYNCHRONISATION|OÙ VIVENT|QUI A PRIS|MIGRATION|CORBEILLE|SAUVEGARDE D'UN MATCH|RÉCUPÉRATION", "suites": ["C26", "C27", "M03", "M06", "M11", "R15", "R16", "FIAB1", "TFP2"] },
     { "motif": "^NAVIGATION", "suites": ["C25", "C26", "R15", "R16", "fuzz", "TFP1", "TFP2", "FIAB1"] },
     { "motif": "JOUEURS PENDANT LE MATCH|Glisser-déposer", "suites": ["C19", "C24"] },
     { "motif": "GARDE-FOUS CONTRE LE FAUX CLIC|^SHEET", "suites": ["C22", "C23", "C24", "C26", "R16", "LIS1", "TFP1", "TFP2"] },
     { "motif": "MENU RADIAL|FIELD DRAG|JOUEUR DE L'ACTION|REPRISE DE JEU", "suites": ["C20", "C21", "C23", "C24", "fuzz", "LIS1", "TFP1", "TFP2", "FIAB1"] },
-    { "motif": "% DE VICTOIRE EN DIRECT|Générateur à graine|Un pas de règles|^Simulation|Pas de règles pour|Paramètres à partir|^Affichage", "suites": ["C13B", "STAT4"] },
-    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C23", "C29", "STAT4"] },
+    { "motif": "JOUEUR DE L'ACTION", "suites": ["C14", "C19", "C26"], "note": "pickFault, pickResult, awardFaultPoints, checkPeriodState, finishPeriod, undo" },
+    { "motif": "% DE VICTOIRE EN DIRECT|Générateur à graine|Un pas de règles|^Simulation|Pas de règles pour|Paramètres à partir|^Affichage|^Constantes", "suites": ["C13B", "STAT4"] },
+    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|REGISTRE DES FAMILLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C23", "C29", "STAT4"] },
     { "motif": "Phases d'une période", "suites": ["C16", "C29"] },
     { "motif": "^Par période", "suites": ["C15", "C29", "STAT4"] },
-    { "motif": "ZONES DE DÉPART|HEAT MAP|GRILLE D'EFFICACITÉ", "suites": ["C17", "C18", "R16"] },
+    { "motif": "ZONES DE DÉPART|HEAT ?MAP|GRILLE D'EFFICACITÉ", "suites": ["C17", "C18", "R16"] },
     { "motif": "^EXPORT|ENREGISTREMENT DE FICHIER", "suites": ["C08", "C25", "C28", "C29", "M05", "STAT4"] },
     { "motif": "HISTORIQUE DES MATCHS|STATISTIQUES CUMULÉES|CLASSEMENT|Sections : cumul", "suites": ["C18", "C25", "C26", "C29", "R15", "R16", "FIAB1", "STAT4"] },
     { "motif": "SAUVEGARDE / RESTAURATION|ARCHIVAGE|VALIDATION DE L'IMPORT", "suites": ["C08", "C25", "C27", "M06", "M11", "R15"] }
