@@ -40,7 +40,7 @@ Un seul point d'accroche : `wpSync()`, dernière ligne de `renderScoreboard()`, 
 
 - **Sous `WP_MIN_K` (9) événements marquants et sans période gagnée** : parts égales, aucun calcul. Le seuil évite l'emballement du début de match ; valeur choisie sans référence.
 - Au-dessus : hors duel, un calcul quand K atteint un multiple de `WP_EVERY` (3) ; en duel, à chaque événement marquant et à chaque changement de porteur du ballon (`WP_DUEL_ON_POSSESSION`) ; à chaque changement de période (après la remise à zéro) ; à l'entrée en duel (au choix de reprise) ; à chaque annulation ; à la reprise d'un match qui a un historique. Un changement de joueur ne relance rien.
-- Jamais pendant une transition : attente de possession, ou pointage encore au seuil de période.
+- Jamais pendant une transition : attente de possession, pointage encore au seuil de période, ou message de fin de période (`periodEndView` non nul : `S` est déjà dans la période suivante, le ruban et les barres montrent encore celle qui finit ; le calcul part quand le ruban rejoint `S`, D99).
 
 ### File, Worker et repli
 
