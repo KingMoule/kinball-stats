@@ -63,7 +63,7 @@ export default async function ({ gabarit, check }) {
         const f = document.querySelector('.heat-field');
         const act = [...document.querySelectorAll('#statsBody .heat-btn.active')].map(b => b.textContent.trim());
         const sub = document.querySelector('#statsBody .section-sub').textContent;
-        const circles = f.querySelectorAll('circle').length;
+        const circles = f.querySelectorAll('circle.heat-pt').length;
         const de = document.documentElement, ov = de.scrollWidth > de.clientWidth + 1;
         return { leg, act, sub, circles, ov, mode: heatMode };
       });
@@ -112,7 +112,7 @@ export default async function ({ gabarit, check }) {
             for (const view of ['grid', 'dots']) {
               teamHeatView = view;
               const host = document.createElement('div'); host.innerHTML = sectionTeamHeat({ matchesPlayed: 1 }, 'T_X');
-              out[`${mode}|${p}|${view}`] = { leg: host.querySelector('.heat-legend').textContent.replace(/\s+/g, ' '), circles: host.querySelectorAll('circle').length, sub: host.querySelector('.section-sub').textContent, act: [...host.querySelectorAll('.heat-btn.active')].map(b => b.textContent.trim()) };
+              out[`${mode}|${p}|${view}`] = { leg: host.querySelector('.heat-legend').textContent.replace(/\s+/g, ' '), circles: host.querySelectorAll('circle.heat-pt').length, sub: host.querySelector('.section-sub').textContent, act: [...host.querySelectorAll('.heat-btn.active')].map(b => b.textContent.trim()) };
             }
           }
         } finally { MATCHES_DB.pop(); teamHeatMode = 'offense'; teamHeatView = 'grid'; teamHeatPoint.offense = 'start'; teamHeatPoint.defense = 'end'; }

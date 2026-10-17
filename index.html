@@ -25,6 +25,7 @@
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-display:swap;font-weight:800;src:url(fonts/barlow-condensed-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 :root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
 :root{
+  --terrain-fond:linear-gradient(180deg,#184634 0%,#0F2E23 100%);   /* TERRAIN (D102) : saisie, heat map, schéma des zones */
   --bg:#0B1220; --surface:#141D2E; --surface2:#1C2740; --line:#26324A;
   --ink:#F5F7FA; --dim:#8CA0C2; --dim2:#5C6C8C;
   --bleu:#2F6BFF; --bleu-d:#1E4FC4; --bleu-ink:#5B8CFF;
@@ -179,7 +180,7 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 #field{
   position:relative; aspect-ratio:1/1; height:100%; max-width:100%;
   width:min(100cqw,100cqh); height:min(100cqw,100cqh); max-width:none;   /* ignoré par les vieux navigateurs → repli ci-dessus */
-  background:linear-gradient(180deg,#184634 0%,#0F2E23 100%); border-radius:14px;
+  background:var(--terrain-fond); border-radius:14px;
   touch-action:none;
   box-shadow:0 14px 34px rgba(0,0,0,.45);
 }
@@ -403,8 +404,8 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .heat-btn.active{opacity:1; outline:2px solid white;}
 .heat-wrap{display:flex; justify-content:center;}
 .heat-field{
-  position:relative; width:min(100%, 520px); aspect-ratio:1/1; background:#fff;
-  border-radius:14px; border:1px solid var(--line); overflow:hidden;
+  position:relative; width:min(100%, 520px); aspect-ratio:1/1; background:var(--terrain-fond);
+  border-radius:14px; overflow:hidden;
   box-shadow:0 0 0 6px var(--surface), 0 10px 30px rgba(0,0,0,.35);
 }
 .heat-field svg{position:absolute; inset:0; width:100%; height:100%;}
@@ -421,7 +422,7 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 #zoneDetail{display:none; flex-direction:column; flex:1 1 auto; min-height:0; background:var(--bg);}
 #zoneBody{flex:1; overflow:auto; padding:16px;}
 .zone-diagram-wrap{display:flex; align-items:center; gap:18px; background:var(--surface); border-radius:14px; padding:14px; margin-bottom:22px; border:1px solid var(--line); flex-wrap:wrap;}
-.zone-diagram-wrap svg{background:#fff; border-radius:10px; width:140px; height:140px; flex-shrink:0;}
+.zone-diagram-wrap svg{background:var(--terrain-fond); border-radius:10px; width:140px; height:140px; flex-shrink:0;}
 
 
 /* ---------- MATCH HISTORY / TEAM STATS / BACKUP ---------- */
@@ -5412,16 +5413,10 @@ function computeFaultZones(team, phase){
 function zoneDiagramSVG(){
   let cases = '';
   ZONES.forEach((z,k)=>{
-    const c = k % 3, l = Math.floor(k / 3), cx = 4 + 392/3*(c+.5), cy = 4 + 392/3*(l+.5);
-    cases += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="26" fill="#2F6BFF" fill-opacity=".14"/>`
-      + `<text x="${cx.toFixed(1)}" y="${(cy+14).toFixed(1)}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="44" fill="#1B2740">${k+1}</text>`;
+    const cx = 400/3*(k % 3 + .5), cy = 400/3*(Math.floor(k / 3) + .5);
+    cases += `<text x="${cx.toFixed(1)}" y="${(cy+15).toFixed(1)}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="44" fill="#FFFFFF">${k+1}</text>`;
   });
-  return `<svg viewBox="0 0 400 400">${cases}${fieldLinesSVG()}
-    <line x1="${4+392/3}" y1="4" x2="${4+392/3}" y2="396" stroke="#2F6BFF" stroke-opacity=".5" stroke-width="1.5"/>
-    <line x1="${4+392*2/3}" y1="4" x2="${4+392*2/3}" y2="396" stroke="#2F6BFF" stroke-opacity=".5" stroke-width="1.5"/>
-    <line x1="4" y1="${4+392/3}" x2="396" y2="${4+392/3}" stroke="#2F6BFF" stroke-opacity=".5" stroke-width="1.5"/>
-    <line x1="4" y1="${4+392*2/3}" x2="396" y2="${4+392*2/3}" stroke="#2F6BFF" stroke-opacity=".5" stroke-width="1.5"/>
-  </svg>`;
+  return `<svg viewBox="0 0 400 400">${fieldLinesSVG()}${cases}</svg>`;
 }
 /* Offensive et défensive CÔTE À CÔTE : c'est l'onglet qui obligeait le plus
    à défiler, avec ses deux sections de quatre cartes l'une sous l'autre. */
@@ -5474,13 +5469,15 @@ function renderZoneDetail(a,b){
    cumul de tous les matchs d'une équipe. Le dessin est le même partout —
    seule la façon de récolter les points change.
    ========================================================== */
+/* TERRAIN (D102) : même tracé que le terrain de saisie (#field) : liseré clair, grille 3×3 aux tiers (les zones de
+   zoneIndex), cercle central. Le fond vert est celui du conteneur (.heat-field, .zone-diagram-wrap svg). */
+const TERRAIN_LISERE = {x:7, w:386, rx:9};
 function fieldLinesSVG(){
-  return `<rect x="4" y="4" width="392" height="392" fill="none" stroke="#111111" stroke-width="3"/>
-    <line x1="72" y1="4" x2="72" y2="396" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-    <line x1="328" y1="4" x2="328" y2="396" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-    <line x1="4" y1="72" x2="396" y2="72" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-    <line x1="4" y1="328" x2="396" y2="328" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-    <rect x="164" y="164" width="72" height="72" fill="none" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>`;
+  const t = 'vector-effect="non-scaling-stroke"', L = TERRAIN_LISERE, a = L.x, b = L.x + L.w;
+  const ligne = (x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#4A86E8" stroke-width="1.25" ${t}/>`;
+  return ligne(133.333,a,133.333,b) + ligne(266.667,a,266.667,b) + ligne(a,133.333,b,133.333) + ligne(a,266.667,b,266.667)
+    + `<circle cx="200" cy="200" r="46" fill="none" stroke="#6E8C7F" stroke-width="2.5" ${t}/>`
+    + `<rect x="${a}" y="${a}" width="${L.w}" height="${L.w}" rx="${L.rx}" fill="none" stroke="#86A397" stroke-opacity=".85" stroke-width="2.5" ${t}/>`;
 }
 /* Points d'un match pour une équipe donnée. `slot` est l'emplacement
    (Bleu/Gris/Noir) DANS CE MATCH : c'est ce qui permet de balayer plusieurs
@@ -5559,13 +5556,13 @@ function mixHex(a, b, t){
    progression disponible du bon côté, pour que le vert et le rouge
    saturent à la même vitesse quelle que soit la moyenne. */
 function heatColor(pct, ref){
-  if(pct === null) return '#F3F4F6';
+  if(pct === null) return 'none';   // TERRAIN : une case sans données laisse voir le terrain
   const d = (pct - ref) / Math.max(0.12, (pct >= ref ? 1 - ref : ref));
   return d >= 0 ? mixHex(HEAT_NEUTRAL, HEAT_GREEN, Math.min(1, d))
                 : mixHex(HEAT_NEUTRAL, HEAT_RED,   Math.min(1, -d));
 }
 function heatInk(pct, ref){
-  if(pct === null) return '#9AA3B2';
+  if(pct === null) return '#C9D6CF';
   const d = Math.abs((pct - ref) / Math.max(0.12, (pct >= ref ? 1 - ref : ref)));
   return d > 0.55 ? '#FFFFFF' : '#1B2740';
 }
@@ -5587,7 +5584,7 @@ function heatGridSVG(pts, ref){
     const gros = Math.round(w * 0.30), petit = Math.max(9, Math.round(w * 0.135));
     out += `<g><rect x="${X}" y="${Y}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" fill="${heatColor(pct, ref)}"/>`
       + (k && k < HEAT_MIN ? `<rect x="${X}" y="${Y}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" fill="url(#heatHatch)"/>` : '')
-      + `<rect x="${X}" y="${Y}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" fill="none" stroke="#fff" stroke-width="2"/>`;
+      ;
     if(k){
       out += `<text x="${cx}" y="${cy}" text-anchor="middle" fill="${heatInk(pct, ref)}"
                 font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="${gros}">${pct===null ? '—' : Math.round(pct*100)+'%'}</text>
@@ -5600,10 +5597,11 @@ function heatGridSVG(pts, ref){
 }
 function heatDotsSVG(pts){
   return pts.map(p=>`<circle cx="${(p.x*400).toFixed(1)}" cy="${(p.y*400).toFixed(1)}" r="7"
-    fill="${p.success ? '#3DD68C' : '#FF5A5F'}" stroke="white" stroke-width="2"/>`).join('');
+    class="heat-pt" fill="${p.success ? '#3DD68C' : '#FF5A5F'}" stroke="white" stroke-width="2"/>`).join('');
 }
 const HEAT_DEFS = `<defs><pattern id="heatHatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-  <line x1="0" y1="0" x2="0" y2="8" stroke="#B9C0CC" stroke-width="3"/></pattern></defs>`;
+  <line x1="0" y1="0" x2="0" y2="8" stroke="#B9C0CC" stroke-opacity=".55" stroke-width="3"/></pattern>
+  <clipPath id="heatClip"><rect x="${TERRAIN_LISERE.x}" y="${TERRAIN_LISERE.x}" width="${TERRAIN_LISERE.w}" height="${TERRAIN_LISERE.w}" rx="${TERRAIN_LISERE.rx}"/></clipPath></defs>`;
 
 function heatFieldHTML(pts, mode, view){
   const total = pts.length, succ = pts.filter(p=>p.success).length;
@@ -5611,7 +5609,9 @@ function heatFieldHTML(pts, mode, view){
   const contenu = view === 'dots' ? heatDotsSVG(pts) : heatGridSVG(pts, ref);
   /* Les lignes du terrain sont tracées PAR-DESSUS les cases : sinon les
      repères disparaissent sous les aplats. */
-  const svg = `<svg viewBox="0 0 400 400" preserveAspectRatio="none">${HEAT_DEFS}${contenu}${fieldLinesSVG()}</svg>`;
+  const svg = view === 'dots'
+    ? `<svg viewBox="0 0 400 400" preserveAspectRatio="none">${HEAT_DEFS}${fieldLinesSVG()}${contenu}</svg>`
+    : `<svg viewBox="0 0 400 400" preserveAspectRatio="none">${HEAT_DEFS}<svg clip-path="url(#heatClip)">${contenu}</svg>${fieldLinesSVG()}</svg>`;
   const vert  = mode==='offense' ? 'Point marqué / ballon échappé' : 'Ballon attrapé';
   const rouge = mode==='offense' ? 'Ballon attrapé' : 'Ballon échappé';
   const legende = view === 'dots'
