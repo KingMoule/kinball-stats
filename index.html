@@ -778,10 +778,12 @@ html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}   /* Safari grossit 
 .mb-undo{background:rgba(47,107,255,.16); color:#8FB0FF; border:1px solid rgba(47,107,255,.45);}
 .mb-finish{background:var(--green); color:#0B1220;}
 .mb-periode{background:var(--amber); color:#0B1220;}
-/* Cinq commandes en format libre : on resserre pour que tout tienne. */
+/* Cinq commandes (six en format libre) : on resserre pour que tout tienne. */
 .phone #matchBar.five{grid-template-columns:repeat(5,1fr); gap:6px;}
-.phone #matchBar.five .mb-btn{font-size:9.5px; letter-spacing:.02em; padding:0 2px;}
-.phone #matchBar.five .mb-ico{font-size:17px;}
+.phone #matchBar.six{grid-template-columns:repeat(6,1fr); gap:5px; padding-left:8px; padding-right:8px;}
+.phone #matchBar.five .mb-btn, .phone #matchBar.six .mb-btn{font-size:9.5px; letter-spacing:.02em; padding:0 2px;}
+.phone #matchBar.six .mb-btn{font-size:8.5px; letter-spacing:0;}
+.phone #matchBar.five .mb-ico, .phone #matchBar.six .mb-ico{font-size:17px;}
 
 /* --- Feuilles du bas (résultat, fautes, joueurs) --- */
 .phone #sheet{padding:14px 12px 16px; max-height:82vh;}
@@ -1889,6 +1891,12 @@ function retryNow(){
    simplement regarder. */
 let viewingArchive = false;
 let LIVE_S = null;
+/* REDO : pile ↷ des actions défaites par ↶, hors de S (jamais enregistrée) : {ev, after, id, n}. `after` = l'état juste avant le
+   ↶ (snapshotBefore), donc aussi ce qui a changé S hors de l'historique après l'action (choix du duel, remise à zéro de période) ;
+   `id` et `n` (longueur de l'historique après le ↶) : ↷ n'agit que sur ce match et cet historique-là. Vidée par toute écriture de
+   l'historique (pushHistory), un choix de possession, un changement de match (quitterSaisie) et le rechargement. Déclarée ici (avant
+   navHome au chargement, TDZ). */
+let redoPile = [];
 function viewArchivedMatchStats(matchId){
   const record = getMatchRecord(matchId);
   if(!record) return;
@@ -2299,7 +2307,7 @@ function gardeRemplacementS(cibleId){
 function quitterSaisie(garderSaisie){
   abandonPeriodEndWait();
   exitArchiveView();
-  if(!garderSaisie){ pending = null; playerPickCont = null; }
+  if(!garderSaisie){ redoPile = []; pending = null; playerPickCont = null; }
 }
 /* ---------- NOUVEAU MATCH (écran de configuration) ----------
    L'accueil ne sert plus de formulaire : il ne fait qu'orienter vers les
@@ -2573,6 +2581,7 @@ function renderScoreboard(){
     ? `<button class="icon-btn periode" onclick="endPeriodByLeader()">FIN<br>PÉRIODE</button>` : '';
   const controlsHTML =
     `<button class="icon-btn" id="undoBtn" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'} aria-label="Annuler la dernière action">↶</button>
+     <button class="icon-btn" id="redoBtn" onclick="redoTap()" ${redoPossible()?'':'disabled'} aria-label="Rétablir l'action annulée">↷</button>
      ${finPeriodeHTML}
      <button class="icon-btn finish" onclick="finishBarTap()">TERMINER</button>
      <button class="icon-btn" onclick="goHome()" aria-label="Accueil">⌂</button>
@@ -2584,12 +2593,14 @@ function renderScoreboard(){
   const mb = document.getElementById('matchBar');
   mb.innerHTML = IS_PHONE
     ? `<button class="mb-btn mb-undo" id="undoBtnPhone" onclick="undoTap()" ${S.history.length && S.status==='in_progress'?'':'disabled'}><span class="mb-ico">↶</span>Annuler</button>
+       <button class="mb-btn mb-redo" id="redoBtnPhone" onclick="redoTap()" ${redoPossible()?'':'disabled'}><span class="mb-ico">↷</span>Rétablir</button>
        ${libre ? `<button class="mb-btn mb-periode" onclick="endPeriodByLeader()"><span class="mb-ico">⏱</span>Fin pér.</button>` : ''}
        <button class="mb-btn" onclick="openStats()"><span class="mb-ico">▦</span>Stats</button>
        <button class="mb-btn" onclick="goHome()"><span class="mb-ico">⌂</span>Accueil</button>
        <button class="mb-btn mb-finish" onclick="finishBarTap()"><span class="mb-ico">■</span>Terminer</button>`
     : '';
-  mb.classList.toggle('five', IS_PHONE && libre);
+  mb.classList.toggle('five', IS_PHONE && !libre);   // REDO : ↷ ajoute une commande
+  mb.classList.toggle('six', IS_PHONE && libre);
   document.getElementById('periodTag').textContent = 'PÉRIODE '+V.period+' · '+getFormat(S).label.toUpperCase();
   const sitTag = document.getElementById('situationTag');
   if(sitTag){
@@ -2667,7 +2678,7 @@ function applySub(team, outId, inId){
   if(lineup.length !== LINEUP_SIZE || !lineup.includes(outId) || lineup.includes(inId) || !roster.some(p=>p.id===inId)) return false;
   const before = snapshotBefore();
   S.lineups[team] = lineup.map(x => x===outId ? inId : x);
-  S.history.push({type:'changement', before, at:horodatage(), details:{
+  pushHistory({type:'changement', before, at:horodatage(), details:{
     team, player_out_id:outId, player_out_name:playerName(team, outId),
     player_in_id:inId, player_in_name:playerName(team, inId)
   }});
@@ -2760,7 +2771,7 @@ function commitLineupDefinition(){
   const team = lineupSheetTeam;
   const before = snapshotBefore();
   S.lineups[team] = lineupDraft.slice();
-  S.history.push({type:'alignement', before, at:horodatage(), details:{
+  pushHistory({type:'alignement', before, at:horodatage(), details:{
     team, lineup_ids:lineupDraft.join('|'), lineup_names:lineupDraft.map(id=>playerName(team,id)).join('|')
   }});
   lineupDraft = [];
@@ -3011,7 +3022,7 @@ function possessionChoiceHTML(title, teams, fnName){
 }
 function chooseInitialPossession(team){
   if(!S.awaitingInitial) return;
-  S.possession = team; S.awaitingInitial = false;
+  S.possession = team; S.awaitingInitial = false; redoPile = [];   // REDO : un choix de possession est une action
   S.stopped = true;                       // premier ballon : départ arrêté
 
   closeSheet(); renderScoreboard(); save();
@@ -3064,7 +3075,7 @@ function reopenMatchSheets(){
 }
 function chooseDuelStart(team){
   if(!S.awaitingDuelStart || team===S.eliminated) return;
-  S.possession = team; S.awaitingDuelStart = false;
+  S.possession = team; S.awaitingDuelStart = false; redoPile = [];   // REDO : un choix de possession est une action
   S.stopped = true;                       // reprise après élimination : arrêté
 
   closeSheet(); renderScoreboard(); save();
@@ -3174,6 +3185,8 @@ function snapshotBefore(){
    aucune migration. Champ de l'événement (comme `by`), jamais dans `before` ni dans `details` : snapshotBefore, l'annulation,
    le moteur WP et les statistiques ne le lisent pas ; seul l'export Actions le reprend. */
 function horodatage(){ return new Date().toISOString(); }
+/* REDO : seul chemin d'écriture d'un nouvel événement ; une action nouvelle vide la pile ↷. */
+function pushHistory(ev){ S.history.push(ev); redoPile = []; }
 function beginEvent(type, details){
   pending = { type, details, before: snapshotBefore() };
 }
@@ -3190,7 +3203,7 @@ function commitEvent(extra){
      cette action : aujourd'hui jamais, donc aucun poids ajouté. */
   if(AUTHOR_ID && S.authorId && AUTHOR_ID !== S.authorId) pending.by = AUTHOR_ID;
   pending.at = horodatage();
-  S.history.push(pending);
+  pushHistory(pending);
   pending = null;
   save();
 }
@@ -3409,7 +3422,7 @@ function finishPeriod(winner, manual, deferred){
      vainqueur ou null) : ↶ la défait seule et ramène exactement l'état d'avant, sans toucher à la dernière action.
      Les fins automatiques (seuil) restent portées par l'action qui les provoque. Rien n'est enregistré ici :
      save() part avec la fin du message, comme avant. */
-  if(manual) S.history.push({type:'fin_periode', before:snapshotBefore(), at:horodatage(), details:{winner:winner || null}});
+  if(manual) pushHistory({type:'fin_periode', before:snapshotBefore(), at:horodatage(), details:{winner:winner || null}});
   if(winner) S.periodWins[winner]+=1;
   periodEndWait = {winner, eliminated:S.eliminated, period:S.period, phase:'flash'};
   if(deferred) return;   // T-FP : l'action en cours applique la remise à zéro avant d'être enregistrée ; le message attend l'éclair (et la feuille des détails)
@@ -3631,11 +3644,35 @@ function undo(){
   if(periodEndTimer){ clearTimeout(periodEndTimer); periodEndTimer = null; }   // C23 : annuler pendant la fin de période l'annule aussi
   periodEndWait = null; clearTimeout(flashTimer); flashTimer = null;           // T-FP : ... y compris pendant l'éclair ou la feuille des détails (aucun minuteur orphelin)
   periodEndView = null;                                                        // T-FP robustesse : `before` ramène aussi la période qui venait de finir
+  if(redoPile.length && !redoPossible()) redoPile = [];                        // REDO : pile d'un autre état, jamais rejouée
+  const after = snapshotBefore();                                              // REDO : l'état que ↷ rétablira (pris avant le pop)
   const ev = S.history.pop();
-  Object.assign(S, ev.before);
+  Object.assign(S, ev.before ? JSON.parse(JSON.stringify(ev.before)) : {});   // REDO : copie, `ev` peut revenir dans l'historique ; ancien événement sans `before` : rien
+  redoPile.push({ev, after, id:S.id, n:S.history.length});
   closeSheet();
   renderScoreboard();
   save();
+}
+/* REDO (#7) : ↷ rétablit la dernière action défaite par ↶, exactement dans l'état qu'avait le match juste avant ce ↶ (période
+   suivante déjà en place pour une action au seuil ou une fin de période, sans rejouer le message ; choix du duel compris). */
+function redoPossible(){
+  const r = redoPile[redoPile.length-1];
+  return !!r && !viewingArchive && !!S.id && r.id === S.id && r.n === S.history.length && S.status === 'in_progress';
+}
+function redoTap(){
+  if(!barreLibre()) return;     // mêmes gardes que ↶
+  redo();
+  undoBlockedUntil = Math.max(undoBlockedUntil, Date.now() + UNDO_REBOND_MS);   // un rebond ne rétablit qu'une action
+}
+function redo(){
+  if(pending || periodEndBusy() || !redoPossible()) return;
+  const r = redoPile.pop();
+  S.history.push(r.ev);
+  Object.assign(S, JSON.parse(JSON.stringify(r.after)));
+  closeSheet();
+  renderScoreboard();
+  save();
+  if(S.awaitingDuelStart) openDuelStartSheet();   // l'action rétablie a éliminé une équipe et le duel n'était pas encore lancé
 }
 
 /* ---------- % DE VICTOIRE EN DIRECT (C13B) ----------
