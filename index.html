@@ -320,6 +320,10 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 /* Graphique « Par période » */
 .evo-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 12px 8px; margin-bottom:14px;}
 .evo-svg{display:block; width:100%; height:auto; max-height:340px;}
+.wpc-bar{height:6px; margin-top:8px; border-radius:3px; background:var(--line); overflow:hidden;}
+.wpc-bar i{display:block; height:100%; background:var(--bleu);}
+.wpc-read{margin-top:6px;}
+.wpc-read .evo-legend{margin:4px 0 0; color:var(--ink);}
 .evo-legend{display:flex; flex-wrap:wrap; gap:6px 18px; margin:8px 2px 2px; font-size:13px; color:var(--dim);}
 .evo-leg-item{display:inline-flex; align-items:center; gap:7px;}
 .evo-sw{display:inline-block; width:9px; height:9px; border-radius:50%; margin-left:3px; vertical-align:middle;}
@@ -4048,6 +4052,21 @@ function wpSig(){
     T.map(t => S.scores[t]), T.map(t => (S.periodWins && S.periodWins[t]) || 0)]);
 }
 function wpWon(){ return ATEAMS().some(t => ((S.periodWins && S.periodWins[t]) || 0) > 0); }
+/* Ce que le moteur lit d'un état (S ou un `before`) et de l'historique : partagé par les barres et la courbe (F8). */
+function wpStateOf(x){
+  return {scores:Object.assign({}, x.scores), periodWins:Object.assign({}, x.periodWins),
+          eliminated:x.eliminated, duelActive:x.duelActive, possession:x.possession};
+}
+function wpLight(hist){
+  const light = [];
+  hist.forEach(e => {
+    if(e.type !== 'lancer' && e.type !== 'faute_directe') return;
+    const d = e.details || {};
+    light.push({type:e.type, details:{attacker:d.attacker, target:d.target, result:d.result},
+                before:{possession:e.before && e.before.possession}});
+  });
+  return light;
+}
 
 /* Invalide tout calcul en vol : sa réponse, si elle arrive, sera ignorée. */
 function wpInvalidate(){
@@ -4093,19 +4112,11 @@ function wpRequest(){
 function wpLaunch(){
   const id = ++WP.reqId;
   const fm = getFormat(S), teams = ATEAMS().slice();
-  const light = [];
-  S.history.forEach(e => {
-    if(e.type !== 'lancer' && e.type !== 'faute_directe') return;
-    const d = e.details || {};
-    light.push({type:e.type, details:{attacker:d.attacker, target:d.target, result:d.result},
-                before:{possession:e.before && e.before.possession}});
-  });
   const p = {
     reqId:id, sig:wpSig(),
-    state:{scores:Object.assign({}, S.scores), periodWins:Object.assign({}, S.periodWins),
-           eliminated:S.eliminated, duelActive:S.duelActive, possession:S.possession},
+    state:wpStateOf(S),
     fmt:{teams:fm.teams, eliminationAt:fm.eliminationAt, periodAt:fm.periodAt},
-    teams:teams, history:light, n:WP_N, slices:WP_SLICES, seed:wpSeed(), periodsToWin:WP_PERIODS_TO_WIN
+    teams:teams, history:wpLight(S.history), n:WP_N, slices:WP_SLICES, seed:wpSeed(), periodsToWin:WP_PERIODS_TO_WIN
   };
   WP.inFlight = true; WP.stats.sent++; WP.cur = p;
   if(WP.mode !== 'sync'){
@@ -4241,6 +4252,156 @@ function openWinDetail(){
   html += `<div class="empty" style="padding:10px 0 4px">Estimation non calibrée : modèle statistique nourri par ce match seulement, jamais vérifié sur de vrais résultats. Hypothèse : match gagné à ${ptw} périodes.</div>
     <button class="ghost-btn" style="width:100%; margin-top:12px" onclick="closeSheet()">FERMER</button>`;
   openSheet(html, true);
+}
+
+/* ---------- Courbe du % de victoire (F8) ----------
+   Onglet « % victoire » des statistiques d'un match (formats à seuil de période). Les chances ne sont stockées nulle
+   part : la courbe les recalcule après coup, en rejouant le calendrier de wpSync() sur l'historique (calcul à chaque
+   multiple de WP_EVERY événements marquants hors duel, à chaque événement marquant et changement de porteur en duel,
+   à chaque changement de période ; parts égales sous WP.minK sans période gagnée). L'état d'un point est le `before`
+   de l'action de jeu suivante (S pour le dernier) : les fins de période manuelles et les changements de joueur ne
+   déplacent rien. Même moteur, même graine, mêmes 1 000 simulations que les barres : la courbe redonne ce qu'elles
+   montraient (sauf une reprise de jeu saisie entre l'action et le calcul, qui change le porteur).
+   Calcul sur le fil principal, un point par setTimeout(0), seulement tant que l'onglet est affiché ; il reprend où il
+   en était. État hors de S, jamais stocké (WPC, wpcKind, wpcSel). */
+const WPC = {key:null, samples:[], light:[], todo:[], total:0, timer:null};
+let wpcKind = 'match', wpcSel = null;
+function wpcAvailable(){ return !!(WP_ENABLED && S && S.id && getFormat(S).periodAt); }
+function wpcPlan(light){
+  const T = ATEAMS(), pa = getFormat(S).periodAt;
+  const befores = (S.history || []).filter(e => e.type === 'lancer' || e.type === 'faute_directe').map(e => e.before || null);
+  const N = light.length, out = [];
+  let k = 0, calcK = -1, last = null;
+  for(let j = 0; j <= N; j++){
+    if(j > 0){ const e = light[j-1]; if(e.type === 'faute_directe' || e.details.result === 'échappé') k++; }
+    const st = j < N ? befores[j] : S;
+    if(!st || !st.scores) continue;                      // ancien événement sans `before`
+    if(st.awaitingInitial || st.awaitingDuelStart || T.some(t => (st.scores[t] || 0) >= pa)) continue;   // transition
+    const s = {x:j, k:k, per:Number(st.period) || 1, duel:!!st.duelActive, state:wpStateOf(st)};
+    const won = T.some(t => ((st.periodWins && st.periodWins[t]) || 0) > 0);
+    if(k < WP.minK && !won){ s.egal = true; calcK = 0; last = s; out.push(s); continue; }
+    s.calc = calcK < 0 || !last
+      || s.per !== last.per
+      || s.duel !== last.duel
+      || (s.duel && k !== calcK)
+      || (WP_DUEL_ON_POSSESSION && s.duel && s.state.possession !== last.state.possession)
+      || (!s.duel && k !== calcK && k % WP_EVERY === 0);
+    if(s.calc) calcK = k;
+    last = s; out.push(s);
+  }
+  return out;
+}
+/* Même calcul et même lecture que wpLaunch() / wpPct() pour un point de la courbe. */
+function wpcCompute(s){
+  const fm = getFormat(S), T = ATEAMS();
+  const p = {state:s.state, fmt:{teams:fm.teams, eliminationAt:fm.eliminationAt, periodAt:fm.periodAt},
+    teams:T.slice(), history:WPC.light.slice(0, s.x), n:WP_N, slices:WP_SLICES, seed:wpSeed(), periodsToWin:WP_PERIODS_TO_WIN};
+  const acc = wpCompute(KBSim, p, 0, WP_SLICES, null), ok = acc.nul ? 0 : acc.n - acc.unfinished, r = {match:{}, period:{}};
+  T.forEach(t => {
+    r.match[t] = ok > 0 ? 100 * (acc.match[t] || 0) / ok : 100 / T.length;
+    r.period[t] = !(ok > 0) ? 100 / T.length : (s.duel && s.state.eliminated === t) ? 0 : 100 * (acc.period[t] || 0) / ok;
+  });
+  return r;
+}
+/* Refait le plan si le match a changé ; ne lance jamais le calcul (renderStats s'en charge) : la section reste une
+   lecture pure, identique d'un appel à l'autre. */
+function wpcEnsure(){
+  const light = wpLight(S.history || []);
+  const samples = wpcPlan(light);
+  const key = JSON.stringify([S.id, wpSeed(), WP.minK, light.length, samples.map(s => [s.x, s.calc ? 1 : 0, s.state])]);
+  if(key === WPC.key) return;
+  clearTimeout(WPC.timer);
+  Object.assign(WPC, {key, samples, light, todo:samples.filter(s => s.calc), timer:null});
+  WPC.total = WPC.todo.length;
+  wpcSel = null;
+}
+function wpcStart(){
+  if(WPC.timer || !WPC.todo.length) return;
+  WPC.timer = setTimeout(wpcTick, 0);
+}
+function wpcTick(){
+  WPC.timer = null;
+  if(currentScreen() !== 'stats' || statTab.match !== 'wp' || statsRerender !== renderStats) return;   // reprend à la prochaine ouverture
+  const s = WPC.todo[0];
+  try{ s.res = wpcCompute(s); }catch(e){ s.res = null; }
+  WPC.todo.shift();
+  const done = WPC.total - WPC.todo.length, el = document.getElementById('wpcProg');
+  if(el){ el.querySelector('b').textContent = done + ' / ' + WPC.total; el.querySelector('i').style.width = (100 * done / WPC.total).toFixed(1) + '%'; }
+  if(WPC.todo.length) WPC.timer = setTimeout(wpcTick, 0);
+  else renderStats();
+}
+function setWpcKind(k){ wpcKind = k === 'period' ? 'period' : 'match'; if(statsRerender) statsRerender(); }
+function wpcPick(i){ wpcSel = Number(i); if(statsRerender) statsRerender(); }
+function wpcChartSVG(samples, calc, teams, kind, sel){
+  const W=IS_PHONE?360:640, H=IS_PHONE?270:300, L=40, R=IS_PHONE?12:16, T=22, B=40, iw=W-L-R, ih=H-T-B;
+  const N = Math.max(1, samples[samples.length-1].x);
+  const X = x => L + iw * x / N, Y = v => T + ih * (1 - v / 100);
+  const f = v => v.toFixed(1);
+  let g = '';
+  [0,25,50,75,100].forEach(v=>{
+    g += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="${v===0?1.5:1}"/>`
+       + `<text x="${L-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--dim)">${v}%</text>`;
+  });
+  /* Début de chaque période : trait vertical et étiquette en haut. */
+  samples.forEach((s, i) => {
+    if(i > 0 && s.per === samples[i-1].per) return;
+    if(i > 0) g += `<line class="wpc-per" data-per="${s.per}" x1="${f(X(s.x))}" x2="${f(X(s.x))}" y1="${T}" y2="${T+ih}" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 4"/>`;
+    const bout = X(s.x) > W-R-28;   // étiquette au bord droit : écrite à gauche du trait
+    g += `<text x="${f(X(s.x) + (bout ? -4 : 4))}" y="${T-7}" text-anchor="${bout ? 'end' : 'start'}" font-size="12" font-weight="700" fill="var(--ink)">P${s.per}</text>`;
+  });
+  g += `<text x="${L}" y="${T+ih+18}" text-anchor="middle" font-size="12" fill="var(--dim)">0</text>`
+     + `<text x="${W-R}" y="${T+ih+18}" text-anchor="end" font-size="12" fill="var(--dim)">${N}</text>`
+     + `<text x="${L+iw/2}" y="${T+ih+30}" text-anchor="middle" font-size="12" fill="var(--dim)">actions (lancers et fautes directes)</text>`;
+  if(sel) g += `<line class="wpc-sel" x1="${f(X(sel.x))}" x2="${f(X(sel.x))}" y1="${T}" y2="${T+ih}" stroke="var(--ink)" stroke-width="1.5" opacity=".6"/>`;
+  const eq = 100 / teams.length, firstCalc = calc[0];
+  teams.forEach(t => {
+    const col = TEAM_INK[t], ptFill = t==='Noir' ? 'var(--noir)' : col;
+    /* Parts égales avant le premier calcul : tireté fin jusqu'au premier point. */
+    const eg = samples.filter(s => s.egal && s.x < firstCalc.x).map(s => [X(s.x), Y(eq)]);
+    if(eg.length){
+      eg.push([X(firstCalc.x), Y(firstCalc.res[kind][t])]);
+      g += `<polyline class="wpc-egal" points="${eg.map(q => f(q[0])+','+f(q[1])).join(' ')}" fill="none" stroke="${col}" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>`;
+    }
+    if(calc.length > 1) g += `<polyline class="wpc-line" data-team="${t}" points="${calc.map(s => f(X(s.x))+','+f(Y(s.res[kind][t]))).join(' ')}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    calc.forEach(s => {
+      const on = sel === s;
+      g += `<circle class="wpc-pt" cx="${f(X(s.x))}" cy="${f(Y(s.res[kind][t]))}" r="${on ? 5.5 : 3}" fill="${ptFill}" stroke="${col}" stroke-width="${on ? 2.5 : 1.5}"/>`;
+    });
+  });
+  /* Zones de toucher : une bande verticale par point calculé, jusqu'à mi-chemin des voisins. */
+  calc.forEach((s, i) => {
+    const x0 = i ? (X(calc[i-1].x) + X(s.x)) / 2 : L, x1 = i < calc.length-1 ? (X(s.x) + X(calc[i+1].x)) / 2 : W-R;
+    g += `<rect class="wpc-hit" data-i="${i}" x="${f(x0)}" y="${T}" width="${f(Math.max(1, x1-x0))}" height="${ih}" fill="transparent" onclick="wpcPick(${i})"/>`;
+  });
+  return `<svg class="evo-svg wpc-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution des chances de gagner ${kind==='period'?'la période':'le match'}, action par action">${g}</svg>`;
+}
+function sectionMatchWinCurve(){
+  const title = `<div class="section-title">% de victoire au fil du match</div>`;
+  if(!wpcAvailable()) return title + `<div class="empty">Pas de % de victoire dans un format sans fin de période.</div>`;
+  if(!(S.history || []).some(e => e.type === 'lancer' || e.type === 'faute_directe')) return title + `<div class="empty">Aucune action enregistrée pour le moment.</div>`;
+  wpcEnsure();
+  const calc = WPC.samples.filter(s => s.calc);
+  if(!calc.length) return title + `<div class="empty">Pas encore de calcul : parts égales jusqu'à ${WP.minK} fautes directes ou ballons échappés (ou une période gagnée).</div>`;
+  if(WPC.todo.length){
+    const done = WPC.total - WPC.todo.length;
+    return title + `<div class="evo-card"><div id="wpcProg" class="section-sub">Calcul de la courbe : <b>${done} / ${WPC.total}</b>
+      <div class="wpc-bar"><i style="width:${(100 * done / WPC.total).toFixed(1)}%"></i></div></div></div>`;
+  }
+  const teams = ATEAMS(), kind = wpcKind;
+  const sel = calc[(wpcSel !== null && wpcSel >= 0 && wpcSel < calc.length) ? wpcSel : calc.length - 1];
+  const controls = `<div class="heat-controls">`
+    + [['match','MATCH'],['period','PÉRIODE']].map(([k,l]) => `<button class="heat-btn ${kind===k?'active':''}" style="background:var(--bleu)" onclick="setWpcKind('${k}')">${l}</button>`).join('')
+    + `</div>`;
+  const readout = `<div class="section-sub wpc-read" data-x="${sel.x}">Après l'action ${sel.x} · période ${sel.per}${sel.duel ? ' · duel' : ''} :<div class="evo-legend">`
+    + teams.map(t => `<span class="evo-leg-item" data-team="${t}"><span class="evo-sw big" style="background:${TEAM_INK[t]}"></span>${escapeHtml(S.names[t])} <b>${Math.round(sel.res[kind][t])} %</b></span>`).join('')
+    + `</div></div>`;
+  const legend = `<div class="evo-legend">`
+    + `<span class="evo-leg-item"><svg width="30" height="12"><line x1="0" x2="30" y1="6" y2="6" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="4 4"/></svg>parts égales (moins de ${WP.minK} fautes directes ou ballons échappés)</span>`
+    + `<span class="evo-leg-item"><svg width="30" height="12"><line x1="0" x2="30" y1="6" y2="6" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 4"/></svg>début de période</span></div>`;
+  return title
+    + `<div class="section-sub">Chances de gagner ${kind==='period'?'la période en cours':'le match'}, à chaque recalcul des barres du direct (${calc.length} calculs). Touchez le graphique pour lire un point.</div>`
+    + `<div class="evo-card">${controls}${wpcChartSVG(WPC.samples, calc, teams, kind, sel)}${readout}${legend}</div>`
+    + `<div class="empty" style="padding:4px 0">Estimation non calibrée : modèle nourri par ce match seulement, jamais vérifié sur de vrais résultats. Hypothèse : match gagné à ${WP_PERIODS_TO_WIN || KBSim.CONST.PERIODS_TO_WIN} périodes.</div>`;
 }
 
 /* ---------- STATS ---------- */
@@ -4733,7 +4894,8 @@ function computeSituations(match){
 
    Ajouter une famille (stats individuelles par joueur, séquences de jeu,
    etc.) = ajouter UNE entrée ici. Les onglets, leur ordre et leur affichage
-   dans les deux écrans en découlent automatiquement.
+   dans les deux écrans en découlent automatiquement. `when` (facultatif) cache
+   l'onglet quand il ne s'applique pas au match affiché.
    ========================================================== */
 const STAT_SECTIONS = [
   {id:'overall', label:"Vue d'ensemble", match:sectionMatchOverall, team:sectionTeamOverall},
@@ -4742,6 +4904,7 @@ const STAT_SECTIONS = [
   {id:'fautes',  label:'Fautes',         match:sectionMatchFaults,  team:sectionTeamFaults},
   {id:'joueurs', label:'Joueurs',        match:sectionMatchPlayers, team:sectionTeamPlayers},
   {id:'heat',    label:'Heat map',       match:sectionMatchHeat,    team:sectionTeamHeat},
+  {id:'wp',      label:'% victoire',     match:sectionMatchWinCurve, when:wpcAvailable},   // F8 : formats à seuil de période
 ];
 let statTab = {match:'overall', team:'overall'};
 
@@ -4902,7 +5065,7 @@ function setStatTab(scope, id){
   else if(currentAggTeamId) renderTeamAggregate(currentAggTeamId);
 }
 function statTabsHTML(scope){
-  const avail = STAT_SECTIONS.filter(s=>s[scope]);
+  const avail = STAT_SECTIONS.filter(s=>s[scope] && (!s.when || s.when()));
   if(!avail.some(s=>s.id===statTab[scope])) statTab[scope] = avail[0].id;
   /* Le bouton de détail reste en place pendant que les onglets défilent
      horizontalement sur téléphone : il est hors du conteneur défilant. */
@@ -4915,7 +5078,7 @@ function statTabsHTML(scope){
   </div>`;
 }
 function activeSection(scope){
-  const avail = STAT_SECTIONS.filter(s=>s[scope]);
+  const avail = STAT_SECTIONS.filter(s=>s[scope] && (!s.when || s.when()));
   return avail.find(s=>s.id===statTab[scope]) || avail[0];
 }
 
@@ -5305,13 +5468,14 @@ function sectionMatchFaults(){
   return html;
 }
 
-function openStats(){ if(periodEndBusy()) return; evoReset(); navTo('stats'); }   // T-FP (F38) : ignoré pendant la fin de période
+function openStats(){ if(periodEndBusy()) return; evoReset(); wpcKind = 'match'; wpcSel = null; navTo('stats'); }   // T-FP (F38) : ignoré pendant la fin de période
 /* Le rendu est séparé de la navigation : onEnterScreen() peut ainsi le
    rejouer quand on revient sur l'écran (depuis la heat map, les zones…). */
 function renderStats(){
   statsRerender = renderStats;
   const section = activeSection('match');
   document.getElementById('statsBody').innerHTML = statTabsHTML('match') + section.match();
+  if(section.id === 'wp') wpcStart();   // F8 : le calcul de la courbe ne part qu'à l'affichage
 }
 function openFaultDetail(team){
   statsRerender = () => openFaultDetail(team);

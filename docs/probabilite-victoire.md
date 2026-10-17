@@ -52,6 +52,12 @@ Le Worker est fabriqué par Blob à la première demande, un seul par session. R
 
 `WP_ENABLED` (à `false` : aucune barre, aucun calcul), `WP_N = 1000`, `WP_SLICES = 10`, `WP_EVERY = 3`, `WP_MIN_K = 9` (lu par `WP.minK`), `WP_DUEL_ON_POSSESSION = true`, `WP_OPACITY_MIN = 0.4`, `WP_WORKER_TIMEOUT_MS = 2500`, `WP_PERIODS_TO_WIN = null` (valeur du moteur).
 
+### Courbe au fil du match (F8, D104)
+
+Onglet « % victoire » des statistiques d'un match (`sectionMatchWinCurve`), en cours comme rouvert depuis l'historique, dans les formats à seuil de période. Rien n'est stocké : `wpcPlan()` rejoue sur l'historique le calendrier de `wpSync()` (mêmes règles de recalcul, mêmes parts égales sous `WP.minK`) et `wpcCompute()` refait chaque calcul avec le même moteur, la même graine (`wpSeed`) et les mêmes `WP_N` simulations que les barres (`wpStateOf` et `wpLight` sont partagés avec `wpLaunch`). La courbe redonne donc chaque résultat qu'ont montré les barres (suite F8·1), sauf après une reprise de jeu saisie entre l'action et le calcul : l'état d'un point est le `before` de l'action de jeu suivante (lancer ou faute directe ; `S` pour le dernier), ce qui rend la courbe indifférente aux fins de période manuelles et aux changements de joueur. Un ancien événement sans `before` fait sauter son point.
+
+Axe horizontal : nombre de lancers et fautes directes ; traits verticaux au début de chaque période ; tireté des parts égales jusqu'au premier calcul. MATCH / PÉRIODE choisit la courbe ; toucher le graphique lit le point le plus proche (par défaut le dernier). Le calcul tourne sur le fil principal, un point par `setTimeout(0)`, et seulement tant que l'onglet est affiché (`renderStats` le lance, `wpcTick` s'arrête si on quitte l'onglet et reprend où il en était) ; la section elle-même ne lance rien, si bien que deux appels de suite rendent le même HTML. État hors de `S`, jamais sauvegardé : `WPC`, `wpcKind`, `wpcSel`. Mesure sous Chromium : 17 points en 0,4 s ; **jamais mesuré sur iPad**.
+
 ## Limites connues
 
 - **Saturation.** L'estimation s'emballe sur peu d'actions : au-dessus du seuil, une équipe qui ne fait que des fautes reste à 0 % même à 12 événements, et un duel équilibré passe de 17 % à 9 événements à 51 % à 12. À lire comme une tendance. `PRIOR_WEIGHT` est le seul levier réel du moteur ; seule une calibration sur de vrais matchs (score de Brier sur des prédictions à mi-parcours) peut la corriger.

@@ -14,8 +14,9 @@ Les statistiques d'un match (`#stats`) et le cumul d'une équipe (`#teamStats`) 
 | Fautes | `sectionMatchFaults` | `sectionTeamFaults` |
 | Joueurs | `sectionMatchPlayers` | `sectionTeamPlayers` |
 | Heat map | `sectionMatchHeat` | `sectionTeamHeat` |
+| % victoire (F8, formats à seuil de période seulement : `when`) | `sectionMatchWinCurve` | — |
 
-**Ajouter une famille = ajouter une entrée.** Une famille qui n'a de sens que dans un contexte omet l'autre clé : l'onglet n'apparaît alors que là. Les fonctions de rendu renvoient du HTML ; `match` lit `S`, `team` reçoit `(agg, teamId)`.
+**Ajouter une famille = ajouter une entrée.** Une famille qui n'a de sens que dans un contexte omet l'autre clé : l'onglet n'apparaît alors que là. `when` (facultatif) cache l'onglet pour le match affiché quand il ne s'y applique pas. Les fonctions de rendu renvoient du HTML ; `match` lit `S`, `team` reçoit `(agg, teamId)`.
 
 ## Les tableaux, `statTable()`
 
