@@ -172,21 +172,21 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
    max-width:100% l'étiraient en rectangle dès que l'écran était plus haut
    que large (téléphone, ou tablette tenue en portrait). */
 #fieldWrap{flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; padding:14px; container-type:size;}
+/* TERRAIN (D102, maquette docs/maquettes/terrain-3x3.png) : carré vert foncé en dégradé, liseré clair, grille 3×3 aux tiers
+   (les zones de zoneIndex), cercle central. Le dessin couvre exactement la boîte de #field (repère de fieldPoint) : ni padding,
+   ni border, ni transform sur #field. Pas d'overflow:hidden : le fond suit déjà border-radius, et les menus radiaux des coins
+   ne doivent pas être coupés (saisie T3). Seule la flèche du glissé est coupée, par #dragLayer. */
 #field{
   position:relative; aspect-ratio:1/1; height:100%; max-width:100%;
   width:min(100cqw,100cqh); height:min(100cqw,100cqh); max-width:none;   /* ignoré par les vieux navigateurs → repli ci-dessus */
-  background:#FFFFFF; border-radius:14px; border:1px solid var(--line);
-  touch-action:none; overflow:hidden;
-  box-shadow:0 0 0 6px var(--surface), 0 0 0 8px rgba(47,107,255,.16), 0 14px 34px rgba(0,0,0,.45);
+  background:linear-gradient(180deg,#184634 0%,#0F2E23 100%); border-radius:14px;
+  touch-action:none;
+  box-shadow:0 14px 34px rgba(0,0,0,.45);
 }
 #field svg{position:absolute; inset:0; width:100%; height:100%;}
-#gridLayer{position:absolute; inset:0; pointer-events:none;
-  background:
-    linear-gradient(rgba(47,107,255,.38),rgba(47,107,255,.38)) 33.333% 0/1px 100% no-repeat,
-    linear-gradient(rgba(47,107,255,.38),rgba(47,107,255,.38)) 66.667% 0/1px 100% no-repeat,
-    linear-gradient(rgba(47,107,255,.38),rgba(47,107,255,.38)) 0 33.333%/100% 1px no-repeat,
-    linear-gradient(rgba(47,107,255,.38),rgba(47,107,255,.38)) 0 66.667%/100% 1px no-repeat;}
-#dragLayer{position:absolute; inset:0; pointer-events:none;}
+#gridLayer{position:absolute; inset:0; pointer-events:none;}
+#dragLayer{position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:14px;}
+.duel-tag:empty,.adv-tag:empty,.period-tag:empty{display:none;}   /* TERRAIN : une étiquette vide ne laisse plus de pastille blanche sur le vert */
 .zone-num{display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:rgba(47,107,255,.16); color:var(--ink); font-size:12px; font-weight:800; margin-right:8px; vertical-align:middle;}
 .period-tag{position:absolute; top:14px; left:14px; font-size:13px; color:#1B2740; font-weight:700; background:rgba(255,255,255,.9); padding:4px 10px; border-radius:8px;}
 .duel-tag{position:absolute; top:14px; right:14px; font-size:13px; color:var(--red-d); font-weight:800; background:rgba(255,255,255,.9); padding:4px 10px; border-radius:8px;}
@@ -1111,15 +1111,16 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
   <div id="scoreboard"></div>
   <div id="fieldWrap">
     <div id="field">
-      <svg viewBox="0 0 400 400" preserveAspectRatio="none">
-        <rect x="4" y="4" width="392" height="392" fill="none" stroke="#111111" stroke-width="3"/>
-        <line x1="72" y1="4" x2="72" y2="396" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-        <line x1="328" y1="4" x2="328" y2="396" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-        <line x1="4" y1="72" x2="396" y2="72" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-        <line x1="4" y1="328" x2="396" y2="328" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
-        <rect x="164" y="164" width="72" height="72" fill="none" stroke="#111111" stroke-width="1.5" stroke-dasharray="1.5 4"/>
+      <svg viewBox="0 0 400 400" preserveAspectRatio="none" aria-hidden="true">
+        <rect x="7" y="7" width="386" height="386" rx="9" fill="none" stroke="#86A397" stroke-opacity=".85" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+        <circle cx="200" cy="200" r="46" fill="none" stroke="#6E8C7F" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
       </svg>
-      <div id="gridLayer" aria-hidden="true"></div>
+      <div id="gridLayer" aria-hidden="true"><svg viewBox="0 0 400 400" preserveAspectRatio="none">
+        <line x1="133.333" y1="7" x2="133.333" y2="393" stroke="#4A86E8" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+        <line x1="266.667" y1="7" x2="266.667" y2="393" stroke="#4A86E8" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+        <line x1="7" y1="133.333" x2="393" y2="133.333" stroke="#4A86E8" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+        <line x1="7" y1="266.667" x2="393" y2="266.667" stroke="#4A86E8" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+      </svg></div>
       <div id="dragLayer"></div>
       <div class="period-tag" id="periodTag"></div>
       <div class="duel-tag" id="duelTag"></div>
