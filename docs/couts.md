@@ -7,3 +7,4 @@ Une ligne par chantier, ajoutée par la session du fil juste après la fusion (m
 | FIAB-1 (PR #20) | complet | 2026-10-16 | 6,89 $ | 241 k | 16,9 M | 139 k | auditeur 177 k | ~80 appels ; l'essentiel du coût = relecture du contexte à chaque appel |
 | STAT-4 (PR #23) | léger | 2026-10-17 | ≈ 4,7 $ (avant la fusion) | 215 k | 12,4 M | 55 k | auditeur 100 k | ~60 appels ; banc rapide de 21 suites (11 min) attendu en deux appels |
 | T-FP robustesse (PR #24) | complet | 2026-10-17 | ≈ 5,5 $ (compteur de session, avant la fusion) | 229 k | 15,3 M | 59 k | auditeur 131 k | une CI rouge (C22 · 6c, garde de ↶ trop longue) corrigée en un commit ; banc rapide de 24 suites (16 min) |
+| VIS-1 (PR #28) | léger | 2026-10-17 | ≈ 4,1 $ (avant la ligne de coût) | 203 k | 9,4 M | 40 k | auditeur 53 k | MÉNAGE-1 fusionnée pendant la CI : fusion de `main`, D99 renuméroté D100, second passage CI ; M03·8 rouge une fois (attente de 30 s, hors du diff) |
