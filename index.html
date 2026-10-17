@@ -4203,7 +4203,7 @@ function openWinDetail(){
   } else {
     html += ATEAMS().map(t => {
       const c = r.counts && r.counts[t];
-      return `<div class="recap-line wp-line"><span>${escapeHtml(S.names[t])}</span><b>Match : ${r.match[t]} victoires sur ${r.n} (${Math.round(wpPct(t,'match'))} %)<br>Période : ${r.period[t]} sur ${r.n} (${Math.round(wpPct(t,'period'))} %)<br><small>Données : ${c ? c.window.actions : 0} actions sur ${KBSim.CONST.WINDOW}</small></b></div>`;
+      return `<div class="recap-line wp-line"><span>${escapeHtml(S.names[t])}</span><b>Match : ${r.match[t]} victoires sur ${r.n - r.unfinished} (${Math.round(wpPct(t,'match'))} %)<br>Période : ${r.period[t]} sur ${r.n - r.unfinished} (${Math.round(wpPct(t,'period'))} %)<br><small>Données : ${c ? c.window.actions : 0} actions sur ${KBSim.CONST.WINDOW}</small></b></div>`;
     }).join('');
     let len = '?'; try{ len = JSON.parse(r.sig)[1]; }catch(e){}
     html += `<div class="section-sub" style="margin-top:8px">Calculé après l'action n° ${len}.</div>`;
@@ -4390,6 +4390,23 @@ function periodWinners(match){
   return out;
 }
 function pctStr(succ, att){ return att ? Math.round(100*succ/att)+'%' : '—'; }
+/* STAT-4 : points marqués par chaque équipe sur tout le match, DÉRIVÉS DE L'HISTORIQUE (S.scores repart à 0
+   à chaque fin de période). Même règle que awardFaultPoints : un point à chaque équipe en jeu (hors éliminée,
+   lue dans before) autre que la fautive, soit l'équipe en possession pour une faute directe, soit la cible
+   pour un lancer échappé (DÉF ILL comprise). Un événement sans before ne compte pas, jamais d'erreur. */
+function matchPoints(match){
+  const m = match || S, teams = matchTeams(m), out = {};
+  teams.forEach(t => out[t] = 0);
+  (m.history || []).forEach(ev=>{
+    const b = ev && ev.before, d = (ev && ev.details) || {};
+    if(!b) return;
+    const fautive = ev.type === 'faute_directe' ? b.possession
+      : (ev.type === 'lancer' && d.result === 'échappé') ? d.target : null;
+    if(!fautive) return;
+    teams.forEach(t=>{ if(t !== fautive && t !== b.eliminated) out[t] += 1; });
+  });
+  return out;
+}
 
 /* ==========================================================
    TABLEAUX DE STATISTIQUES — un seul moteur pour tous les onglets
@@ -4475,8 +4492,10 @@ function statTable(o){
   const head = cols.map(c=>{
     const active = c.key === sort.key;
     const arrow = active ? (sort.dir < 0 ? '▼' : '▲') : '▾';
-    /* Les en-têtes peuvent porter un nom d'équipe (texte libre) : toujours échappés. */
-    const label = c.short ? `<span class="lg">${escapeHtml(c.label)}</span><span class="sm">${escapeHtml(c.short)}</span>` : escapeHtml(c.label);
+    /* Les en-têtes peuvent porter un nom d'équipe (texte libre) : toujours échappés.
+       `shortHtml` est du HTML construit par le code (pastille de couleur), jamais du texte saisi. */
+    const sm = c.shortHtml || (c.short ? escapeHtml(c.short) : '');
+    const label = sm ? `<span class="lg">${escapeHtml(c.label)}</span><span class="sm">${sm}</span>` : escapeHtml(c.label);
     return `<th class="${active?'sorted':''}" onclick="sortTable('${scope}','${jsArg(id)}','${jsArg(c.key)}')"
       title="Trier par ${escapeHtml(c.label)}">${label}<span class="ar">${arrow}</span></th>`;
   }).join('');
@@ -5093,7 +5112,7 @@ function sectionMatchEvolution(){
     ['off','def','f'].forEach(k=>{
       const lab = (k==='off'?'OFF':k==='def'?'DÉF':'F %');
       cols.push({
-        key:k+'_'+t, label:`${lab} ${escapeHtml(S.names[t])}`, short:`${lab} <span class="evo-sw" style="background:${TEAM_INK[t]}"></span>`,
+        key:k+'_'+t, label:`${lab} ${S.names[t]}`, shortHtml:`${lab} <span class="evo-sw" style="background:${TEAM_INK[t]}"></span>`,
         strong:true,
         val:r=>{ const c = cell(t,k,r); return pctVal(c.succ, c.att); },
         fmt:r=>{ const c = cell(t,k,r); return pctStr(c.succ, c.att); },
@@ -5208,10 +5227,12 @@ let matchZoneTeam = 'Bleu';
 function showMatchZonesFor(team){ matchZoneTeam = team; setStatTab('match','zones'); }
 function setMatchZoneTeam(team){ matchZoneTeam = team; renderStats(); }
 function sectionMatchZones(){
-  const o = computeOverall()[matchZoneTeam];
+  // Un duel peut exclure n'importe quelle couleur : on retombe sur la première équipe active (comme la heat map).
+  const team = ATEAMS().includes(matchZoneTeam) ? matchZoneTeam : ATEAMS()[0];
+  const o = computeOverall()[team];
   const table = `<div class="zone-team-row">` + ATEAMS().map(t=>
-      `<button class="heat-btn ${matchZoneTeam===t?'active':''} ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="setMatchZoneTeam('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`
-    ).join('') + `</div>` + zonesDualTable('match', 'matchZones', o.offZonesF, o.defZones, TEAM_INK[matchZoneTeam]);
+      `<button class="heat-btn ${team===t?'active':''} ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="setMatchZoneTeam('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`
+    ).join('') + `</div>` + zonesDualTable('match', 'matchZones', o.offZonesF, o.defZones, TEAM_INK[team]);
   return `<div class="section-title">Zones — vue d'ensemble</div>
     <div class="section-sub">Toutes attaques confondues, peu importe l'équipe ciblée. Une faute directe compte dans la case où elle a été commise (aucune case si sa position est inconnue).</div>` +
     statCols(table, `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`);
@@ -5872,14 +5893,17 @@ function teamSummaryAoa(){
                 'Ballons reçus','Ballons attrapés','Efficacité défensive (%)','Actions offensives','Fautes directes','Fautes (%)',
                 'Défensives illégales',
                 /* STAT-1 : colonnes neuves, la faute directe compte comme une attaque ratée */
-                'Attaques (avec fautes)','Attaques réussies (avec fautes)','Efficacité offensive (%) (avec fautes)']];
+                'Attaques (avec fautes)','Attaques réussies (avec fautes)','Efficacité offensive (%) (avec fautes)',
+                /* STAT-4 : « Score final » est le score de la période en cours ; le total du match, à la fin */
+                'Points marqués (match)']];
+  const pts = matchPoints();
   ATEAMS().forEach(t=>{
     const s = o[t];
     aoa.push([nm(t), S.scores[t], (S.periodWins && S.periodWins[t]) || 0,
       s.offAttempts, s.offSuccesses, pctNum(s.offSuccesses, s.offAttempts),
       s.defAttempts, s.defSuccesses, pctNum(s.defSuccesses, s.defAttempts),
       f[t].actions, f[t].faults, pctNum(f[t].faults, f[t].actions), f[t].defIll,
-      s.offTentatives, s.offSuccesses, pctNum(s.offSuccesses, s.offTentatives)]);
+      s.offTentatives, s.offSuccesses, pctNum(s.offSuccesses, s.offTentatives), pts[t]]);
   });
   return aoa;
 }
@@ -6535,6 +6559,7 @@ function sectionTeamFaults(agg){
     ],
     note:SORT_HINT,
   }) : `<div class="empty">Aucune faute directe enregistrée.</div>`);
+  const fzTotal = ZONES.reduce((n,z)=>n + (agg.faultZones[z]||0), 0);
   const zones = `<div class="section-title">Par zone du terrain</div>` + statTable({
       scope:'team', id:'teamFaultZones',
       defaultSort:{key:'n', dir:-1},
@@ -6543,11 +6568,13 @@ function sectionTeamFaults(agg){
         {key:'zone', label:'Zone', val:r=>r.i,
          fmt:r=>`${zoneBadge(r.z)}${ZONE_LABEL[r.z]}`},
         {key:'n',    label:'Nombre', short:'Nb', strong:true, val:r=>r.c},
+        /* STAT-4 : même dénominateur que l'écran d'un match (fautes localisées seulement). */
         {key:'pct',  label:'% des fautes', short:'%', cls:'sub',
-         val:r=>pctVal(r.c, agg.faults), fmt:r=>pctStr(r.c, agg.faults)},
+         val:r=>pctVal(r.c, fzTotal), fmt:r=>pctStr(r.c, fzTotal)},
       ],
       note:SORT_HINT,
-    }) + `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`;
+    }) + (agg.faults > fzTotal ? `<div class="section-sub">${agg.faults - fzTotal} faute(s) directe(s) sans position : hors de ce tableau.</div>` : '')
+      + `<div class="zone-diagram-wrap solo">${zoneDiagramSVG()}</div>`;
   return `<div class="section-title">Fautes directes</div>
     <div class="section-sub">${agg.actions? pctStr(agg.faults, agg.actions)+' des actions offensives' : 'Aucune action offensive enregistrée'} • ${agg.faults + agg.defIll} faute(s) au total${agg.defIll? ` (dont ${agg.defIll} défensive(s) illégale(s))` : ''}</div>`
     + statPair(types, zones);
