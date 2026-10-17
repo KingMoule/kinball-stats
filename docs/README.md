@@ -40,4 +40,3 @@ Dans tous les cas, lire d'abord `CLAUDE.md` (invariants de l'app, règles de la 
 ## Ce qui n'est pas à jour exprès
 
 - L'historique (briefs et rapports des vagues 1 à 5, anciens registres, ancien guide, cahier des charges d'origine, évaluations du 2026-10-09) est dans `archive/`. Ces fichiers ne font plus foi ; ils servent à retrouver pourquoi une chose a été faite.
-- Le code de l'app contient encore des commentaires qui parlent du temps où elle vivait dans claude.ai (serveurs de Claude, plafond de 5 000 documents, wifi du gymnase, règles d'accès). Le code est juste, ces commentaires sont périmés : se fier à `donnees.md`.

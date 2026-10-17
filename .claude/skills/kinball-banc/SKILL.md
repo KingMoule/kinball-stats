@@ -20,7 +20,7 @@ Dépôt : `KingMoule/kinball-stats`. Banc : Playwright, tablette et téléphone,
 1. Pousse ta branche de travail (jamais `main`).
 2. `node outils/ci-banc.mjs --branche <b>` donne le résumé du dernier passage de la branche (une dizaine de lignes). **Sans `--branche`, il lit le commit courant du clone.** `--attendre` attend jusqu'à 9 min par appel : un passage complet en demande deux ; relance si code 2. Ne sonde pas. Le workflow se déclenche sur une PR : une branche poussée sans PR donne « aucun passage ».
    Après un push ou une relance, il peut rendre l'ancien passage : lis le commit entre crochets (`[CI, commit …]`) avant de conclure.
-3. Codes de sortie : 0 vert, 1 rouge, 2 pas de passage ou en cours, 3 GitHub injoignable. « Aucun passage » est normal pour une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `MIGRATION.md` ou `tests/README.md`.
+3. Codes de sortie : 0 vert, 1 rouge, 2 pas de passage ou en cours, 3 GitHub injoignable. « Aucun passage » est normal pour une PR qui ne touche que `docs/`, `tests/docs/`, `.claude/`, `CLAUDE.md`, `README.md` ou `tests/README.md`.
 4. Un commit déjà joué, ou une PR sans changement du code, relit le cache par empreinte (moins d'une minute) au lieu de rejouer 16 à 20 minutes.
 5. Les journaux et artefacts de GitHub sont illisibles depuis la session (403) : `ci-banc.mjs` lit des annotations (résumé et dix premiers échecs). Pour le détail, l'utilisateur ouvre le passage dans GitHub.
 - `KINBALL_CACHE=seul node tests/run.mjs` relit un passage local déjà joué sans rien lancer (code 3 s'il n'existe pas).

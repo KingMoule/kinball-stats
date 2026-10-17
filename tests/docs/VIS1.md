@@ -1,4 +1,4 @@
-# VIS1 : pastilles d'équipe, possession, flèche du glissé, % de victoire en fin de période (D99)
+# VIS1 : pastilles d'équipe, possession, flèche du glissé, % de victoire en fin de période (D100)
 
 Suite `tests/scenarios/VIS1.mjs`. Vérifications 1 et 2 sur tablette et téléphone, 3 sur tablette ; une page par vérification.
 

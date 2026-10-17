@@ -1,7 +1,6 @@
 /* kbsite.js — ajouts propres au site Kin-Ball Stats (chargé APRÈS le script de l'app).
-   M03 : demande de stockage persistant, ligne d'état dans l'écran Sauvegarde,
-   carte « Archiver les vieux matchs » masquée (ces trois points seulement si la
-   façade locale KBLocal est présente et si l'app ne tourne pas dans claude.ai).
+   M03 : demande de stockage persistant et ligne d'état dans l'écran Sauvegarde
+   (seulement si la façade locale KBLocal est présente).
    M04 : service worker, mise à jour sur accord, ligne de version, incitation à
    installer (espace de noms window.KBSite).
    M06 : sauvegarde v2, import sans écrasement, identité, premier lancement, rappel.
@@ -15,7 +14,7 @@
   'use strict';
   var KBSite = global.KBSite = global.KBSite || {};
   var KB = global.KBLocal;
-  var stockageActif = !!KB && !global.claude;
+  var stockageActif = !!KB;
   KBSite.local = stockageActif;   // M11 : textes propres au mode local (lus par index.html)
 
   /* ================= M03 : stockage ================= */
@@ -65,28 +64,6 @@
     }, function () {});
   }
 
-  /* ---------- Carte « Archiver les vieux matchs » ---------- */
-  function masquerArchivage() {
-    var cartes = document.querySelectorAll('.backup-card');
-    for (var i = 0; i < cartes.length; i++) {
-      if (cartes[i].querySelector('[onclick^="startArchiveOldMatches("]')) cartes[i].style.display = 'none';
-    }
-  }
-  masquerArchivage();
-  /* M11 : textes de l'accueil et de la carte d'archivage masquée, sans « en ligne » ni « archiver » (mode local seulement). */
-  (function () {
-    var sub = document.querySelector('[onclick="openBackup()"] .hc-sub');
-    if (sub && /archiver/.test(sub.textContent)) sub.textContent = 'Exporter, importer';
-    var carte = document.querySelector('.backup-card [onclick^="startArchiveOldMatches("]');
-    carte = carte && carte.closest('.backup-card');
-    var t = carte && carte.querySelector('.bc-sub');
-    if (t && t.firstChild && t.firstChild.nodeType === 3 && /en ligne/.test(t.firstChild.nodeValue)) {
-      t.firstChild.nodeValue = 'Cette action exporte d’abord les matchs TERMINÉS de plus de ';
-      var fin = t.lastChild;
-      if (fin && fin.nodeType === 3) fin.nodeValue = ' jours dans un fichier, puis les retire de cet appareil — ils restent consultables via ce fichier.';
-    }
-  })();
-
   /* Rafraîchir à l'entrée dans l'écran (showOnly bascule son style.display). */
   var ecran = document.getElementById('backup');
   if (ecran && global.MutationObserver) {
@@ -104,7 +81,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-17.6';
+  var VERSION_SITE = '2026-10-17.7';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -193,7 +170,7 @@
 
   /* ---------- Service worker ---------- */
   var h = global.location ? global.location.hostname : '';
-  var peutEnregistrer = !!(global.navigator && 'serviceWorker' in global.navigator && !global.claude
+  var peutEnregistrer = !!(global.navigator && 'serviceWorker' in global.navigator
     && (global.location.protocol === 'https:' || (global.location.protocol === 'http:' && (h === 'localhost' || h === '127.0.0.1'))));
   KBSite.peutEnregistrer = peutEnregistrer;
 
@@ -391,13 +368,12 @@
       }
     });
   }
-  if (KB && KB.downloads && typeof KB.downloads.surSecondGeste === 'function' && !global.claude) {
+  if (KB && KB.downloads && typeof KB.downloads.surSecondGeste === 'function') {
     KB.downloads.surSecondGeste(feuilleFichierPret);
   }
 
   /* ================= M06 : sauvegarde v2, import sans écrasement, premier lancement, rappel ================= */
-  /* Tout ce bloc n'agit que si la façade locale est là et si l'app ne tourne pas dans
-     claude.ai (comme M03). Lit TEAMS_DB, MATCHES_DB, DELETED_MATCHES, S sans jamais y écrire. */
+  /* Tout ce bloc n'agit que si la façade locale est là (comme M03). Lit TEAMS_DB, MATCHES_DB, DELETED_MATCHES, S sans jamais y écrire. */
   var RE_IDENTITE = /^u_[0-9A-Za-z-]{8,64}$/;
   var JOUR_MS = 86400000;
   var userApi = null;                     // capacité « user » de la façade (identité tenue en mémoire)
@@ -450,7 +426,7 @@
       }, function (e) { if (!fait) { fait = true; fermer(); reject(e); } });
     });
   }
-  /* Rend {equipes: [données], matchs: [données]} (corbeille comprise, anciens matchs à plat compris). */
+  /* Rend {equipes: [données], matchs: [données]} (corbeille comprise). */
   function lireBase() {
     if (!dbApi) return Promise.reject(new Error('base indisponible'));
     var equipes = [], matchs = [];
@@ -459,10 +435,7 @@
       return lireUneFois('matches');
     }).then(function (racine) {
       var auteurs = [], ids = {}, moi = userApi && userApi.exportIdentity ? userApi.exportIdentity().id : null;
-      racine.forEach(function (d) {
-        if (d.data && Array.isArray(d.data.history)) matchs.push(d.data);
-        else auteurs.push(d.id);
-      });
+      racine.forEach(function (d) { auteurs.push(d.id); });
       if (moi && auteurs.indexOf(moi) < 0) auteurs.push(moi);
       auteurs = auteurs.filter(function (a) { if (ids[a]) return false; ids[a] = 1; return true; });
       return auteurs.reduce(function (suite, a) {
@@ -517,13 +490,11 @@
   }
   KBSite.importDebut = function (payload) {
     if (!stockageActif) return Promise.resolve(null);
-    var local = { teams: {}, matches: {} }, ignores = 0, vide = false, lu = false;
-    var cible = { garder: function () { return false; }, fin: function () {} };
+    var local = { teams: {}, matches: {} }, ignores = 0, vide = false;
     return lireBase().then(function (etat) {
       etat.equipes.forEach(function (t) { if (t && t.id) local.teams[t.id] = t.updatedAt || 0; });
       etat.matchs.forEach(function (m) { if (m && m.id) local.matches[m.id] = m.updatedAt || 0; });
       vide = estVide(etat);
-      lu = true;
       return {
         garder: function (sorte, obj) {
           var table = sorte === 'team' ? local.teams : local.matches, ok = true;
@@ -753,7 +724,7 @@
 
   /* ================= M08 : collecte facultative (inerte sans configuration) =================
      config.js (racine) porte {collecteUrl, contact}. Les DEUX doivent être non vides pour que
-     kbcollect.js soit chargé ; sinon rien : aucune carte, aucune requête. Jamais dans claude.ai.
+     kbcollect.js soit chargé ; sinon rien : aucune carte, aucune requête.
      Une adresse en http n'est admise que vers 127.0.0.1 / localhost (essais). */
   KBSite.collecteConfig = null;
   function chargerScript(src, fin) {
