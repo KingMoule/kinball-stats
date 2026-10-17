@@ -279,9 +279,9 @@ export default async function ({ gabarit, check }) {
       eq(feuille(wb, 'Head-to-head')[0], ['Équipe attaquante', 'Équipe ciblée', 'Situation', 'Tentatives', 'Réussites', 'Efficacité (%)'], 'Head-to-head : inchangé');
       /* Actions : une colonne 1/0 dont la moyenne égale l'OFF % de l'écran */
       const ax = feuille(wb, 'Actions');
-      eq(ax[0][ax[0].length - 1], 'Réussite offensive (avec fautes)', 'Actions : colonne neuve en fin de ligne');
-      eq(ax[0].slice(-5, -1), ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'], 'Actions : les colonnes de C28 gardent leur place');
-      const iAtt = ax[0].indexOf('Équipe attaquante'), iNew = ax[0].length - 1, iOld = ax[0].indexOf('Réussite offensive');
+      eq(ax[0][ax[0].length - 2], 'Réussite offensive (avec fautes)', 'Actions : colonne neuve en fin de ligne (suivie de « Situation (avec fautes) », EXPORT-1)');
+      eq(ax[0].slice(-6, -2), ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'], 'Actions : les colonnes de C28 gardent leur place');
+      const iAtt = ax[0].indexOf('Équipe attaquante'), iNew = ax[0].length - 2, iOld = ax[0].indexOf('Réussite offensive');
       const moy = (col, eqp_) => { const v = ax.slice(1).filter(l => l[iAtt] === eqp_ && l[col] !== '').map(l => l[col]); return v.length ? Math.round(1000 * v.reduce((a, b) => a + b, 0) / v.length) / 10 : null; };
       eq(['Bleu', 'Gris', 'Noir'].map(t => moy(iNew, t)), [50, 33.3, 25], 'Actions : la moyenne de la colonne neuve = OFF % de l\'écran');
       eq(['Bleu', 'Gris', 'Noir'].map(t => moy(iOld, t)), [50, 50, 100], 'Actions : « Réussite offensive » ancienne, inchangée');

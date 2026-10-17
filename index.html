@@ -5750,6 +5750,8 @@ function matchInfoRows(){
     ['Stats prises par', S.authorId ? plainAuthor(S.authorId) : '—'],
     ['ID du match', S.id || ''],
     ['Date du match', isoOuVide(S.createdAt)],
+    /* EXPORT-1 (S6) : l'équipe permanente de chaque équipe en jeu (vide pour un nom libre) */
+    ...ATEAMS().map(t => ['ID équipe '+t, (S.teamIds && S.teamIds[t]) || '']),
   ];
 }
 /* ---------- ENREGISTREMENT DE FICHIER ----------
@@ -5829,7 +5831,9 @@ function buildActionRows(){
     /* C28 : colonnes AJOUTÉES en fin de ligne (rien d'existant n'est renommé, retiré ni déplacé) */
     'ID du match','Date du match','Heure de l’action','Code de faute',
     /* STAT-1 : 1/0 dont la moyenne égale l'OFF % de l'écran (une faute directe vaut 0) */
-    'Réussite offensive (avec fautes)'];
+    'Réussite offensive (avec fautes)',
+    /* EXPORT-1 (S4) : la situation de chaque ligne de la colonne précédente, faute directe comprise */
+    'Situation (avec fautes)'];
   const rows = S.history.map((ev,i)=>{
     const d = ev.details || {}, b = ev.before || {};
     const lin = b.lineups || {};
@@ -5874,6 +5878,10 @@ function buildActionRows(){
       'Code de faute': d.fault_type || '',
       'Réussite offensive (avec fautes)': lancer ? (d.result==='échappé' ? 1 : 0)
         : ((ev.type==='faute_directe' && b.possession && teams.includes(b.possession)) ? 0 : ''),
+      /* Lancer : la colonne « Situation ». Faute directe : la situation de l'équipe en possession
+         (situationOfFaute, comme computeSituations) ; un tableau croisé redonne OFF arrêtée et OFF continue. */
+      'Situation (avec fautes)': lancer ? (SIT_LABEL[situationOf(S.history, i)] || '')
+        : ((ev.type==='faute_directe' && b.possession && teams.includes(b.possession)) ? (SIT_LABEL[situationOfFaute(S.history, i)] || '') : ''),
     };
     teams.forEach(t=>{ row['Score '+nm(t)+' avant'] = (b.scores && b.scores[t] !== undefined) ? b.scores[t] : ''; });
     teams.forEach(t=>{ row['Sur le terrain — '+nm(t)] = est(t); });
@@ -6090,12 +6098,15 @@ const ALL_ACTIONS_HEADER = ['ID du match','Date du match','Heure de l’action',
   'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
   ...TEAMS.map((t,k)=>'Score équipe '+(k+1)+' avant'),
   ...TEAMS.map((t,k)=>'Sur le terrain — équipe '+(k+1)),
-  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
+  /* EXPORT-1 : ajouts en fin de ligne (S4, puis S6 : équipe permanente par emplacement, vide pour un nom libre) */
+  'Situation (avec fautes)', ...TEAMS.map((t,k)=>'ID équipe '+(k+1))];
 const ALL_ACTIONS_DIRECT = ['ID du match','Date du match','Heure de l’action','No','Période','Type d’action',
   'Équipe en possession','Équipe attaquante','Équipe ciblée','Résultat','Situation','Phase',
   'Réussite offensive','Arrêt défensif','Réussite offensive (avec fautes)','Joueur','Type de faute','Code de faute','Faute d’équipe',
   'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
-  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée'];
+  'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
+  'Situation (avec fautes)'];
 /* Lignes (en colonnes figées) d'UN match enregistré ; [] si le match est vide ou illisible. */
 function buildAllActionRows(m){
   if(!m || !Array.isArray(m.history) || !m.history.length) return [];
@@ -6113,6 +6124,7 @@ function buildAllActionRows(m){
         o['Équipe '+(k+1)] = noms[k];
         o['Score équipe '+(k+1)+' avant'] = ok ? r['Score '+nm(t)+' avant'] : '';
         o['Sur le terrain — équipe '+(k+1)] = ok ? r['Sur le terrain — '+nm(t)] : '';
+        o['ID équipe '+(k+1)] = (ok && m.teamIds && m.teamIds[t]) || '';
       });
       return o;
     });

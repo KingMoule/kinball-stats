@@ -23,6 +23,9 @@ export const gabarits = ['tablette', 'telephone'];
 const AVANT_NOM = 'kinball.C28.avant.html';
 const NOUVELLES = ['ID du match', 'Date du match', 'Heure de l’action', 'Code de faute'];
 const STAT1 = 'Réussite offensive (avec fautes)';   /* STAT-1 : cinquième colonne ajoutée en fin de la feuille Actions */
+const EXP1 = 'Situation (avec fautes)';   /* EXPORT-1 (S4) : sixième colonne ; la feuille « Match » reçoit ensuite « ID équipe <couleur> » (S6, suite EXPORT1) */
+/* Feuille « Match » à partir de la ligne « ID du match » (les lignes « ID équipe » d'EXPORT-1 suivent la date). */
+const finInfo = info => info.slice(info.findIndex(x => x[0] === 'ID du match')).filter(x => !/^ID équipe /.test(x[0]));
 
 /* Lecteur CSV (séparateur « ; », guillemets doublés, \r\n entre les lignes, \r et \n tolérés entre guillemets). */
 function lireCSV(texte) {
@@ -75,8 +78,8 @@ export default async function ({ gabarit, check }) {
     };
     const a = await sortie({ html: ref }), b = await sortie({});
     eq(b.header.slice(0, a.header.length), a.header, 'les colonnes existantes : mêmes noms, même ordre');
-    eq(b.header.slice(a.header.length), [...NOUVELLES, STAT1], 'quatre colonnes ajoutées (C28), puis celle de STAT-1, à la fin, dans cet ordre');
-    eq(b.header.length, a.header.length + 5, 'rien d\'autre');
+    eq(b.header.slice(a.header.length), [...NOUVELLES, STAT1, EXP1], 'quatre colonnes ajoutées (C28), puis celle de STAT-1 et celle d\'EXPORT-1, à la fin, dans cet ordre');
+    eq(b.header.length, a.header.length + 6, 'rien d\'autre');
     eq(b.rows.length, a.rows.length, 'même nombre de lignes');   /* « Saisi par » mis à part : la copie d'avant, servie sans stockage, n'a pas d'identité d'appareil */
     b.rows.forEach((x, i) => a.header.filter(k => k !== 'Saisi par').forEach(k => eq(x[k], a.rows[i][k], `ligne ${i + 1}, « ${k} » (valeur d'une colonne existante)`)));
     eq(b.csv[0], b.header, 'ligne d\'en-tête du CSV = en-tête');
@@ -85,7 +88,7 @@ export default async function ({ gabarit, check }) {
     eq(b.rawHeader, a.rawHeader, 'données brutes : même en-tête');
     const sansAuteur = rows => rows.filter(x => x[0] !== 'Stats prises par');   // l'identité de l'appareil n'existe pas dans la copie d'avant
     eq(b.info.slice(0, a.info.length).filter(x => x[0] !== 'Stats prises par'), sansAuteur(a.info), 'feuille « Match » : lignes existantes inchangées, même ordre');
-    eq(b.info.slice(a.info.length).map(x => x[0]), ['ID du match', 'Date du match'], 'feuille « Match » : ID et date ajoutés à la fin');
+    eq(b.info.slice(a.info.length).map(x => x[0]), ['ID du match', 'Date du match', 'ID équipe Bleu', 'ID équipe Gris', 'ID équipe Noir'], 'feuille « Match » : ID et date ajoutés à la fin, puis les ID d\'équipe (EXPORT-1)');
   }, KNOWN_AVANT);
 
   await check(`${P}·2 les quatre colonnes : ID du match, Date du match (ISO 8601), Heure de l'action (nouveaux événements, croissante), Code de faute (EXT, DÉF ILL), vide ailleurs`, async () => {
@@ -108,7 +111,7 @@ export default async function ({ gabarit, check }) {
       const code = r.rows.map(x => x['Code de faute']);
       eq(code, ['', 'EXT', 'DÉF ILL', '', ''], 'code de faute : stable, à côté du libellé existant');
       eq(r.rows.map(x => x['Type de faute']), ['', 'EXTÉRIEUR', 'DÉFENSIVE ILLÉGALE', '', ''], 'le libellé existant est inchangé');
-      eq(r.info.slice(-2), [['ID du match', r.id], ['Date du match', new Date(r.cree).toISOString()]], 'feuille « Match »');
+      eq(finInfo(r.info), [['ID du match', r.id], ['Date du match', new Date(r.cree).toISOString()]], 'feuille « Match »');
       /* l'heure d'un changement de joueur et d'une fin de période manuelle */
       await app.ev(() => { openFinishMenu(); }); await app.clickSheet("endPeriodManually('Bleu')"); await app.settle();
       const t = await app.ev(() => S.history[S.history.length - 1]);
@@ -139,7 +142,7 @@ export default async function ({ gabarit, check }) {
       r.rows.forEach((x, i) => eq([x['Heure de l’action'], x['Date du match']], ['', ''], `ligne ${i + 1} : heure et date vides`));
       eq(r.rows.length, 5, 'une ligne par événement');
       eq(r.rows.map(x => x['Code de faute']), ['', 'EXT', 'DÉF ILL', '', ''], 'le code de faute se lit aussi sur un ancien match');
-      eq(r.info.slice(-2).map(x => x[1] === '' ? 'vide' : 'rempli'), ['rempli', 'vide'], 'ID présent, date vide');
+      eq(finInfo(r.info).map(x => x[1] === '' ? 'vide' : 'rempli'), ['rempli', 'vide'], 'ID présent, date vide');
       const csv = lireCSV((await csvActions(app)).toString('utf8'));
       eq(csv.length, 6, 'CSV complet'); csv.forEach(l => eq(l.length, r.header.length, 'colonnes par ligne'));
       eq(app.errors, [], 'aucune erreur de page');
@@ -288,15 +291,16 @@ export default async function ({ gabarit, check }) {
       const x = XLSX.read(await telecharger(app, 'exportXLSX()'), { type: 'buffer' });
       eq(x.SheetNames, ['Match', 'Actions', 'Équipes', 'Joueurs', 'Arrêté-continu', 'Reprises de jeu', 'Zones', 'Head-to-head', 'Types de fautes', 'Données brutes'].filter(n => x.SheetNames.includes(n)), 'feuilles, dans l\'ordre d\'avant');
       const match = XLSX.utils.sheet_to_json(x.Sheets['Match'], { header: 1, raw: true });
-      eq(match.slice(-2).map(r => r[0]), ['ID du match', 'Date du match'], 'feuille « Match » : lignes ajoutées en fin');
-      eq(match.slice(-2)[0][1], id, 'ID du match');
-      assert(/^\d{4}-\d{2}-\d{2}T/.test(match.slice(-1)[0][1]), 'date du match ISO');
+      const fin = finInfo(match);
+      eq(fin.map(r => r[0]), ['ID du match', 'Date du match'], 'feuille « Match » : lignes ajoutées en fin (puis les ID d\'équipe d\'EXPORT-1)');
+      eq(fin[0][1], id, 'ID du match');
+      assert(/^\d{4}-\d{2}-\d{2}T/.test(fin[1][1]), 'date du match ISO');
       eq(match[0][0], 'Fichier', 'première ligne inchangée');
       const act = XLSX.utils.sheet_to_json(x.Sheets['Actions'], { header: 1, raw: true });
       const csv = lireCSV((await csvActions(app)).toString('utf8'));
       eq(act[0], csv[0], 'Actions : même en-tête que le CSV');
       eq(act.length, csv.length, 'même nombre de lignes');
-      eq(act[0].slice(-5, -1), NOUVELLES, 'quatre colonnes ajoutées en fin (avant celle de STAT-1)');
+      eq(act[0].slice(-6, -2), NOUVELLES, 'quatre colonnes ajoutées en fin (avant celles de STAT-1 et d\'EXPORT-1)');
       eq(act.slice(1).map(l => l[act[0].indexOf('Code de faute')] ?? ''), ['', 'EXT', 'DÉF ILL', '', ''], 'codes de faute dans le XLSX');
     } finally { await app.close(); }
   });
