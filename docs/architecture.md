@@ -44,7 +44,7 @@ Une pile d'écrans, `navStack`, dont le bas est toujours l'accueil. `showOnly(id
 
 Un nouvel écran touche quatre endroits : le `<div id>` du HTML, `SCREENS`, `SCREEN_META` (s'il porte la barre d'app) et `onEnterScreen`.
 
-Écrans : `home` (tableau de bord et bannières de reprise ou de récupération), `newMatch`, `match`, `stats`, `zoneDetail`, `teamManager`, `teamEditor`, `matchHistory`, `teamOverview` (classement), `teamStatsPicker`, `teamStats` (cumul d'une équipe), `backup` (écran « Sauvegarde », nommé Données dans les onglets). La heat map n'a plus d'écran : c'est un onglet de statistiques.
+Écrans : `home` (tableau de bord et bannières de reprise ou de récupération), `newMatch`, `match`, `stats`, `zoneDetail`, `teamManager`, `teamEditor`, `matchHistory`, `teamOverview` (classement), `teamStatsPicker`, `teamStats` (cumul d'une équipe), `playerCard` (fiche d'un joueur, C04), `backup` (écran « Sauvegarde », nommé Données dans les onglets). La heat map n'a plus d'écran : c'est un onglet de statistiques.
 
 L'écran de match n'a volontairement pas de barre d'app : toute sa surface sert à tracer les lancers, et un bouton de navigation à portée de pouce serait une sortie accidentelle en plein point. Il garde quatre contrôles délibérés (↶, TERMINER, ⌂, STATS) ; ⌂ demande confirmation si un match est en cours.
 
