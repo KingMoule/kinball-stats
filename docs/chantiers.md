@@ -5,7 +5,7 @@ Mis à jour le 2026-10-17 (ESSAI-6, REDO, TERRAIN, EXPORT-1, F8). Ce fichier dit
 ## État
 - `main` = `6c9f51f` (PR #28 et #29, VIS-1). REDO : PR #30 (site `2026-10-17.9`). TERRAIN : PR #32 (site `2026-10-17.10`).
 - Revue complète du 2026-10-16 : rapports dans `docs/revue-2026-10-16/` (1 saisie, 2 données, 3 stats, 4 outillage). On les cite par fichier et numéro (« données I1 »). Le dossier se supprime quand ses constats sont traités ou écartés.
-- ESSAI-5 (2026-10-16) et ESSAI-6 (2026-10-17, VIS-1 : tout confirmé) faits par l'utilisateur. Prochain : ESSAI-7 (REDO, TERRAIN et F8, `docs/essai-ipad.md`).
+- ESSAI-5 (2026-10-16) et ESSAI-6 (2026-10-17, VIS-1 : tout confirmé) faits par l'utilisateur. Prochain : ESSAI-7 (REDO, TERRAIN, F8 et la fiche joueur C04, `docs/essai-ipad.md`).
 
 ## Plan (validé par l'utilisateur le 2026-10-16, « fiabilité d'abord »)
 Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne touche pas `index.html` peut avancer en parallèle.
@@ -19,7 +19,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 7. **ESSAI-6 iPad** : **fait** le 2026-10-17 (liserés, flèche du glissé, halo de possession, barres du % de victoire pendant « PÉRIODE N TERMINÉE » : tout confirmé ; site publié par Pages à chaque fusion). **REDO** (#7, complet) : **fait** (PR #30, D101, suite REDO ; audit : 6 critères tenus, ↶ d'un ancien événement sans `before` corrigé) : ↷ à droite de ↶ ; pile `{ev, after, id, n}` hors de `S`, vidée par toute action, un choix de possession, un changement de match et le rechargement ; couvre `fin_periode`, changements de joueur, duel, fenêtre de fin de période. **TERRAIN** (#12, complet) : **fait** (PR #32, D102, suite TERRAIN) : terrain de saisie d'après la maquette `docs/maquettes/terrain-3x3.png` (fond vert en dégradé, liseré, grille 3×3 aux tiers des zones, cercle central) ; les anciennes lignes à 0,18 / 0,82 disparaissent ; `#field` sans bordure ni `overflow:hidden`. Suite TERRAIN-2 (PR #36) : même tracé dans la heat map et le schéma des zones.
 8. **EXPORT-1** (léger) : **fait** (PR #34, D103, suite EXPORT1). Stats S4 (« Situation (avec fautes) » en fin des Actions et de « tous les matchs ») et S6 (« ID équipe » dans la feuille « Match » et « ID équipe 1/2/3 » dans « tous les matchs »).
 9. **F8, courbe du % de victoire** (léger) : **fait** (PR #37, D104, suite F8). Onglet « % victoire » des stats d'un match : la courbe recalculée après coup redonne chaque résultat des barres du direct.
-10. **Fonctions nouvelles, à choisir** : C04 (fiche joueur cumulée, attend Q5), F7 (calibration, attend une vingtaine de matchs).
+10. **C04, fiche joueur** (léger) : **fait** (D105, suite C04) : toucher un joueur dans « Joueurs — tous les matchs » ouvre sa fiche (cumul avec cette équipe, ligne par match). Reste à choisir : F7 (calibration, attend une vingtaine de matchs).
 
 ## Autres lignes
 | Id | Sujet | Remarque |
@@ -39,4 +39,3 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 
 ## Questions pour l'utilisateur
 - **Q11** : règles supposées du moteur de probabilité (match gagné à 4 périodes, reprise du duel, cible à égalité).
-- **Q5** : questions prioritaires de la fiche joueur (C04).

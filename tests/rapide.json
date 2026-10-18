@@ -3,7 +3,7 @@
 
   "toujours": ["smoke", "undo"],
 
-  "poids_s": { "smoke": 5, "undo": 26, "fuzz": 75, "C13B": 135, "C08": 20, "C14": 13, "C15": 12, "C16": 16, "C17": 8, "C18": 7, "C19": 10, "C20": 8, "C21": 155, "C22": 96, "C23": 138, "C24": 10, "C25": 30, "C26": 30, "C27": 30, "C28": 30, "C29": 16, "M02": 2, "M03": 21, "M04": 33, "M05": 18, "M06": 18, "M08": 37, "M11": 16, "R15": 14, "R16": 30, "LIS1": 32, "TFP1": 75, "FIAB1": 30, "STAT4": 16, "TFP2": 40, "TERRAIN": 6, "VIS1": 15, "REDO": 20, "EXPORT1": 8, "F8": 40 },
+  "poids_s": { "smoke": 5, "undo": 26, "fuzz": 75, "C13B": 135, "C08": 20, "C14": 13, "C15": 12, "C16": 16, "C17": 8, "C18": 7, "C19": 10, "C20": 8, "C21": 155, "C22": 96, "C23": 138, "C24": 10, "C25": 30, "C26": 30, "C27": 30, "C28": 30, "C29": 16, "M02": 2, "M03": 21, "M04": 33, "M05": 18, "M06": 18, "M08": 37, "M11": 16, "R15": 14, "R16": 30, "LIS1": 32, "TFP1": 75, "FIAB1": 30, "STAT4": 16, "TFP2": 40, "TERRAIN": 6, "VIS1": 15, "REDO": 20, "EXPORT1": 8, "F8": 40, "C04": 6 },
 
   "fichiers": [
     { "motif": "^tests/scenarios/([^/]+)\\.mjs$", "suites": ["$1"] },
@@ -39,7 +39,7 @@
     { "motif": "JOUEUR DE L'ACTION", "suites": ["C14", "C19", "C26"], "note": "pickFault, pickResult, awardFaultPoints, checkPeriodState, finishPeriod, undo" },
     { "motif": "% DE VICTOIRE EN DIRECT|Générateur à graine|Un pas de règles|^Simulation|Pas de règles pour|Paramètres à partir|^Affichage|^Constantes", "suites": ["C13B", "C23", "STAT4", "VIS1", "F8"] },
     { "motif": "^Courbe du % de victoire", "suites": ["F8", "C25", "C26"] },
-    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|REGISTRE DES FAMILLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C23", "C29", "STAT4", "F8"] },
+    { "motif": "^STATS\\b|TABLEAUX DE STATISTIQUES|SITUATION DE JEU|STATS INDIVIDUELLES|REGISTRE DES FAMILLES|Sections : statistiques d'UN match", "suites": ["C15", "C16", "C18", "C23", "C29", "STAT4", "F8", "C04"] },
     { "motif": "Phases d'une période", "suites": ["C16", "C29"] },
     { "motif": "^Par période", "suites": ["C15", "C29", "STAT4"] },
     { "motif": "ZONES DE DÉPART|HEAT ?MAP|GRILLE D'EFFICACITÉ", "suites": ["C17", "C18", "R16"] },

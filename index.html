@@ -430,8 +430,8 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 
 
 /* ---------- MATCH HISTORY / TEAM STATS / BACKUP ---------- */
-#matchHistory, #teamStatsPicker, #teamStats, #backup, #teamOverview{display:none; flex-direction:column; flex:1 1 auto; min-height:0; background:var(--bg);}
-#matchHistoryBody, #teamStatsBody, #backupBody, #teamOverviewBody{flex:1; overflow:auto; padding:16px;}
+#matchHistory, #teamStatsPicker, #teamStats, #playerCard, #backup, #teamOverview{display:none; flex-direction:column; flex:1 1 auto; min-height:0; background:var(--bg);}
+#matchHistoryBody, #teamStatsBody, #playerCardBody, #backupBody, #teamOverviewBody{flex:1; overflow:auto; padding:16px;}
 #backupBody > #storageInfo{margin-bottom:14px;}
 .match-card{
   background:var(--surface); border-radius:14px; padding:14px 16px; margin-bottom:10px;
@@ -448,6 +448,11 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .agg-summary{background:var(--surface); border-radius:14px; padding:18px; margin-bottom:22px; border:1px solid var(--line);}
 .agg-summary .as-name{font-size:26px; font-weight:800; font-family:'Barlow Condensed',sans-serif;}
 .agg-summary .as-sub{color:var(--dim); font-size:13px; margin-top:4px;}
+.pc-tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin-bottom:22px;}
+.pc-tile{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center;}
+.pc-val{font-size:26px; font-weight:800; font-family:'Barlow Condensed',sans-serif;}
+.pc-label{color:var(--dim); font-size:12px; margin-top:2px;}
+.pc-sub{color:var(--dim); font-size:11px; margin-top:2px;}
 .agg-links{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;}
 /* Lien contextuel à l'intérieur d'une carte : relie une donnée à la fiche
    qui la détaille, sans repasser par l'accueil. */
@@ -840,7 +845,7 @@ html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}   /* Safari grossit 
 .phone .home-card .hc-sub{font-size:12px;}
 
 /* --- Statistiques --- */
-.phone #statsBody, .phone #zoneBody, .phone #matchHistoryBody, .phone #teamStatsBody,
+.phone #statsBody, .phone #zoneBody, .phone #matchHistoryBody, .phone #teamStatsBody, .phone #playerCardBody,
 .phone #backupBody, .phone #teamOverviewBody, .phone #teamListBody{padding:12px;}
 .phone .stat-tabs-row{margin:0 -12px; padding:2px 12px 10px; gap:8px;}
 .phone .stat-tabs{flex-wrap:nowrap; overflow-x:auto; scroll-padding:12px;}
@@ -1083,6 +1088,10 @@ html.rotated #sheet{max-height:calc(var(--ui-h) * .82);}
 
 <div id="teamStats">
   <div id="teamStatsBody"></div>
+</div>
+
+<div id="playerCard">
+  <div id="playerCardBody"></div>
 </div>
 
 <div id="backup">
@@ -1928,7 +1937,7 @@ function exitArchiveView(){
    ========================================================== */
 const SCREENS = ['home','newMatch','match','stats','zoneDetail',
                  'teamManager','teamEditor','matchHistory','teamOverview',
-                 'teamStatsPicker','teamStats','backup'];
+                 'teamStatsPicker','teamStats','playerCard','backup'];
 
 /* Écrans "de consultation" : ceux qui portent la barre d'app. L'accueil a
    sa propre identité visuelle, et le match reste volontairement sans
@@ -1943,6 +1952,7 @@ const SCREEN_META = {
   teamOverview:    {title:'Classement',               tab:'teamOverview'},
   teamStatsPicker: {title:"Statistiques d'une équipe",tab:'teamStatsPicker'},
   teamStats:       {title:'Équipe',                   tab:'teamStatsPicker'},
+  playerCard:      {title:'Joueur',                   tab:'teamStatsPicker'},
   backup:          {title:'Sauvegarde',               tab:'backup'},
   stats:           {title:'Statistiques', actions:[
                       {label:'EXPORTER', fn:'openExportMenu()'}]},
@@ -1999,6 +2009,7 @@ function onEnterScreen(id){
     case 'teamOverview':    renderTeamOverview(); break;
     case 'teamStatsPicker': renderTeamStatsPickerList(); break;
     case 'teamStats':       if(currentAggTeamId) renderTeamAggregate(currentAggTeamId); break;
+    case 'playerCard':      if(currentPlayerCard) renderPlayerCard(currentPlayerCard.teamId, currentPlayerCard.playerId); break;
     case 'backup':          renderStorageInfo(); renderTrash(); break;
     case 'stats':           renderStats(); break;
   }
@@ -4992,7 +5003,7 @@ function playerTableHTML(rows, extra, opts){
   const o = opts || {};
   const {unattributed=0, teamFaults=0, unknownFaults=0} = extra || {};
   if(!rows.length) return '';
-  rows.forEach(r=>{ r._name = r.name; r._pm = r.plus - r.minus; });
+  rows.forEach(r=>{ r._name = r.name; r._pm = r.plus - r.minus; if(o.cardTeamId) r._click = `openPlayerCard('${jsArg(o.cardTeamId)}','${jsArg(r.id)}')`; });
   const cols = [
     {key:'name', label:'Joueur', val:r=>r.name,
      fmt:r=>`${o.teamCol?swatchHTML(TEAM_BG[r._team]):''}${escapeHtml(r.name)}`},
@@ -5021,7 +5032,7 @@ function playerTableHTML(rows, extra, opts){
   return statTable({
     scope:o.scope, id:o.id, cols, rows,
     defaultSort:{key:'throws', dir:-1},
-    note:`${SORT_HINT} Par défaut, les joueurs les plus sollicités en premier. Le vert et le rouge ne marquent que les joueurs ayant au moins 5 lancers dans la colonne concernée.`,
+    note:`${SORT_HINT} Par défaut, les joueurs les plus sollicités en premier. Le vert et le rouge ne marquent que les joueurs ayant au moins 5 lancers dans la colonne concernée.${o.cardTeamId?' Touchez un joueur pour sa fiche.':''}`,
   }) + ([
       unattributed  ? `${unattributed} lancer${unattributed>1?'s':''} sans lanceur identifié (« ? »)` : '',
       teamFaults    ? `${teamFaults} faute${teamFaults>1?'s':''} d'équipe` : '',
@@ -5056,9 +5067,74 @@ function sectionTeamPlayers(agg, teamId){
   });
   const rows = Object.values(acc);
   let html = `<div class="section-title">Joueurs — tous les matchs</div>` + PLAYER_STATS_LEGEND;
-  html += rows.length ? playerTableHTML(rows, extra, {scope:'team', id:'teamPlayers'})
+  html += rows.length ? playerTableHTML(rows, extra, {scope:'team', id:'teamPlayers', cardTeamId:teamId})
     : `<div class="empty">Aucune stat individuelle : cette équipe n'a encore joué aucun match avec un alignement.</div>`;
   return html;
+}
+/* C04 : fiche d'un joueur, cumulée sur tous ses matchs avec l'équipe courante (ouverte depuis « Joueurs — tous les matchs »).
+   Mêmes chiffres que le tableau d'équipe (accumulatePlayerStats), sans nouveau champ : rien n'est stocké. Le joueur est
+   repéré par son identifiant dans l'équipe ; un match où il n'a ni lancé, ni fauté, ni été sur le terrain n'a pas de ligne. */
+let currentPlayerCard = null;   // {teamId, playerId} : variable d'interface, hors de S
+function openPlayerCard(teamId, playerId){
+  currentPlayerCard = {teamId, playerId};
+  navTo('playerCard');
+}
+function playerCardData(teamId, playerId){
+  const team = getTeamAny(teamId);
+  const nameOf = id => ((team && team.players) || []).find(p=>p.id===id)?.name;
+  const perMatch = [];
+  MATCHES_DB.filter(m => TEAMS.some(sl => m.teamIds && m.teamIds[sl]===teamId)).forEach(m=>{
+    const slot = TEAMS.find(sl => m.teamIds[sl]===teamId);
+    const acc = {};
+    accumulatePlayerStats(m, slot, acc, nameOf);
+    const x = acc[playerId];
+    if(!x) return;
+    const quand = m.updatedAt || m.createdAt || 0;
+    const opp = matchTeams(m).filter(t => t!==slot).map(t => (m.names && m.names[t]) || t).join(' · ');
+    perMatch.push(Object.assign(x, {_m:m, _name:m.matchName || '', quand, opp, _pm:x.plus - x.minus}));
+  });
+  const total = {throwsF:0, succ:0, faults:0, plus:0, minus:0, onCourt:0, throwsF_arretee:0, succ_arretee:0, throwsF_continue:0, succ_continue:0};
+  perMatch.forEach(x => Object.keys(total).forEach(k => total[k] += x[k]));
+  return {name:nameOf(playerId) || (perMatch[0] && perMatch[0].name) || '?', team, perMatch, total};
+}
+function renderPlayerCard(teamId, playerId){
+  statsRerender = () => renderPlayerCard(teamId, playerId);
+  const d = playerCardData(teamId, playerId), t = d.total, n = d.perMatch.length;
+  setScreenTitle(d.name);
+  const pm = t.plus - t.minus;
+  const tile = (label, val, sub) => `<div class="pc-tile"><div class="pc-val">${val}</div><div class="pc-label">${label}</div>${sub?`<div class="pc-sub">${sub}</div>`:''}</div>`;
+  const head = `<div class="agg-summary">
+    <div class="as-name">${escapeHtml(d.name)}</div>
+    <div class="as-sub">${escapeHtml(d.team ? d.team.name : '?')} • ${n} match${n>1?'s':''} avec cette équipe</div>
+    <div class="agg-links"><button class="ghost-btn" onclick="openTeamAggregate('${jsArg(teamId)}')">← Équipe</button></div>
+  </div>`;
+  if(!n){
+    document.getElementById('playerCardBody').innerHTML = head + `<div class="empty">Aucune stat pour ce joueur : il n'a encore été sur le terrain d'aucun match enregistré.</div>`;
+    return;
+  }
+  const tiles = `<div class="pc-tiles">`
+    + tile('Lancers', t.throwsF)
+    + tile('OFF %', pctStr(t.succ, t.throwsF), t.throwsF ? t.succ+'/'+t.throwsF : '')
+    + tile('OFF arrêtée', pctStr(t.succ_arretee, t.throwsF_arretee), t.throwsF_arretee ? t.succ_arretee+'/'+t.throwsF_arretee : '')
+    + tile('OFF continue', pctStr(t.succ_continue, t.throwsF_continue), t.throwsF_continue ? t.succ_continue+'/'+t.throwsF_continue : '')
+    + tile('Fautes', t.faults)
+    + tile('+/-', (pm>0?'+':'')+pm, t.onCourt+' actions')
+    + `</div>`;
+  const cols = [
+    {key:'quand', label:'Match', val:r=>r.quand, fmt:r=>{
+       const dt = new Date(r.quand);
+       return `<b>${escapeHtml(r._name || 'match')}</b><small class="cell-sub" style="display:block">${dt.toLocaleDateString('fr-CA', {day:'2-digit', month:'2-digit', year:'2-digit'})} · contre ${escapeHtml(r.opp)}</small>`;}},
+    {key:'throws', label:'Lancers', short:'Lanc.', val:r=>r.throwsF},
+    {key:'off', label:'OFF %', short:'OFF', strong:true, val:r=>pctVal(r.succ, r.throwsF), fmt:r=>pctStr(r.succ, r.throwsF)},
+    {key:'faults', label:'Fautes', short:'Ftes', val:r=>r.faults, fmt:r=>r.faults ? `<span style="color:var(--red)">${r.faults}</span>` : '0'},
+    {key:'pm', label:'+/-', strong:true, val:r=>r._pm, fmt:r=>(r._pm>0?'+':'')+r._pm},
+    {key:'onCourt', label:'Actions', short:'Act.', cls:'sub', val:r=>r.onCourt},
+  ];
+  d.perMatch.forEach(r => { r._click = `viewArchivedMatchStats('${jsArg(r._m.id)}')`; });
+  document.getElementById('playerCardBody').innerHTML = head + `<div class="section-title">Cumul — tous ses matchs</div>` + tiles
+    + `<div class="section-title">Match par match</div>`
+    + statTable({scope:'team', id:'playerCardMatches', cols, rows:d.perMatch, defaultSort:{key:'quand', dir:-1},
+        note:`${SORT_HINT} Touchez un match pour ses statistiques.`});
 }
 function setStatTab(scope, id){
   statTab[scope] = id;
