@@ -3210,12 +3210,6 @@ function beginEvent(type, details){
 function commitEvent(extra){
   if(!pending) return;
   pending.details = Object.assign({}, pending.details, extra);
-  if(pending.type==='lancer'){
-    const d = pending.details;
-    if(d.attacker && d.target && d.attacker!==d.target && (d.result==='attrapé'||d.result==='échappé')){
-      // h2h derived on read, nothing to store here
-    }
-  }
   /* Stocké seulement si quelqu'un d'AUTRE que l'auteur du match saisit
      cette action : aujourd'hui jamais, donc aucun poids ajouté. */
   if(AUTHOR_ID && S.authorId && AUTHOR_ID !== S.authorId) pending.by = AUTHOR_ID;
@@ -4514,7 +4508,7 @@ function computeOverall(){
   return o;
 }
 /* Évolution par période : pour chaque période où il y a eu au moins un
-   lancer résolu (attrapé/échappé), les comptages OFF (elle attaque, succès =
+   lancer résolu (attrapé/échappé) ou une faute directe, les comptages OFF (elle attaque, succès =
    échappé) et DÉF (elle est la cible, succès = attrapé) de chaque équipe en
    jeu. Le DÉF se calcule sur les lancers REÇUS, indépendamment de l'OFF
    adverse. Lecture seule : ne touche à rien. Retourne {periods:[n…],
@@ -5981,6 +5975,7 @@ function matchInfoRows(){
     ['Élimination à', getFormat(S).eliminationAt || '—'],
     ['Période gagnée à', getFormat(S).periodAt || '—'],
     ...ATEAMS().map(t => ['Partants '+t, ((S.startingLineups && S.startingLineups[t]) || []).map(id=>playerName(t,id)).join(' | ') || '— (pas de stats individuelles)']),
+    ...['Bleu','Gris','Noir'].map(t => ['En jeu '+t, ATEAMS().includes(t) ? 'Oui' : 'Non']),
     ['Équipe Bleue', S.names.Bleu], ['Équipe Grise', S.names.Gris], ['Équipe Noire', S.names.Noir],
     ['Joueurs Bleu', rosterStr('Bleu')], ['Joueurs Gris', rosterStr('Gris')], ['Joueurs Noir', rosterStr('Noir')],
     ['Score Bleu', S.scores.Bleu], ['Score Gris', S.scores.Gris], ['Score Noir', S.scores.Noir],
