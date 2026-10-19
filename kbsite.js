@@ -81,7 +81,7 @@
   /* ================= M04 : version, service worker, cartes ================= */
   /* Écrites par outils/check-release.mjs --ecrire ; ne pas modifier à la main. */
   /* VERSION:DEBUT */
-  var VERSION_SITE = '2026-10-19.1';
+  var VERSION_SITE = '2026-10-19.2';
   var VERSION_AMONT = 'cce95ad2';
   /* VERSION:FIN */
   KBSite.version = { site: VERSION_SITE, amont: VERSION_AMONT };
@@ -502,6 +502,7 @@
           if (Object.prototype.hasOwnProperty.call(table, obj.id) && table[obj.id] >= (obj.updatedAt || 0)) ok = false;
           else if (sorte === 'match' && typeof S !== 'undefined' && S && S.id && S.id === obj.id) ok = false;
           if (!ok) ignores++;
+          else table[obj.id] = obj.updatedAt || 0;   // DONNÉES-2 (M6) : un doublon plus ancien dans le même fichier ne réécrase pas
           return ok;
         },
         fin: function (status) { terminerImport(status, payload, ignores, vide); }
