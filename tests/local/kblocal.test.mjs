@@ -590,6 +590,19 @@ test('echecs', 'E6', 'transaction refusée (InvalidStateError, TransactionInacti
   eq(r.apres, { v: 'repris' }, 'écriture suivante');
   eq(r.deuxAbsent, true); eq(r.lecture, { v: 1 }, 'lecture rejouée'); eq(r.meta, 1, 'meta rejoué');
 });
+test('echecs', 'E7b', 'connexion morte puis quota dépassé : l\'erreur de quota est rendue telle quelle, sans réouverture', 'DONNÉES-2 · M10', async ({ open }) => {
+  const p = await open({ init: ESPION });
+  const r = await p.evaluate(async () => {
+    const db = await KBLocal.use('db');
+    await db.doc('c/a').set({ v: 1 });
+    const ouv = window.__ouvertures, put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function () { this.transaction.db.dispatchEvent(new Event('close')); throw new DOMException('quota', 'QuotaExceededError'); };
+    let res; try { await db.doc('c/b').set({ v: 2 }); res = 'RÉSOLU'; } catch (e) { res = e.name; }
+    IDBObjectStore.prototype.put = put;
+    return { res, ouvertures: window.__ouvertures - ouv };
+  });
+  eq(r, { res: 'QuotaExceededError', ouvertures: 0 });
+});
 test('echecs', 'E7', 'écriture en cours quand la connexion se ferme (événement close puis avortement) : rejouée sur une connexion neuve, une seule émission', 'R2 · écriture en cours', async ({ open }) => {
   const p = await open({ init: ESPION });
   const r = await p.evaluate(async () => {

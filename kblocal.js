@@ -151,7 +151,7 @@
   function avecDb(fn) {
     return openDb().then(function (db) {
       return fn(db).then(null, function (e) {
-        if (!db.kbMorte && !connexionMorte(e)) throw e;
+        if (!connexionMorte(e) && !(db.kbMorte && !(e && e.name === 'QuotaExceededError'))) throw e;
         oublierConnexion(db);
         return openDb().then(fn);
       });

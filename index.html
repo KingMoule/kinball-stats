@@ -1396,6 +1396,8 @@ function majBanniereLecture(){
     b.style.display = dbAvailable ? 'none' : 'block';
   }
 }
+/* DONNÉES-2 (M4) : une lecture ou l'écriture d'une équipe réussie ne déclare pas « enregistré » tant qu'une écriture de match reste à confirmer. */
+function setSyncStateLecture(){ setSyncState(pendingSaveId ? dbSyncState : 'ok'); }
 function setSyncState(state){
   dbSyncState = state;
   const badge = document.getElementById('syncBadge');
@@ -1434,7 +1436,7 @@ function subscribeTeams(){
       const toutes = snap.docs.map(d=>d.data());
       TEAMS_DB = toutes.filter(t => t && !t.deleted);
       DELETED_TEAMS = toutes.filter(t => t && t.deleted);
-      setSyncState('ok');
+      setSyncStateLecture();
       renderTeamPickers();
       if(isVisible('backup')) renderTrash();
       if(isVisible('teamManager')) renderTeamManagerList();
@@ -1490,7 +1492,7 @@ function rebuildMatches(){
   const vus = new Set();
   MATCHES_DB = tous.filter(m => m && m.id && !vus.has(m.id) && vus.add(m.id) && !m.deleted);
   DELETED_MATCHES = tous.filter(m => m && m.deleted);
-  setSyncState('ok');
+  setSyncStateLecture();
   checkLocalBackups();
   checkResume();
   if(isVisible('matchHistory')) renderMatchHistoryList();
@@ -1594,7 +1596,7 @@ function authorLabel(id){
 
 async function dbSetTeam(team){
   await dbReady; if(!DB){ setSyncState('error'); return false; }
-  try{ await DB.collection('teams').doc(team.id).set(team); setSyncState('ok'); return true; }
+  try{ await DB.collection('teams').doc(team.id).set(team); setSyncStateLecture(); return true; }
   catch(e){ console.error('Échec de sauvegarde de l\'équipe', e); setSyncState('error'); return false; }
 }
 /* C26 · R9 : « supprimer » une équipe l'écrit deleted:true (comme un match) ; seul « Effacer pour de bon » appelle dbDeleteTeam. */
@@ -1653,7 +1655,7 @@ async function dbTrashMatch(id){
   }
   const m = getMatchRecord(id) || DELETED_MATCHES.find(x=>x.id===id);
   if(!m) return false;
-  const copie = Object.assign({}, m, {deleted:true, deletedAt:Date.now(), deletedBy:AUTHOR_ID || null});
+  const copie = Object.assign({}, m, {deleted:true, deletedAt:Date.now(), deletedBy:AUTHOR_ID || null, updatedAt:Date.now()});   // DONNÉES-2 (M1) : updatedAt change, sinon un import à égalité ignore la corbeille
   try{ await writeMatchDoc(copie); setSyncState('ok'); return true; }
   catch(e){ console.error('Échec de mise à la corbeille', e); setSyncState('error'); return false; }
 }
@@ -1661,7 +1663,7 @@ async function dbRestoreMatch(id){
   await dbReady; if(!DB) return false;
   const m = DELETED_MATCHES.find(x=>x.id===id);
   if(!m) return false;
-  const copie = Object.assign({}, m); delete copie.deleted; delete copie.deletedAt; delete copie.deletedBy;
+  const copie = Object.assign({}, m, {updatedAt:Date.now()}); delete copie.deleted; delete copie.deletedAt; delete copie.deletedBy;
   try{ await writeMatchDoc(copie); setSyncState('ok'); if(S && S.id === id && S.deleted && !viewingArchive) S = freshState(); return true; }   // R15 : le S mort (deleted) ne reste pas en mémoire : il ne repart pas à la corbeille et ne réécrirait jamais deleted:true ; la base a le match restauré
   catch(e){ console.error('Échec de restauration', e); setSyncState('error'); return false; }
 }
@@ -1842,7 +1844,7 @@ function checkLocalBackups(){
   /* R15 (D91) : une copie locale marquée `deleted` est une mise à la corbeille dont l'écriture n'est pas partie. Elle n'est
      jamais proposée en « Récupérer » (sinon le match joué ensuite serait réécrit avec deleted:true). On termine la suppression par
      la voie normale (writeMatchDoc), puis on marque la copie synchronisée comme discardMatch ; le match reste dans la corbeille. */
-  const supprimees = listLocalBackups().filter(b => b.match.deleted);
+  const supprimees = illisible ? [] : listLocalBackups().filter(b => b.match.deleted);   // DONNÉES-2 (M8) : lecture en panne, getMatchRecord vaut null : on ne marque rien comme synchronisé, la décision est reprise à la lecture suivante
   supprimees.forEach(b=>{
     const enBase = getMatchRecord(b.match.id);
     if(!enBase){ markLocalBackupSynced(b.match.id); return; }   // déjà à la corbeille (ou absent) : rien à écrire
@@ -3577,7 +3579,7 @@ async function discardMatch(){
   navHome();
   try{ await enVol; }catch(e){}
   markLocalBackupSynced(copie.id);  // l'écriture en vol a pu en redéposer une
-  copie.deleted = true; copie.deletedAt = Date.now(); copie.deletedBy = AUTHOR_ID || null;
+  copie.deleted = true; copie.deletedAt = Date.now(); copie.deletedBy = AUTHOR_ID || null; copie.updatedAt = Date.now();
   let ok = true;
   try{ await writeMatchDoc(copie); setSyncState('ok'); }
   catch(e){ console.error('Échec de la mise à la corbeille du match', e); setSyncState('error'); ok = false; }
@@ -3607,7 +3609,7 @@ async function restoreDiscarded(){
   const m = lastDiscarded;
   if(!m) return closeSheet();
   lastDiscarded = null;
-  const copie = Object.assign({}, m);
+  const copie = Object.assign({}, m, {updatedAt:Date.now()});
   delete copie.deleted; delete copie.deletedAt; delete copie.deletedBy;
   closeSheet();
   try{ await writeMatchDoc(copie); setSyncState('ok'); }
@@ -7022,7 +7024,9 @@ function raisonMatch(m){
   if(!estIdSur(m.id)) return 'identifiant invalide';
   if(m.status !== 'in_progress' && m.status !== 'completed') return 'statut inconnu';
   if(!Array.isArray(m.history) || m.history.some(e => !estObjet(e) || typeof e.type !== 'string'
-      || (e.details !== undefined && e.details !== null && !estObjet(e.details)))) return 'historique mal formé';
+      || (e.details !== undefined && e.details !== null && !estObjet(e.details))
+      || (e.before !== undefined && e.before !== null && !estObjet(e.before)))) return 'historique mal formé';
+  if(m.format !== undefined && m.format !== null && !(estObjet(m.format) && typeof m.format.id === 'string' && Object.prototype.hasOwnProperty.call(FORMATS, m.format.id))) return 'format invalide';
   if(m.activeTeams !== undefined && !(Array.isArray(m.activeTeams) && m.activeTeams.length && m.activeTeams.every(t => TEAMS.includes(t)))) return 'équipes en jeu invalides';
   const eq = matchTeams(m);
   if(!estObjet(m.names) || eq.some(t => typeof m.names[t] !== 'string')) return 'noms mal formés';
@@ -7062,7 +7066,7 @@ async function handleImportFile(event){
   const kbImport = (typeof KBSite !== 'undefined' && KBSite.importDebut) ? await KBSite.importDebut(payload) : null; /* MIGRATION M06 */
 
   const existingTeamIds = new Set([].concat(TEAMS_DB, DELETED_TEAMS).map(t=>t.id));
-  const existingMatchIds = new Set(MATCHES_DB.map(m=>m.id));
+  const existingMatchIds = new Set([].concat(MATCHES_DB, DELETED_MATCHES).map(m=>m.id));   // DONNÉES-2 (M6) : un match de la corbeille rafraîchi est « mis à jour », pas « ajouté »
   let teamsAdded=0, teamsUpdated=0, matchesAdded=0, matchesUpdated=0, failed=0;
   const ecartes = {};   // raison → nombre
   const ecarter = raison => { ecartes[raison] = (ecartes[raison]||0) + 1; };
