@@ -19,7 +19,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 7. **ESSAI-6 iPad** : **fait** le 2026-10-17 (liserés, flèche du glissé, halo de possession, barres du % de victoire pendant « PÉRIODE N TERMINÉE » : tout confirmé ; site publié par Pages à chaque fusion). **REDO** (#7, complet) : **fait** (PR #30, D101, suite REDO ; audit : 6 critères tenus, ↶ d'un ancien événement sans `before` corrigé) : ↷ à droite de ↶ ; pile `{ev, after, id, n}` hors de `S`, vidée par toute action, un choix de possession, un changement de match et le rechargement ; couvre `fin_periode`, changements de joueur, duel, fenêtre de fin de période. **TERRAIN** (#12, complet) : **fait** (PR #32, D102, suite TERRAIN) : terrain de saisie d'après la maquette `docs/maquettes/terrain-3x3.png` (fond vert en dégradé, liseré, grille 3×3 aux tiers des zones, cercle central) ; les anciennes lignes à 0,18 / 0,82 disparaissent ; `#field` sans bordure ni `overflow:hidden`. Suite TERRAIN-2 (PR #36) : même tracé dans la heat map et le schéma des zones.
 8. **EXPORT-1** (léger) : **fait** (PR #34, D103, suite EXPORT1). Stats S4 (« Situation (avec fautes) » en fin des Actions et de « tous les matchs ») et S6 (« ID équipe » dans la feuille « Match » et « ID équipe 1/2/3 » dans « tous les matchs »).
 9. **F8, courbe du % de victoire** (léger) : **fait** (PR #37, D104, suite F8). Onglet « % victoire » des stats d'un match : la courbe recalculée après coup redonne chaque résultat des barres du direct.
-10. **C04, fiche joueur** (léger) : **fait** (PR #40, D105, suite C04) : toucher un joueur dans « Joueurs — tous les matchs » ouvre sa fiche (cumul avec cette équipe, ligne par match). Reste à choisir : F7 (calibration, attend une vingtaine de matchs).
+10. **C04, fiche joueur** (léger) : **fait** (PR #40, D105, suite C04) : toucher un joueur dans « Joueurs — tous les matchs » ouvre sa fiche (cumul avec cette équipe, ligne par match). **STAT-5** (léger) : S7 et S10 (D106) ; S9, S11, S12 restent au registre des mineurs. Reste à choisir : F7 (calibration, attend une vingtaine de matchs).
 
 ## Autres lignes
 | Id | Sujet | Remarque |
@@ -28,7 +28,7 @@ Série stricte sur `index.html` : une PR fusionnée avant la suivante. Ce qui ne
 | C08-B, C08-C | Export « tous les matchs » : gel à 120 000 lignes ; seul le match de `S` dédoublonné | mineurs |
 | C24·6 | Non filtré des 5 clés sorties de `S` avec une copie « d'avant » locale | KNOWN en CI |
 | R12, R17, R18, R23, R25, R26 | Safari non installé ; « Saisi par » brut ; deux doigts ; quotas de collecte ; SheetJS ancien ; accessibilité | mineurs |
-| Revue, mineurs restants | Données M1, M4, M6, M7, M8, M10 ; stats S7, S9 à S12 ; saisie N7 et propreté ; outillage (mineurs) | à reprendre quand on touche le code concerné |
+| Revue, mineurs restants | Données M1, M4, M6, M7, M8, M10 ; stats S9, S11, S12 ; saisie N7 et propreté ; outillage (mineurs) | à reprendre quand on touche le code concerné |
 
 **Abandonnés** : F31, F32, F34, F36, CI-3 (protection de `main`) ; R19-UX et R15-B (Q15 et Q16 : « on ne change rien », 2026-10-16) ; le 2026-10-17 (revue du plan) : R13 (découper `index.html` : le coût vient surtout du nombre d'appels, `couts.md`), points Windows d'outillage (K-1 à K-3 : ni développement ni prise de stats sous Windows, l'app sert sur tablette et téléphone), F43-B (consigné D93), E4, E6, E8 (pour information).
 
