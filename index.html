@@ -1383,6 +1383,7 @@ function lectureReussie(cle){
   if(!lecturesEchouees.delete(cle)) return;
   relectures[cle] = 0;
   majBanniereLecture();
+  if(!lecturesEchouees.size) setTimeout(checkLocalBackups, 0);   // DONNÉES-2 (M8) : les copies mises de côté pendant la panne sont reprises dès le retour de la dernière lecture, après que son instantané est posé
 }
 function majBanniereLecture(){
   const b = document.getElementById('dbUnavailable');
@@ -7077,7 +7078,7 @@ async function handleImportFile(event){
     if(kbImport && !kbImport.garder('team', t)) continue; /* MIGRATION M06 */
     const ok = await dbSetTeam(t);
     if(!ok){ failed++; continue; }
-    if(existingTeamIds.has(t.id)) teamsUpdated++; else teamsAdded++;
+    if(existingTeamIds.has(t.id)) teamsUpdated++; else { teamsAdded++; existingTeamIds.add(t.id); }
   }
   for(const m of (payload.matches||[])){
     const raisonM = raisonMatch(m);
@@ -7085,7 +7086,7 @@ async function handleImportFile(event){
     if(kbImport && !kbImport.garder('match', m)) continue; /* MIGRATION M06 */
     const ok = await dbSetMatchRaw(m);
     if(!ok){ failed++; continue; }
-    if(existingMatchIds.has(m.id)) matchesUpdated++; else matchesAdded++;
+    if(existingMatchIds.has(m.id)) matchesUpdated++; else { matchesAdded++; existingMatchIds.add(m.id); }   // un doublon du même fichier compte « mis à jour »
   }
 
   status.textContent =
