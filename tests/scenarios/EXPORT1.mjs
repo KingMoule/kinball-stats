@@ -64,8 +64,8 @@ export default async function ({ gabarit, check }) {
           noms: Object.fromEntries(ATEAMS().map(t => [t, nm(t)])), id: S.id,
           fautes: S.history.map((e, i) => e.type === 'faute_directe' ? situationOfFaute(S.history, i) : null).filter(Boolean) };
       });
-      eq(d.header[d.header.length - 1], SIT, 'dernière colonne');
-      eq(d.header[d.header.length - 2], OFFF, 'juste après « Réussite offensive (avec fautes) »');
+      eq(d.header[d.header.length - 3], SIT, 'colonne avant les deux du mode avancé');
+      eq(d.header[d.header.length - 4], OFFF, 'juste après « Réussite offensive (avec fautes) »');
       assert(d.fautes.includes('arretee') && d.fautes.includes('continue'), 'des fautes dans les deux situations : ' + d.fautes.join(','));
       eq(croise(d.rows, d.noms), d.ecran, 'tableau croisé = écran');
       d.rows.forEach((x, i) => {
@@ -145,8 +145,8 @@ export default async function ({ gabarit, check }) {
         S = freshState();
       });
       const [h, ...L] = await tousLesMatchs(app);
-      eq(h.length, 44, 'quarante colonnes figées, plus quatre');
-      eq(h.slice(-4), [SIT, 'ID équipe 1', 'ID équipe 2', 'ID équipe 3'], 'colonnes ajoutées à la fin, dans cet ordre');
+      eq(h.length, 46, 'quarante colonnes figées, plus quatre, plus deux du mode avancé');
+      eq(h.slice(-6), [SIT, 'ID équipe 1', 'ID équipe 2', 'ID équipe 3', 'Position défensive attaquée', 'Défenseur impliqué'], 'colonnes ajoutées à la fin, dans cet ordre');
       eq(h.slice(0, 3), ['ID du match', 'Date du match', 'Heure de l’action'], 'début inchangé');
       eq(h[39], 'Équipe éliminée', 'ancienne dernière colonne à sa place');
       L.forEach((l, i) => eq(l.length, h.length, `ligne ${i + 2} : colonnes`));

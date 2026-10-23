@@ -300,7 +300,7 @@ export default async function ({ gabarit, check }) {
       const csv = lireCSV((await csvActions(app)).toString('utf8'));
       eq(act[0], csv[0], 'Actions : même en-tête que le CSV');
       eq(act.length, csv.length, 'même nombre de lignes');
-      eq(act[0].slice(-6, -2), NOUVELLES, 'quatre colonnes ajoutées en fin (avant celles de STAT-1 et d\'EXPORT-1)');
+      eq(act[0].slice(-8, -4), NOUVELLES, 'quatre colonnes ajoutées en fin (avant celles de STAT-1, d\'EXPORT-1 et du mode avancé)');
       eq(act.slice(1).map(l => l[act[0].indexOf('Code de faute')] ?? ''), ['', 'EXT', 'DÉF ILL', '', ''], 'codes de faute dans le XLSX');
     } finally { await app.close(); }
   });
