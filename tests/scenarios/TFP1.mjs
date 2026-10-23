@@ -94,10 +94,13 @@ export default async function ({ gabarit, check }) {
       });
     }, { calme: true });
   }
-  await check(`${P} · 1c · mode avancé sans alignement (aucune feuille à ouvrir) : éclair puis message, comme en direct`, async () => {
+  await check(`${P} · 1c · mode avancé sans alignement (la feuille ne propose que la position défensive) : fermée, éclair puis message, comme en direct`, async () => {
     await un(gabarit, async app => {
       await setup(app, CFG.echappe, { advanced: true }); await record(app);
       await PATHS.echappe(app);
+      await until(app, () => !!document.querySelector('#sheet .adv-pos-row'), null, 4000);
+      eq(await app.ev(() => document.querySelectorAll('#sheet .adv-player-grid').length), 1, 'aucune grille de joueurs, seulement la position');
+      await app.clickSheet('closeAdvancedDetailSheet()');
       await until(app, () => window.__log.length && window.__log[window.__log.length - 1].per > 1, null, 6000);
       const L = lire(await frise(app), 1);
       assert(L.debut >= 480 && L.debut <= 800 && L.fin - L.debut >= 1300 && L.reset >= 1850 && L.reset <= 2300, JSON.stringify(L));

@@ -107,7 +107,10 @@ Toucher le bloc d'une équipe dans le ruban (hors de la zone des barres de proba
 
 ## Mode avancé
 
-Réglage de l'écran Nouveau match, « EN DIRECT » ou « AVANCÉ (différé) » (`S.advancedMode`, désactivé par défaut), pensé pour saisir un match filmé. Après un lancer ATTRAPÉ ou ÉCHAPPÉ (pas après une DÉF ILL ni une faute), le message éclair est suivi d'une feuille facultative « DÉTAILS AVANCÉS » où l'on peut noter le receveur (`target_player_id`, `target_player_name`) parmi les joueurs sur le terrain à ce moment. Pour ajouter un futur champ avancé, passer par `openAdvancedDetailSheet` et `setAdvancedPlayer` : le champ suit l'export dynamique (voir `stats-et-export.md`).
+Réglage de l'écran Nouveau match, « EN DIRECT » ou « AVANCÉ (différé) » (`S.advancedMode`, désactivé par défaut), pensé pour saisir un match filmé. Après un lancer ATTRAPÉ, ÉCHAPPÉ ou une DÉF ILL (pas après une faute directe), le message éclair est suivi d'une feuille facultative « DÉTAILS AVANCÉS » (`openAdvancedDetailSheet`) :
+- le lanceur (`attacker_player_id`) et le défenseur impliqué (`target_player_id`, `target_player_name`), parmi les joueurs sur le terrain à ce moment, pour une équipe qui a un alignement. Le défenseur se note aussi après une DÉF ILL, qui n'a ni lanceur ni frappe (pas de section « lanceur »).
+- la position défensive attaquée (`def_position`, `setAdvancedPosition`) après ATTRAPÉ ou ÉCHAPPÉ seulement : `rap` (RAP, rapproché), `rap_eloi` (RAP/ELOI, entre les deux), `eloi` (ELOI, éloigné). Un second appui retire le choix.
+Pour ajouter un futur champ avancé, passer par `openAdvancedDetailSheet` et `setAdvancedPlayer` / `setAdvancedPosition` : le champ suit l'export dynamique (voir `stats-et-export.md`). Les champs nouveaux sont lus avec une valeur vide par défaut : les anciens matchs n'ont rien à migrer.
 
 ## Annulation
 
