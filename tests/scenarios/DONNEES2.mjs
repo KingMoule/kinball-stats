@@ -1,5 +1,8 @@
 /* DONNEES2 — revue données M1, M4, M6, M7, M8 (M10 : tests/local/kblocal.test.mjs).
    Vérifications au niveau des fonctions de l'app, sur un match écrit directement dans la base. */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { launch, assert, eq } from '../lib.mjs';
 
 export const gabarits = ['tablette'];
@@ -80,6 +83,32 @@ export default async function ({ gabarit, check }) {
         return reste;
       });
       assert(r, 'la copie locale supprimée est gardée');
+    });
+
+    await check(`${P} · M8 le retour de la dernière lecture reprend la vérification des copies`, async () => {
+      const r = await p.evaluate(async () => {
+        backupChecked = false; lecturesEchouees.add('teams');
+        lectureReussie('teams');
+        await new Promise(r => setTimeout(r, 60));
+        return backupChecked;
+      });
+      assert(r, 'checkLocalBackups rappelé au retour de la lecture');
+    });
+
+    await check(`${P} · M6 un doublon du même fichier compte « mis à jour »`, async () => {
+      const json = await p.evaluate(() => {
+        const m = Object.assign(freshState(), { id: uid('match'), matchName: 'Dup', status: 'completed', createdAt: 1, updatedAt: 100 });
+        m.authorId = AUTHOR_ID;
+        const m2 = Object.assign(JSON.parse(JSON.stringify(m)), { updatedAt: 200 });
+        return JSON.stringify({ format: 'kinball_backup', version: 1, teams: [], matches: [m, m2] });
+      });
+      const f = path.join(os.tmpdir(), 'd2_' + process.pid + '.json');
+      fs.writeFileSync(f, json);
+      await p.evaluate(() => { navTo('backup'); document.getElementById('backupStatus').textContent = ''; });
+      await p.setInputFiles('#importFileInput', f);
+      await p.waitForFunction(() => /Import terminé/.test(document.getElementById('backupStatus').textContent), null, { timeout: 10000, polling: 30 });
+      const t = await p.evaluate(() => document.getElementById('backupStatus').textContent);
+      assert(/1 match\(s\) ajouté\(s\), 1 mis à jour/.test(t), 'compte rendu : ' + t);
     });
   } finally { await app.close(); }
 }
