@@ -139,8 +139,10 @@ button{font-family:inherit; border:none; cursor:pointer; -webkit-appearance:none
 .team-chip .tscore{font-size:34px; line-height:1; font-family:'Barlow Condensed',sans-serif; font-weight:800; text-shadow:0 2px 10px rgba(0,0,0,.25);}
 .team-chip:has(.wp){padding-bottom:18px;}   /* C13B : place des deux barres de % (+10 px de ruban) */
 .wp{position:absolute; left:0; right:0; bottom:0; height:22px; padding:0 14px 5px; z-index:1; cursor:pointer;
-  display:flex; flex-direction:column; justify-content:flex-end; gap:2px; color:inherit;
+  display:flex; flex-direction:row; align-items:flex-end; gap:6px; color:inherit;
   transition:opacity .6s ease; -webkit-tap-highlight-color:transparent;}
+.wp-bars{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; padding-bottom:1px;}
+.wp-n{flex:none; font-size:11px; line-height:1; font-weight:700; font-variant-numeric:tabular-nums;} .wp-n small{font-size:9px; font-weight:500; opacity:.6; margin-left:3px;}
 .wp-m,.wp-p{position:relative; width:100%; border-radius:3px; overflow:hidden;}
 .wp-m{height:6px;} .wp-p{height:3px; opacity:.6;}
 .wp-m::before,.wp-p::before{content:''; position:absolute; inset:0; background:currentColor; opacity:.22;}
@@ -4223,7 +4225,7 @@ function wpLabel(t){
 function wpBarsHTML(t){
   if(!wpActive()) return '';
   const m = wpPct(t,'match').toFixed(1), p = wpPct(t,'period').toFixed(1);
-  return `<div class="wp" data-team="${t}" data-match="${m}" data-period="${p}" role="button" aria-label="${escapeHtml(wpLabel(t))}" style="opacity:${wpOpacity(t).toFixed(3)}" onclick="event.stopPropagation(); openWinDetail()"><div class="wp-m"><i style="width:${m}%"></i></div><div class="wp-p"><i style="width:${p}%"></i></div></div>`;
+  return `<div class="wp" data-team="${t}" data-match="${m}" data-period="${p}" role="button" aria-label="${escapeHtml(wpLabel(t))}" style="opacity:${wpOpacity(t).toFixed(3)}" onclick="event.stopPropagation(); openWinDetail()"><div class="wp-bars"><div class="wp-m"><i style="width:${m}%"></i></div><div class="wp-p"><i style="width:${p}%"></i></div></div><span class="wp-n">${Math.round(m)}<small>${Math.round(p)}</small></span></div>`;
 }
 /* Met à jour EN PLACE (largeur, opacité, attributs) : la transition CSS
    anime le changement. Sans .wp dans le ruban, ne fait rien. */
@@ -4239,6 +4241,7 @@ function wpPaint(){
     el.setAttribute('aria-label', wpLabel(t));
     el.querySelector('.wp-m i').style.width = m + '%';
     el.querySelector('.wp-p i').style.width = p + '%';
+    el.querySelector('.wp-n').innerHTML = Math.round(m) + '<small>' + Math.round(p) + '</small>';
   });
 }
 /* Détail au toucher d'une barre : une seule feuille pour toutes les équipes. */
