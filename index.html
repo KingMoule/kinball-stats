@@ -2436,6 +2436,7 @@ function openAdvancedDetailSheet(eventIndex){
   if(!attackerTeam){ closeSheet(); renderScoreboard(); return; }
   const isThrow = ev.type === 'lancer';
   const targetTeam = isThrow ? ev.details.target : null;
+  const defIll = isThrow && isDefIll(ev.details);   // une DÉF ILL n'a ni lanceur ni frappe : seul le défenseur impliqué se note
 
   /* On ne propose que les joueurs SUR LE TERRAIN au moment de l'action
      (instantané du `before`), pas tout l'alignement : 4 boutons au lieu
@@ -2453,12 +2454,33 @@ function openAdvancedDetailSheet(eventIndex){
   }
 
   let html = `<div class="sheet-title">DÉTAILS AVANCÉS (facultatif)</div>`;
-  html += section(attackerTeam, 'attacker', isThrow ? 'lanceur' : 'joueur en faute');
-  if(isThrow && targetTeam) html += section(targetTeam, 'target', 'réception');
-  // Aucune des équipes impliquées n'a d'alignement : rien à attribuer, on passe.
+  if(!defIll) html += section(attackerTeam, 'attacker', isThrow ? 'lanceur' : 'joueur en faute');
+  if(isThrow && targetTeam) html += section(targetTeam, 'target', defIll ? 'défense (défensive illégale)' : 'défense');
+  /* Position défensive attaquée : seulement après une frappe (ATTRAPÉ / ÉCHAPPÉ). */
+  if(isThrow && !defIll){
+    const cur = ev.details.def_position;
+    html += `<div class="adv-section-label">Position défensive attaquée</div>
+      <div class="adv-player-grid adv-pos-row">` + DEF_POSITIONS.map(k=>
+        `<button class="adv-player-btn ${cur===k?'selected':''}" onclick="setAdvancedPosition(${eventIndex},'${k}')">${DEF_POSITION_BTN[k]}</button>`
+      ).join('') + `</div>`;
+  }
+  // Rien à attribuer (ni position, ni alignement), on passe.
   if(!html.includes('adv-player-grid')){ closeSheet(); renderScoreboard(); return; }
   html += `<button class="ghost-btn" style="width:100%;margin-top:16px" onclick="closeAdvancedDetailSheet()">TERMINÉ</button>`;
   openSheet(html, true);
+}
+/* Position défensive attaquée (mode avancé) : trois valeurs, un appui sur la valeur choisie la retire. */
+const DEF_POSITIONS = ['rap','rap_eloi','eloi'];
+const DEF_POSITION_BTN = {rap:'RAP', rap_eloi:'RAP/ELOI', eloi:'ELOI'};
+const DEF_POSITION_LABEL = {rap:'Rapproché', rap_eloi:'Entre rapproché et éloigné', eloi:'Éloigné'};
+function setAdvancedPosition(eventIndex, key){
+  if(S.status !== 'in_progress') return;
+  const ev = S.history[eventIndex];
+  if(!ev || !DEF_POSITIONS.includes(key)) return;
+  if(ev.details.def_position === key) delete ev.details.def_position;
+  else ev.details.def_position = key;
+  save();
+  openAdvancedDetailSheet(eventIndex);
 }
 function setAdvancedPlayer(eventIndex, which, playerId){
   if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3)
@@ -3375,8 +3397,8 @@ function applyResult(team, caught, atk, pid, defIll){
   commitEvent({result: caught?'attrapé':'échappé', target:team, ...situation, ...who, ...dif});
   closeSheet();
   const evIndex = S.history.length-1;
-  // Mode avancé : le lanceur est déjà connu, il ne reste que le receveur (pas pour une DÉF ILL).
-  const adv = S.advancedMode && !defIll;
+  // Mode avancé : le lanceur est déjà connu, il reste la position défensive et le défenseur impliqué (DÉF ILL : le défenseur seulement).
+  const adv = S.advancedMode;
   /* T-FP (R14) : fin de période en attente (finishPeriod différé par checkPeriodState) : éclair, puis feuille des détails (mode avancé), puis message. */
   flashMessage(`${escapeHtml(S.names[team]).toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team],
     periodEndWait ? ()=>afterFlashPeriodEnd(adv ? evIndex : null) : adv ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
@@ -6071,7 +6093,9 @@ function buildActionRows(){
     /* STAT-1 : 1/0 dont la moyenne égale l'OFF % de l'écran (une faute directe vaut 0) */
     'Réussite offensive (avec fautes)',
     /* EXPORT-1 (S4) : la situation de chaque ligne de la colonne précédente, faute directe comprise */
-    'Situation (avec fautes)'];
+    'Situation (avec fautes)',
+    /* Mode avancé : position défensive attaquée et défenseur impliqué (vides en mode direct) */
+    'Position défensive attaquée','Défenseur impliqué'];
   const rows = S.history.map((ev,i)=>{
     const d = ev.details || {}, b = ev.before || {};
     const lin = b.lineups || {};
@@ -6096,6 +6120,8 @@ function buildActionRows(){
       'Réussite offensive': lancer ? (d.result==='échappé' ? 1 : 0) : '',
       'Arrêt défensif':     lancer ? (d.result==='attrapé' ? 1 : 0) : '',
       'Joueur': d.attacker_player_name || (d.attacker_player_id ? playerNameIn(ev, d.attacker || b.possession, d.attacker_player_id) : ''),
+      'Position défensive attaquée': DEF_POSITION_LABEL[d.def_position] || '',
+      'Défenseur impliqué': d.target_player_name || (d.target_player_id ? playerNameIn(ev, d.target, d.target_player_id) : ''),
       'Type de faute': d.fault_type ? faultLabel(d.fault_type) : '',
       'Faute d’équipe': ev.type==='faute_directe' ? (d.fault_scope==='equipe' ? 'Oui' : 'Non') : '',
       'Zone de départ': ev.type==='lancer' ? zoneAt(d.start_norm) : (ev.type==='faute_directe' ? zoneAt(d.position_norm) : ''),
@@ -6338,13 +6364,14 @@ const ALL_ACTIONS_HEADER = ['ID du match','Date du match','Heure de l’action',
   ...TEAMS.map((t,k)=>'Sur le terrain — équipe '+(k+1)),
   'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
   /* EXPORT-1 : ajouts en fin de ligne (S4, puis S6 : équipe permanente par emplacement, vide pour un nom libre) */
-  'Situation (avec fautes)', ...TEAMS.map((t,k)=>'ID équipe '+(k+1))];
+  'Situation (avec fautes)', ...TEAMS.map((t,k)=>'ID équipe '+(k+1)),
+  'Position défensive attaquée','Défenseur impliqué'];
 const ALL_ACTIONS_DIRECT = ['ID du match','Date du match','Heure de l’action','No','Période','Type d’action',
   'Équipe en possession','Équipe attaquante','Équipe ciblée','Résultat','Situation','Phase',
   'Réussite offensive','Arrêt défensif','Réussite offensive (avec fautes)','Joueur','Type de faute','Code de faute','Faute d’équipe',
   'Zone de départ','Zone d’arrivée','X départ','Y départ','X arrivée','Y arrivée',
   'Équipe qui repart','Joueur sortant','Joueur entrant','Saisi par','Duel en cours','Équipe éliminée',
-  'Situation (avec fautes)'];
+  'Situation (avec fautes)','Position défensive attaquée','Défenseur impliqué'];
 /* Lignes (en colonnes figées) d'UN match enregistré ; [] si le match est vide ou illisible. */
 function buildAllActionRows(m){
   if(!m || !Array.isArray(m.history) || !m.history.length) return [];
