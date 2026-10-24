@@ -2430,6 +2430,24 @@ function setCaptureMode(advanced){
     ? "Ajoute une étape facultative après chaque lancer/faute pour noter les joueurs impliqués. Idéal en visionnant un match en différé."
     : "Rapide, pour suivre le match en direct.";
 }
+/* Entrée du mode avancé après l'éclair : en présentation radiale, la position défensive d'abord (couche près du doigt),
+   puis la feuille des joueurs ; en présentation « feuille », tout dans la feuille. */
+function openAdvancedDetails(eventIndex){
+  const ev = S.history[eventIndex];
+  if(saisieMode() === 'radiale' && S.status === 'in_progress' && ev && ev.type === 'lancer' && ev.details && ev.details.target && !isDefIll(ev.details)){
+    closeSheet(true);   // l'éclair ; la fin de période en attente le reste
+    radialPositionMenu(eventIndex, radialAnchor || radialRelease || {x:field.offsetWidth/2, y:field.offsetHeight/2});
+    return;
+  }
+  openAdvancedDetailSheet(eventIndex);
+}
+function advPositionPick(eventIndex, key){
+  if(radialStage !== 'position') return;
+  const ev = S.history[eventIndex];
+  if(key && ev && S.status === 'in_progress' && DEF_POSITIONS.includes(key)){ ev.details.def_position = key; save(); }
+  radialStage = null;
+  openAdvancedDetailSheet(eventIndex);   // l'étape suivante ; sans rien à y noter, elle referme et libère la fin de période
+}
 function openAdvancedDetailSheet(eventIndex){
   if(S.status !== 'in_progress') return;   // C26 · R7 (audit E3) : un match terminé n'accepte plus de détail
   const ev = S.history[eventIndex];
@@ -2459,7 +2477,7 @@ function openAdvancedDetailSheet(eventIndex){
   if(!defIll) html += section(attackerTeam, 'attacker', isThrow ? 'lanceur' : 'joueur en faute');
   if(isThrow && targetTeam) html += section(targetTeam, 'target', defIll ? 'défense (défensive illégale)' : 'défense');
   /* Position défensive attaquée : seulement après une frappe (ATTRAPÉ / ÉCHAPPÉ). */
-  if(isThrow && !defIll){
+  if(isThrow && !defIll && saisieMode() !== 'radiale'){
     const cur = ev.details.def_position;
     html += `<div class="adv-section-label">Position défensive attaquée</div>
       <div class="adv-player-grid adv-pos-row">` + DEF_POSITIONS.map(k=>
@@ -2905,7 +2923,7 @@ function openSheet(html, dismissable){
   sh.classList.add('open');
   sheetDismissable = !!dismissable;
 }
-function closeSheet(){
+function closeSheet(garderAttente){
   const sh = document.getElementById('sheet');
   if(sh.classList.contains('open')){
     sh.classList.add('closing');
@@ -2915,7 +2933,7 @@ function closeSheet(){
   sh.classList.remove('open');
   document.getElementById('sheetBackdrop').style.display='none';
   if(radialBusy()) closeRadial();          // C21 : fermer la saisie ferme aussi la couche radiale (animation, boutons inertes)
-  if(periodEndWait && periodEndWait.phase === 'detail') resumePeriodEnd();   // T-FP : la feuille des détails validée ou fermée libère la fin de période
+  if(!garderAttente && periodEndWait && periodEndWait.phase === 'detail') resumePeriodEnd();   // T-FP : la feuille des détails validée ou fermée libère la fin de période (garderAttente : la couche radiale de la position prend le relais)
 }
 /* Un seul écouteur, en capture : anti-double-appui au même endroit et
    réarmement de ↶. Chaque appui reçu par la feuille (avalé ou non) est mémorisé. */
@@ -2987,7 +3005,7 @@ radialEl().addEventListener('click', e=>{
 }, true);
 radialEl().addEventListener('pointerdown', e=>e.stopPropagation());
 /* Redimensionnement / rotation avec une couche ouverte : les positions sont calculées une fois, donc la saisie est annulée proprement (aucun point, aucun événement). */
-function radialOnResize(){ if(radialIsOpen() && pending) cancelPendingEvent(); else if(radialIsOpen()) hideRadial(); }
+function radialOnResize(){ if(radialIsOpen() && radialStage === 'position') advPositionPick(advRadialIdx, null); else if(radialIsOpen() && pending) cancelPendingEvent(); else if(radialIsOpen()) hideRadial(); }
 window.addEventListener('resize', radialOnResize);
 window.addEventListener('orientationchange', radialOnResize);   // un appui sur la couche ne démarre jamais un geste du terrain
 function radialLift(pt, ev){
@@ -2996,7 +3014,7 @@ function radialLift(pt, ev){
 }
 /* Voile : annule la saisie (aucun point, aucun événement) aux étages « résultat » et « type de faute » ;
    à l'étage des joueurs il ne fait rien (le résultat est déjà choisi : on passe par « ? »). */
-function radialVeil(){ if(radialStage === 'players') return; cancelPendingEvent(); }
+function radialVeil(){ if(radialStage === 'players') return; if(radialStage === 'position'){ advPositionPick(advRadialIdx, null); return; } cancelPendingEvent(); }
 const rdClamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v));
 function rdBtn(cls, x, y, w, h, call, label, style, extra){
   return `<button type="button" class="rd-btn ${cls}" style="left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${h}px;${style||''}" onclick="${call}"${extra||''}>${label}</button>`;
@@ -3059,6 +3077,26 @@ function radialPlayersMenu(team, players, allowTeam, title){
   radialPaint(h, 'players');
 }
 
+/* Mode avancé, présentation radiale : la position défensive attaquée se choisit près du doigt (RAP | RAP/ELOI | ELOI),
+   comme ATTRAPÉ | ÉCHAPPÉ | DÉF ILL ; « Passer » (ou le voile) laisse le champ vide. Ensuite seulement vient la feuille du
+   défenseur et du lanceur. Même fonction de règle que la feuille (`advPositionPick` → `setAdvancedPosition`). */
+let advRadialIdx = -1;
+function radialPositionMenu(evIndex, pt){
+  const ev = S.history[evIndex], t = ev.details.target;
+  const fw = field.offsetWidth, fh = field.offsetHeight;
+  const W = Math.min(300, fw - 16), gap = 4, bw = Math.floor((W - 2*gap) / 3), BH = 56, CH = 44, CAP = 28;
+  const H = CAP + BH + 2 + CH;
+  const left = rdClamp(pt.x - W/2, 8, fw - W - 8), top = rdClamp(pt.y - H/2, 8, fh - H - 8);
+  const bg = `background:${TEAM_BG[t]};`, nr = isNoir(t), nm = escapeHtml(S.names[t]);
+  let h = RD_VEIL + `<div class="rd-cap" style="left:${Math.round(left + W/2)}px;top:${Math.round(top)}px">POSITION DÉFENSIVE — ${nm.toUpperCase()}</div>`;
+  DEF_POSITIONS.forEach((k, i) => {
+    const w = i === 2 ? W - 2*bw - 2*gap : bw;
+    h += rdBtn('rd-rect '+nr, left + i*(bw + gap), top + CAP, w, BH, `advPositionPick(${evIndex},'${k}')`, DEF_POSITION_BTN[k], bg + 'font-size:14px;', ` aria-label="${DEF_POSITION_LABEL[k]} — ${nm}"`);
+  });
+  h += rdBtn('rd-ghost', left, top + CAP + BH + 2, W, CH, `advPositionPick(${evIndex},null)`, 'Passer');
+  advRadialIdx = evIndex;
+  radialPaint(h, 'position');
+}
 function possessionChoiceHTML(title, teams, fnName){
   return `<div class="sheet-title">${title}</div><div class="choice-row">` +
     teams.map(t=>`<button class="choice-btn ${isNoir(t)}" style="background:${TEAM_BG[t]}" onclick="${fnName}('${t}')">${escapeHtml(S.names[t]).toUpperCase()}</button>`).join('') +
@@ -3403,7 +3441,7 @@ function applyResult(team, caught, atk, pid, defIll){
   const adv = S.advancedMode;
   /* T-FP (R14) : fin de période en attente (finishPeriod différé par checkPeriodState) : éclair, puis feuille des détails (mode avancé), puis message. */
   flashMessage(`${escapeHtml(S.names[team]).toUpperCase()} • ${defIll?'DÉF ILL':(caught?'ATTRAPÉ':'ÉCHAPPÉ')}`, TEAM_INK[team],
-    periodEndWait ? ()=>afterFlashPeriodEnd(adv ? evIndex : null) : adv ? ()=>openAdvancedDetailSheet(evIndex) : undefined);
+    periodEndWait ? ()=>afterFlashPeriodEnd(adv ? evIndex : null) : adv ? ()=>openAdvancedDetails(evIndex) : undefined);
   renderScoreboard();
 }
 function flashMessage(text,color,onDone){
@@ -3520,8 +3558,8 @@ function afterFlashPeriodEnd(evIndex){
   if(!w || w.phase !== 'flash') return;
   if(evIndex === null){ resumePeriodEnd(); return; }
   w.phase = 'detail';
-  openAdvancedDetailSheet(evIndex);
-  if(periodEndWait === w && !document.querySelector('#sheet .adv-player-grid')) resumePeriodEnd();   // la feuille ne s'est pas ouverte (match terminé, rien à attribuer)
+  openAdvancedDetails(evIndex);
+  if(periodEndWait === w && radialStage !== 'position' && !document.querySelector('#sheet .adv-player-grid')) resumePeriodEnd();   // la feuille ne s'est pas ouverte (match terminé, rien à attribuer)
 }
 /* Fin de période déclenchée à la main — indispensable en format libre, et
    utile partout ailleurs (période écourtée, temps de pratique limité). */

@@ -150,6 +150,41 @@ export default async function ({ gabarit, check }) {
       eq(await sheetOpen(app), false, 'feuille fermée à la fin');
     });
   });
+  await check(`${P} · 2d · mode avancé, présentation radiale : la position défensive se choisit dans une couche radiale (la fin de période attend), puis la feuille des joueurs sans ligne de position ; position et défenseur enregistrés ; message puis remise à zéro`, async () => {
+    await un(gabarit, async app => {
+      await setup(app, CFG.echappe, { rosters: true, advanced: true }); await record(app);
+      await PATHS.echappe(app);
+      await until(app, () => radialStage === 'position' && radialIsOpen(), null, 4000);
+      eq(await app.ev(() => ({ sheet: document.getElementById('sheet').classList.contains('open'), wait: periodEndWait && periodEndWait.phase, boutons: [...document.querySelectorAll('#radial .rd-btn')].map(b => b.textContent.trim()) })),
+        { sheet: false, wait: 'detail', boutons: ['RAP', 'RAP/ELOI', 'ELOI', 'Passer'] }, 'couche de position, fin de période en attente');
+      await app.page.waitForTimeout(1500);
+      eq(await app.ev(() => radialStage), 'position', 'la couche n\'est pas refermée d\'office');
+      const idx = await app.ev(() => S.history.length - 1);
+      await app.clickSheet(`advPositionPick(${idx},'rap_eloi')`);
+      await until(app, () => !!document.querySelector('#sheet .adv-player-grid'), null, 3000);
+      eq(await app.ev(() => !!document.querySelector('#sheet .adv-pos-row')), false, 'pas de ligne de position dans la feuille');
+      await app.clickSheet(`setAdvancedPlayer(${idx},'target','Gris_p1')`);
+      await app.clickSheet('closeAdvancedDetailSheet()');
+      await msgUp(app);
+      await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
+      const d = await app.ev(i => S.history[i].details, idx);
+      eq([d.def_position, d.target_player_id], ['rap_eloi', 'Gris_p1'], 'position et défenseur enregistrés');
+      assert(app.errors.length === 0, app.errors.join(' | '));
+    }, { timescale: 1, saisie: 'radiale' });
+  }, { calme: true });
+  await check(`${P} · 2e · mode avancé, présentation radiale : « Passer » laisse la position vide ; sans alignement la fin de période reprend tout de suite`, async () => {
+    await un(gabarit, async app => {
+      await setup(app, CFG.echappe, { advanced: true }); await record(app);
+      await PATHS.echappe(app);
+      await until(app, () => radialStage === 'position' && radialIsOpen(), null, 4000);
+      const idx = await app.ev(() => S.history.length - 1);
+      await app.clickSheet(`advPositionPick(${idx},null)`);
+      await msgUp(app);
+      await until(app, () => S.period === 2 && !periodEndBusy(), null, 4000);
+      eq(await app.ev(i => S.history[i].details.def_position === undefined, idx), true, 'position vide');
+      assert(app.errors.length === 0, app.errors.join(' | '));
+    }, { timescale: 1, saisie: 'radiale' });
+  }, { calme: true });
   for (const phase of ['éclair', 'détails']) {
     await check(`${P} · 2c · ↶ (undo()) pendant ${phase === 'éclair' ? 'l\'éclair' : 'l\'attente de la feuille des détails'} : état d'avant exact, aucun minuteur orphelin (rien ne se passe 3 s plus tard)`, async () => {
       await un(gabarit, async app => {
